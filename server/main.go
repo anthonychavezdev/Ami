@@ -12,6 +12,7 @@ import (
 	"flag"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -20,12 +21,14 @@ type server struct {
 	db         *sql.DB
 	hub        *hub
 	limiter    *limiter
+	mediaDir   string
 	trustProxy bool
 }
 
 func main() {
 	addr := flag.String("addr", ":8080", "listen address")
 	dbPath := flag.String("db", "ami.db", "sqlite database path")
+	mediaDir := flag.String("media-dir", "media", "directory for uploaded pictures and videos")
 	dev := flag.Bool("dev", false, "development mode: seed demo data into an empty database and allow any CORS origin")
 	origins := flag.String("allowed-origins", "", "comma-separated browser origins allowed to call the API (CORS); empty disables CORS")
 	trustProxy := flag.Bool("trust-proxy", false, "take client IPs from X-Forwarded-For (only behind a trusted reverse proxy)")
@@ -39,7 +42,10 @@ func main() {
 	}
 	defer db.Close()
 
-	s := &server{db: db, hub: newHub(), limiter: newLimiter(10, time.Minute), trustProxy: *trustProxy}
+	if err := os.MkdirAll(*mediaDir, 0o755); err != nil {
+		log.Fatalf("media dir: %v", err)
+	}
+	s := &server{db: db, hub: newHub(), limiter: newLimiter(10, time.Minute), mediaDir: *mediaDir, trustProxy: *trustProxy}
 	if _, err := db.Exec(`DELETE FROM sessions WHERE expires_at < ?`, nowString()); err != nil {
 		log.Printf("purge expired sessions: %v", err)
 	}
@@ -96,6 +102,8 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/posts/{id}/comments", s.auth(s.createComment))
 	mux.HandleFunc("PUT /api/posts/{id}/reaction", s.auth(s.setReaction))
 	mux.HandleFunc("DELETE /api/posts/{id}/reaction", s.auth(s.deleteReaction))
+	mux.HandleFunc("POST /api/media", s.auth(s.uploadMedia))
+	mux.HandleFunc("GET /media/{name}", s.serveMedia)
 
 	// friends
 	mux.HandleFunc("GET /api/friends", s.auth(s.listFriends))

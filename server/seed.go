@@ -1,7 +1,13 @@
 package main
 
 import (
+	"encoding/json"
+	"image"
+	"image/color"
+	"image/png"
 	"log"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -54,6 +60,19 @@ type demoPost struct {
 	ago                 time.Duration
 	comments            []demoComment
 	reactions           map[string]string // username -> emoji
+	attachments         []Attachment
+}
+
+// Demo pictures are gradients generated at seed time; the names below are
+// referenced by demoPosts.
+var demoImages = map[string][2]color.RGBA{
+	"demo-paella.png":    {{R: 230, G: 120, B: 40, A: 255}, {R: 250, G: 210, B: 90, A: 255}},
+	"demo-atardecer.png": {{R: 90, G: 40, B: 130, A: 255}, {R: 250, G: 140, B: 70, A: 255}},
+	"demo-parque.png":    {{R: 40, G: 120, B: 70, A: 255}, {R: 150, G: 210, B: 120, A: 255}},
+}
+
+func demoImage(name string) Attachment {
+	return Attachment{Type: "image", URL: "/media/" + name, Width: 1200, Height: 900}
 }
 
 const hour = time.Hour
@@ -61,32 +80,36 @@ const hour = time.Hour
 // Oldest first: insertion order is feed order.
 var demoPosts = []demoPost{
 	{"luis", "", "¡Hola Ami! Primer post desde la app nueva 🎉", 5 * 24 * hour,
-		[]demoComment{{"ana", "¡Bienvenido!"}, {"sofia", "Por fin 😄"}}, map[string]string{"ana": "👍", "sofia": "❤️", "diego": "🔥"}},
+		[]demoComment{{"ana", "¡Bienvenido!"}, {"sofia", "Por fin 😄"}}, map[string]string{"ana": "👍", "sofia": "❤️", "diego": "🔥"}, nil},
 	{"sofia", "", "Hoy probé una receta nueva de paella. Quedó espectacular 🥘", 4 * 24 * hour,
-		[]demoComment{{"ana", "¡Tienes que pasarme la receta!"}, {"camila", "Se ve increíble"}}, map[string]string{"ana": "❤️", "camila": "😍"}},
+		[]demoComment{{"ana", "¡Tienes que pasarme la receta!"}, {"camila", "Se ve increíble"}}, map[string]string{"ana": "❤️", "camila": "😍"},
+		[]Attachment{demoImage("demo-paella.png")}},
 	{"luis", "Fútbol los domingos", "Este domingo jugamos a las 10 en el parque. ¿Quién se apunta?", 3 * 24 * hour,
-		[]demoComment{{"diego", "Yo voy"}, {"ana", "Cuenta conmigo"}}, map[string]string{"ana": "👍", "diego": "👍", "mateo": "🔥"}},
-	{"diego", "", "Terminé mi primera media maratón 🏃", 70 * hour,
-		[]demoComment{{"luis", "¡Crack!"}}, map[string]string{"ana": "👏", "luis": "💯"}},
+		[]demoComment{{"diego", "Yo voy"}, {"ana", "Cuenta conmigo"}}, map[string]string{"ana": "👍", "diego": "👍", "mateo": "🔥"}, nil},
+	{"diego", "", "Terminé mi primera **media maratón** 🏃\n\n- 21 km\n- 1 h 58 min\n- _sin parar_", 70 * hour,
+		[]demoComment{{"luis", "¡Crack!"}}, map[string]string{"ana": "👏", "luis": "💯"}, nil},
 	{"sofia", "Recetas de la abuela", "Receta de la semana: la tortilla de patatas de mi abuela.", 2 * 24 * hour,
-		[]demoComment{{"valentina", "La mejor tortilla del mundo"}, {"ana", "Mañana la hago"}}, map[string]string{"ana": "😍", "valentina": "❤️"}},
+		[]demoComment{{"valentina", "La mejor tortilla del mundo"}, {"ana", "Mañana la hago"}}, map[string]string{"ana": "😍", "valentina": "❤️"}, nil},
 	{"ana", "", "Probando Ami con mis amigos. ¿Qué os parece?", 40 * hour,
-		[]demoComment{{"luis", "Me encanta"}, {"sofia", "Muy fácil de usar"}}, map[string]string{"luis": "👍", "sofia": "🎉", "diego": "👍"}},
+		[]demoComment{{"luis", "Me encanta"}, {"sofia", "Muy fácil de usar"}}, map[string]string{"luis": "👍", "sofia": "🎉", "diego": "👍"}, nil},
 	{"valentina", "", "Nuevo trabajo a partir del lunes. ¡Nerviosa pero feliz!", 30 * hour,
-		nil, map[string]string{"sofia": "🎉", "camila": "👏"}},
+		nil, map[string]string{"sofia": "🎉", "camila": "👏"}, nil},
 	{"camila", "", "¿Alguien tiene recomendaciones de libros para el verano?", 26 * hour,
-		[]demoComment{{"sofia", "Cien años de soledad, siempre."}}, map[string]string{"sofia": "🤔"}},
+		[]demoComment{{"sofia", "Cien años de soledad, siempre."}}, map[string]string{"sofia": "🤔"}, nil},
 	{"javier", "Senderismo", "Ruta nueva el sábado: 14 km con vistas al valle.", 20 * hour,
-		[]demoComment{{"mateo", "Apuntado"}}, map[string]string{"camila": "🔥", "mateo": "👍"}},
-	{"luis", "", "Café y código ☕ Buen lunes a todos.", 8 * hour,
-		[]demoComment{{"ana", "¡Buen lunes!"}}, map[string]string{"ana": "❤️"}},
+		[]demoComment{{"mateo", "Apuntado"}}, map[string]string{"camila": "🔥", "mateo": "👍"}, nil},
+	{"luis", "", "Café y código ☕ Buen lunes a todos. Hoy toca leer sobre WebRTC:", 8 * hour,
+		[]demoComment{{"ana", "¡Buen lunes!"}}, map[string]string{"ana": "❤️"},
+		[]Attachment{{Type: "link", URL: "https://developer.mozilla.org/en-US/docs/Web/API/WebRTC_API"}}},
 	{"diego", "Fútbol los domingos", "Faltan dos para completar el equipo. Traed amigos.", 5 * hour,
-		nil, map[string]string{"luis": "👍"}},
+		nil, map[string]string{"luis": "👍"}, nil},
 	{"ana", "", "¡Qué ganas de que llegue el fin de semana!", 2 * hour,
-		nil, map[string]string{"diego": "😂", "luis": "👍"}},
+		nil, map[string]string{"diego": "😂", "luis": "👍"}, nil},
+	{"ana", "", "", 90 * time.Minute, nil, map[string]string{"luis": "👍"}, []Attachment{demoImage("demo-parque.png")}},
 	{"sofia", "", "El atardecer de hoy desde la terraza 🌅", 45 * time.Minute,
-		[]demoComment{{"ana", "Precioso"}}, map[string]string{"ana": "😍", "luis": "❤️", "camila": "😮"}},
-	{"mateo", "", "¿Alguien para jugar al pádel esta tarde?", 20 * time.Minute, nil, nil},
+		[]demoComment{{"ana", "Precioso"}}, map[string]string{"ana": "😍", "luis": "❤️", "camila": "😮"},
+		[]Attachment{demoImage("demo-atardecer.png")}},
+	{"mateo", "", "¿Alguien para jugar al pádel esta tarde?", 20 * time.Minute, nil, nil, nil},
 }
 
 var demoMessages = []struct {
@@ -159,13 +182,23 @@ func (s *server) seedIfEmpty() error {
 			}
 		}
 	}
+	for name, c := range demoImages {
+		if err := writeGradient(filepath.Join(s.mediaDir, name), c[0], c[1]); err != nil {
+			return err
+		}
+	}
 	for _, p := range demoPosts {
 		var groupID any
 		if p.group != "" {
 			groupID = groups[p.group]
 		}
-		res, err := tx.Exec(`INSERT INTO posts(author_id, group_id, body, created_at) VALUES (?, ?, ?, ?)`,
-			users[p.author], groupID, p.body, ts(p.ago))
+		atts := p.attachments
+		if atts == nil {
+			atts = []Attachment{}
+		}
+		attachments, _ := json.Marshal(atts)
+		res, err := tx.Exec(`INSERT INTO posts(author_id, group_id, body, attachments, created_at) VALUES (?, ?, ?, ?, ?)`,
+			users[p.author], groupID, p.body, string(attachments), ts(p.ago))
 		if err != nil {
 			return err
 		}
@@ -197,4 +230,28 @@ func (s *server) seedIfEmpty() error {
 	}
 	log.Printf("dev: seeded demo data; log in as %s (password %q)", strings.Join(names, ", "), demoPassword)
 	return nil
+}
+
+// writeGradient renders a vertical gradient PNG (1200x900) at path.
+func writeGradient(path string, from, to color.RGBA) error {
+	const w, h = 1200, 900
+	img := image.NewRGBA(image.Rect(0, 0, w, h))
+	for y := 0; y < h; y++ {
+		t := float64(y) / float64(h-1)
+		c := color.RGBA{
+			R: uint8(float64(from.R)*(1-t) + float64(to.R)*t),
+			G: uint8(float64(from.G)*(1-t) + float64(to.G)*t),
+			B: uint8(float64(from.B)*(1-t) + float64(to.B)*t),
+			A: 255,
+		}
+		for x := 0; x < w; x++ {
+			img.SetRGBA(x, y, c)
+		}
+	}
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return png.Encode(f, img)
 }

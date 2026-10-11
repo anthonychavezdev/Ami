@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS posts (
 	author_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 	group_id   INTEGER REFERENCES groups(id) ON DELETE CASCADE,
 	body       TEXT NOT NULL,
+	attachments TEXT NOT NULL DEFAULT '[]',
 	created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS posts_author ON posts(author_id, id);
@@ -98,5 +99,24 @@ func openDB(path string) (*sql.DB, error) {
 		db.Close()
 		return nil, err
 	}
+	// Columns added after the first release; CREATE TABLE IF NOT EXISTS won't add them.
+	if err := addColumn(db, "posts", "attachments", "TEXT NOT NULL DEFAULT '[]'"); err != nil {
+		db.Close()
+		return nil, err
+	}
 	return db, nil
+}
+
+func addColumn(db *sql.DB, table, column, definition string) error {
+	rows, err := db.Query(`SELECT 1 FROM pragma_table_info(?) WHERE name = ?`, table, column)
+	if err != nil {
+		return err
+	}
+	exists := rows.Next()
+	rows.Close() // the single connection must be free before the ALTER below
+	if exists {
+		return nil
+	}
+	_, err = db.Exec(`ALTER TABLE ` + table + ` ADD COLUMN ` + column + ` ` + definition)
+	return err
 }
