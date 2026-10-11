@@ -8,6 +8,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { clock } from '@/lib/time';
 import type { Message, User } from '@/lib/types';
+import { socket } from '@/lib/ws';
 import { colors, radius, spacing } from '@/theme';
 
 export default function ChatScreen() {
@@ -26,6 +27,16 @@ export default function ChatScreen() {
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, [otherId]);
+
+  useEffect(
+    () =>
+      socket.on('message', (e) => {
+        const m: Message = e.message;
+        if (m.sender_id !== otherId && m.recipient_id !== otherId) return;
+        setMessages((prev) => (prev && !prev.some((x) => x.id === m.id) ? [m, ...prev] : prev));
+      }),
+    [otherId],
+  );
 
   const loadOlder = useCallback(async () => {
     if (!messages?.length) return;
