@@ -50,6 +50,12 @@ func randomBytes(n int) []byte {
 	return b
 }
 
+// tokenHash is what gets stored: a leaked database must not yield live sessions.
+func tokenHash(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
 type authedHandler func(w http.ResponseWriter, r *http.Request, me *User)
 
 // auth wraps a handler, requiring a valid session token
@@ -76,7 +82,7 @@ func (s *server) userForToken(token string) (*User, error) {
 	if token == "" {
 		return nil, errUnauthorized
 	}
-	row := s.db.QueryRow(`SELECT `+userCols+`, s.expires_at FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ?`, token)
+	row := s.db.QueryRow(`SELECT `+userCols+`, s.expires_at FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ?`, tokenHash(token))
 	var u User
 	var expires string
 	if err := row.Scan(&u.ID, &u.Username, &u.DisplayName, &u.CreatedAt, &expires); err != nil {
@@ -91,7 +97,7 @@ func (s *server) userForToken(token string) (*User, error) {
 func (s *server) createSession(userID int64) (string, error) {
 	token := hex.EncodeToString(randomBytes(32))
 	_, err := s.db.Exec(`INSERT INTO sessions(token, user_id, expires_at) VALUES (?, ?, ?)`,
-		token, userID, now().Add(sessionTTL).Format(time.RFC3339Nano))
+		tokenHash(token), userID, now().Add(sessionTTL).Format(time.RFC3339Nano))
 	return token, err
 }
 
@@ -172,7 +178,7 @@ func (s *server) issueSession(w http.ResponseWriter, userID int64) {
 }
 
 func (s *server) logout(w http.ResponseWriter, r *http.Request, me *User) {
-	_, _ = s.db.Exec(`DELETE FROM sessions WHERE token = ?`, bearerToken(r))
+	_, _ = s.db.Exec(`DELETE FROM sessions WHERE token = ?`, tokenHash(bearerToken(r)))
 	w.WriteHeader(http.StatusNoContent)
 }
 
