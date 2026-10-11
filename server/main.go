@@ -19,6 +19,7 @@ type server struct {
 func main() {
 	addr := flag.String("addr", ":8080", "listen address")
 	dbPath := flag.String("db", "ami.db", "sqlite database path")
+	dev := flag.Bool("dev", false, "development mode: seed demo data into an empty database")
 	flag.Parse()
 
 	db, err := openDB(*dbPath)
@@ -28,6 +29,11 @@ func main() {
 	defer db.Close()
 
 	s := &server{db: db, hub: newHub()}
+	if *dev {
+		if err := s.seedIfEmpty(); err != nil {
+			log.Fatalf("seed demo data: %v", err)
+		}
+	}
 	mux := http.NewServeMux()
 	s.routes(mux)
 
