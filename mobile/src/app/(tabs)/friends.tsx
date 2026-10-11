@@ -6,6 +6,7 @@ import { UserRow } from '@/components/UserRow';
 import { Button, Empty, Input, Loading, Segmented } from '@/components/ui';
 import { api } from '@/lib/api';
 import type { User, UserProfile } from '@/lib/types';
+import { socket } from '@/lib/ws';
 import { colors, spacing } from '@/theme';
 
 type Tab = 'friends' | 'requests' | 'find';
@@ -43,6 +44,7 @@ function FriendList() {
   useFocusEffect(
     useCallback(() => {
       void load();
+      return socket.on('friend.accepted', () => void load());
     }, [load]),
   );
   if (!friends) return <Loading />;
@@ -64,6 +66,8 @@ function Requests() {
   useFocusEffect(
     useCallback(() => {
       void load();
+      const offs = [socket.on('friend.request', () => void load()), socket.on('friend.accepted', () => void load())];
+      return () => offs.forEach((off) => off());
     }, [load]),
   );
   if (!data) return <Loading />;

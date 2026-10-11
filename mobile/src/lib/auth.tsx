@@ -3,6 +3,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 
 import { api, setAuthToken } from './api';
 import type { User } from './types';
+import { socket } from './ws';
 
 const TOKEN_KEY = 'gosocial.token';
 
@@ -23,6 +24,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const establish = useCallback(async (token: string, u: User) => {
     setAuthToken(token);
     await SecureStore.setItemAsync(TOKEN_KEY, token);
+    socket.connect(token);
     setUser(u);
   }, []);
 
@@ -33,7 +35,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (token) {
           setAuthToken(token);
           const u = await api.me();
-                setUser(u);
+          socket.connect(token);
+          setUser(u);
         }
       } catch {
         setAuthToken(null);
@@ -58,6 +61,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       },
       logout: async () => {
         await api.logout().catch(() => {});
+        socket.disconnect();
         setAuthToken(null);
         await SecureStore.deleteItemAsync(TOKEN_KEY).catch(() => {});
         setUser(null);
