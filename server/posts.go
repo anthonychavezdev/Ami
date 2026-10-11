@@ -2,17 +2,21 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
+	"unicode/utf8"
 )
 
 type Post struct {
-	ID           int64  `json:"id"`
-	Author       User   `json:"author"`
-	Body         string `json:"body"`
-	CreatedAt    string `json:"created_at"`
-	CommentCount int    `json:"comment_count"`
+	ID           int64          `json:"id"`
+	Author       User           `json:"author"`
+	Body         string         `json:"body"`
+	CreatedAt    string         `json:"created_at"`
+	CommentCount int            `json:"comment_count"`
+	Reactions    map[string]int `json:"reactions"`   // emoji -> count
+	MyReaction   string         `json:"my_reaction"` // "" if none
 }
 
 type Comment struct {
@@ -23,25 +27,35 @@ type Comment struct {
 	CreatedAt string `json:"created_at"`
 }
 
+// postSelect expects the viewer's user id as its first bound parameter.
 const postSelect = `
 SELECT p.id, p.body, p.created_at,
        ` + userCols + `,
-       (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id)
+       (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id),
+       COALESCE((SELECT json_group_object(emoji, n) FROM
+            (SELECT emoji, COUNT(*) AS n FROM reactions r WHERE r.post_id = p.id GROUP BY emoji)), '{}'),
+       COALESCE((SELECT emoji FROM reactions r WHERE r.post_id = p.id AND r.user_id = ?), '')
 FROM posts p
 JOIN users u ON u.id = p.author_id
 `
 
 func scanPost(sc interface{ Scan(...any) error }) (Post, error) {
 	var p Post
+	var reactions string
 	err := sc.Scan(&p.ID, &p.Body, &p.CreatedAt,
 		&p.Author.ID, &p.Author.Username, &p.Author.DisplayName, &p.Author.CreatedAt,
-		&p.CommentCount)
-	return p, err
+		&p.CommentCount, &reactions, &p.MyReaction)
+	if err != nil {
+		return p, err
+	}
+	p.Reactions = map[string]int{}
+	_ = json.Unmarshal([]byte(reactions), &p.Reactions)
+	return p, nil
 }
 
-// queryPosts runs postSelect + tail.
-func (s *server) queryPosts(tail string, args ...any) ([]Post, error) {
-	rows, err := s.db.Query(postSelect+tail, args...)
+// queryPosts runs postSelect + tail for viewer, binding args after the viewer id.
+func (s *server) queryPosts(viewer int64, tail string, args ...any) ([]Post, error) {
+	rows, err := s.db.Query(postSelect+tail, append([]any{viewer}, args...)...)
 	if err != nil {
 		return nil, err
 	}
@@ -57,14 +71,14 @@ func (s *server) queryPosts(tail string, args ...any) ([]Post, error) {
 	return posts, rows.Err()
 }
 
-func (s *server) getPost(id int64) (Post, error) {
-	return scanPost(s.db.QueryRow(postSelect+`WHERE p.id = ?`, id))
+func (s *server) getPost(viewer, id int64) (Post, error) {
+	return scanPost(s.db.QueryRow(postSelect+`WHERE p.id = ?`, viewer, id))
 }
 
 // feed: my own posts, newest first.
 func (s *server) feed(w http.ResponseWriter, r *http.Request, me *User) {
 	before, limit := pagination(r)
-	posts, err := s.queryPosts(`WHERE p.author_id = ?1 AND p.id < ?2 ORDER BY p.id DESC LIMIT ?3`, me.ID, before, limit)
+	posts, err := s.queryPosts(me.ID, `WHERE p.author_id = ?1 AND p.id < ?2 ORDER BY p.id DESC LIMIT ?3`, before, limit)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -91,11 +105,11 @@ func (s *server) createPost(w http.ResponseWriter, r *http.Request, me *User) {
 		return
 	}
 	id, _ := res.LastInsertId()
-	s.respondPost(w, http.StatusCreated, id)
+	s.respondPost(w, http.StatusCreated, me.ID, id)
 }
 
-func (s *server) respondPost(w http.ResponseWriter, code int, id int64) {
-	p, err := s.getPost(id)
+func (s *server) respondPost(w http.ResponseWriter, code int, viewer, id int64) {
+	p, err := s.getPost(viewer, id)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "post not found")
 		return
@@ -112,7 +126,7 @@ func (s *server) getPostHandler(w http.ResponseWriter, r *http.Request, me *User
 	if !ok {
 		return
 	}
-	s.respondPost(w, http.StatusOK, id)
+	s.respondPost(w, http.StatusOK, me.ID, id)
 }
 
 // deletePost: only the author may delete a post.
@@ -199,4 +213,47 @@ func (s *server) createComment(w http.ResponseWriter, r *http.Request, me *User)
 	}
 	cid, _ := res.LastInsertId()
 	writeJSON(w, http.StatusCreated, Comment{ID: cid, PostID: id, Author: *me, Body: in.Body, CreatedAt: createdAt})
+}
+
+// setReaction upserts the caller's single reaction on a post. Any emoji works.
+func (s *server) setReaction(w http.ResponseWriter, r *http.Request, me *User) {
+	id, ok := pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	var in struct {
+		Emoji string `json:"emoji"`
+	}
+	if !readJSON(w, r, &in) {
+		return
+	}
+	in.Emoji = strings.TrimSpace(in.Emoji)
+	if in.Emoji == "" || len(in.Emoji) > 32 || !utf8.ValidString(in.Emoji) || utf8.RuneCountInString(in.Emoji) > 8 {
+		writeError(w, http.StatusBadRequest, "invalid emoji")
+		return
+	}
+	var exists int
+	if err := s.db.QueryRow(`SELECT 1 FROM posts WHERE id = ?`, id).Scan(&exists); err != nil {
+		writeError(w, http.StatusNotFound, "post not found")
+		return
+	}
+	_, err := s.db.Exec(`INSERT INTO reactions(post_id, user_id, emoji) VALUES (?, ?, ?)
+		ON CONFLICT(post_id, user_id) DO UPDATE SET emoji = excluded.emoji`, id, me.ID, in.Emoji)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.respondPost(w, http.StatusOK, me.ID, id)
+}
+
+func (s *server) deleteReaction(w http.ResponseWriter, r *http.Request, me *User) {
+	id, ok := pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	if _, err := s.db.Exec(`DELETE FROM reactions WHERE post_id = ? AND user_id = ?`, id, me.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.respondPost(w, http.StatusOK, me.ID, id)
 }
