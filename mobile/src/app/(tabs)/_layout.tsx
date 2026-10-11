@@ -25,6 +25,7 @@ export default function TabsLayout() {
       <Tabs.Screen name="index" options={{ title: 'Feed', tabBarIcon: icon('🏠') }} />
       <Tabs.Screen name="friends" options={{ title: 'Friends', tabBarIcon: icon('👥') }} />
       <Tabs.Screen name="groups" options={{ title: 'Groups', tabBarIcon: icon('🫂') }} />
+      <Tabs.Screen name="messages" options={{ title: 'Messages', tabBarIcon: icon('💬') }} />
       <Tabs.Screen name="profile" options={{ title: 'Me', tabBarIcon: icon('👤') }} />
     </Tabs>
   );
