@@ -106,5 +106,8 @@ func (s *server) sendMessage(w http.ResponseWriter, r *http.Request, me *User) {
 		return
 	}
 	m.ID, _ = res.LastInsertId()
+	event := map[string]any{"type": "message", "message": m, "sender": me}
+	s.hub.sendTo(other, event)
+	s.hub.sendTo(me.ID, event) // keep the sender's other devices in sync
 	writeJSON(w, http.StatusCreated, m)
 }

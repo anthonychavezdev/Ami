@@ -1,5 +1,5 @@
 // Command server is the go-social backend: a single binary, SQLite on disk,
-// JSON over HTTP.
+// JSON over HTTP, and a hand-rolled WebSocket endpoint for realtime events.
 package main
 
 import (
@@ -11,7 +11,8 @@ import (
 )
 
 type server struct {
-	db *sql.DB
+	db  *sql.DB
+	hub *hub
 }
 
 func main() {
@@ -25,7 +26,7 @@ func main() {
 	}
 	defer db.Close()
 
-	s := &server{db: db}
+	s := &server{db: db, hub: newHub()}
 	mux := http.NewServeMux()
 	s.routes(mux)
 
@@ -85,6 +86,9 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/conversations", s.auth(s.listConversations))
 	mux.HandleFunc("GET /api/messages/{id}", s.auth(s.listMessages))
 	mux.HandleFunc("POST /api/messages/{id}", s.auth(s.sendMessage))
+
+	// realtime: events
+	mux.HandleFunc("GET /ws", s.handleWS)
 }
 
 type statusWriter struct {
@@ -96,6 +100,9 @@ func (w *statusWriter) WriteHeader(code int) {
 	w.status = code
 	w.ResponseWriter.WriteHeader(code)
 }
+
+// Unwrap lets http.ResponseController reach the underlying Hijacker.
+func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 func logRequests(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
