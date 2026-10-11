@@ -9,7 +9,9 @@ import (
 
 type UserProfile struct {
 	User
-	PostCount int `json:"post_count"`
+	FriendStatus string `json:"friend_status"` // self | none | friends | outgoing | incoming
+	FriendCount  int    `json:"friend_count"`
+	PostCount    int    `json:"post_count"`
 }
 
 func (s *server) searchUsers(w http.ResponseWriter, r *http.Request, me *User) {
@@ -23,14 +25,17 @@ func (s *server) searchUsers(w http.ResponseWriter, r *http.Request, me *User) {
 		return
 	}
 	defer rows.Close()
-	out := []User{}
+	out := []UserProfile{}
 	for rows.Next() {
 		u, err := scanUser(rows)
 		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		out = append(out, u)
+		out = append(out, UserProfile{User: u})
+	}
+	for i := range out {
+		out[i].FriendStatus, _ = s.friendStatus(me.ID, out[i].ID)
 	}
 	writeJSON(w, http.StatusOK, out)
 }
@@ -50,6 +55,8 @@ func (s *server) getUser(w http.ResponseWriter, r *http.Request, me *User) {
 		return
 	}
 	p := UserProfile{User: u}
+	p.FriendStatus, _ = s.friendStatus(me.ID, id)
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM friendships WHERE status = 'accepted' AND (from_id = ?1 OR to_id = ?1)`, id).Scan(&p.FriendCount)
 	_ = s.db.QueryRow(`SELECT COUNT(*) FROM posts WHERE author_id = ?`, id).Scan(&p.PostCount)
 	writeJSON(w, http.StatusOK, p)
 }
