@@ -5,7 +5,11 @@ export interface User {
   created_at: string;
 }
 
+export type FriendStatus = 'self' | 'none' | 'friends' | 'outgoing' | 'incoming';
+
 export interface UserProfile extends User {
+  friend_status: FriendStatus;
+  friend_count?: number;
   post_count?: number;
 }
 
