@@ -1,7 +1,8 @@
 import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, TextInputProps, View, ViewStyle } from 'react-native';
 
-import { colors, radius, spacing } from '@/theme';
+import { useStyles, useTheme } from '@/lib/theme';
+import { radius, spacing, type ThemeColors } from '@/theme';
 import type { User } from '@/lib/types';
 
 export function Button({
@@ -21,6 +22,8 @@ export function Button({
   style?: ViewStyle;
   small?: boolean;
 }) {
+  const { colors } = useTheme();
+  const styles = useStyles(makeStyles);
   const bg = { primary: colors.accent, secondary: colors.accentSoft, danger: colors.danger, ghost: 'transparent' }[variant];
   const fg = { primary: '#fff', secondary: colors.accent, danger: '#fff', ghost: colors.accent }[variant];
   return (
@@ -40,7 +43,9 @@ export function Button({
 }
 
 export function Input(props: TextInputProps) {
-  return <TextInput placeholderTextColor={colors.muted} {...props} style={[styles.input, props.style]} />;
+  const { colors, scheme } = useTheme();
+  const styles = useStyles(makeStyles);
+  return <TextInput placeholderTextColor={colors.muted} keyboardAppearance={scheme} {...props} style={[styles.input, props.style]} />;
 }
 
 export function Avatar({ user, size = 40 }: { user: Pick<User, 'display_name' | 'username'>; size?: number }) {
@@ -54,6 +59,8 @@ export function Avatar({ user, size = 40 }: { user: Pick<User, 'display_name' | 
 }
 
 export function Loading() {
+  const { colors } = useTheme();
+  const styles = useStyles(makeStyles);
   return (
     <View style={styles.center}>
       <ActivityIndicator color={colors.accent} />
@@ -62,6 +69,7 @@ export function Loading() {
 }
 
 export function Empty({ text }: { text: string }) {
+  const styles = useStyles(makeStyles);
   return (
     <View style={styles.center}>
       <Text style={styles.muted}>{text}</Text>
@@ -70,6 +78,7 @@ export function Empty({ text }: { text: string }) {
 }
 
 export function ErrorBanner({ error, onDismiss }: { error: string | null; onDismiss?: () => void }) {
+  const styles = useStyles(makeStyles);
   if (!error) return null;
   return (
     <Pressable onPress={onDismiss} style={styles.error}>
@@ -79,10 +88,12 @@ export function ErrorBanner({ error, onDismiss }: { error: string | null; onDism
 }
 
 export function Card({ children, style }: { children: React.ReactNode; style?: ViewStyle }) {
+  const styles = useStyles(makeStyles);
   return <View style={[styles.card, style]}>{children}</View>;
 }
 
 export function Segmented<T extends string>({ options, value, onChange }: { options: { key: T; label: string }[]; value: T; onChange: (v: T) => void }) {
+  const styles = useStyles(makeStyles);
   return (
     <View style={styles.segment}>
       {options.map((o) => (
@@ -98,7 +109,7 @@ export function useErrorMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   btn: { paddingVertical: 12, paddingHorizontal: 18, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
   btnSmall: { paddingVertical: 7, paddingHorizontal: 12, borderRadius: radius.pill },
   btnText: { fontWeight: '600', fontSize: 16 },

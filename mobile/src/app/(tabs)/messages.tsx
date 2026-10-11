@@ -9,9 +9,10 @@ import { useAuth } from '@/lib/auth';
 import { timeAgo } from '@/lib/time';
 import type { Conversation } from '@/lib/types';
 import { socket } from '@/lib/ws';
-import { colors } from '@/theme';
+import { useTheme } from '@/lib/theme';
 
 export default function MessagesScreen() {
+  const { colors } = useTheme();
   const { user: me } = useAuth();
   const router = useRouter();
   const [convos, setConvos] = useState<Conversation[] | null>(null);

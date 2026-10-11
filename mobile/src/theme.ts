@@ -1,4 +1,4 @@
-export const colors = {
+export const lightColors = {
   bg: '#f4f5f8',
   card: '#ffffff',
   text: '#15171f',
@@ -8,6 +8,21 @@ export const colors = {
   accentSoft: '#e9ebfb',
   danger: '#d64545',
   success: '#2f9e63',
+  dark: '#0f1117',
+};
+
+export type ThemeColors = typeof lightColors;
+
+export const darkColors: ThemeColors = {
+  bg: '#0f1117',
+  card: '#181b24',
+  text: '#e9ebf3',
+  muted: '#8f94a8',
+  border: '#272b38',
+  accent: '#7f89ff',
+  accentSoft: '#272c4f',
+  danger: '#f07171',
+  success: '#4fc48c',
   dark: '#0f1117',
 };
 

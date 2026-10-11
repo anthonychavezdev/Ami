@@ -7,7 +7,8 @@ import { Button, Empty, Input, Loading, Segmented } from '@/components/ui';
 import { api } from '@/lib/api';
 import type { User, UserProfile } from '@/lib/types';
 import { socket } from '@/lib/ws';
-import { colors, spacing } from '@/theme';
+import { useStyles, useTheme } from '@/lib/theme';
+import { spacing, type ThemeColors } from '@/theme';
 
 type Tab = 'friends' | 'requests' | 'find';
 
@@ -32,6 +33,7 @@ export default function FriendsScreen() {
 }
 
 function FriendList() {
+  const { colors } = useTheme();
   const [friends, setFriends] = useState<User[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const load = useCallback(async () => {
@@ -61,6 +63,7 @@ function FriendList() {
 }
 
 function Requests() {
+  const styles = useStyles(makeStyles);
   const [data, setData] = useState<{ incoming: User[]; outgoing: User[] } | null>(null);
   const load = useCallback(async () => setData(await api.friendRequests()), []);
   useFocusEffect(
@@ -116,6 +119,7 @@ function Requests() {
 }
 
 function Find() {
+  const { colors } = useTheme();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(false);
@@ -179,6 +183,6 @@ function Find() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   sectionHeader: { color: colors.muted, fontWeight: '700', fontSize: 13, textTransform: 'uppercase', paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.sm },
 });

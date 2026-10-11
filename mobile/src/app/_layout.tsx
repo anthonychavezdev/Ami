@@ -6,21 +6,23 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { Loading } from '@/components/ui';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { CallProvider } from '@/lib/call';
-import { colors } from '@/theme';
+import { ThemeProvider, useTheme } from '@/lib/theme';
 
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
-      <AuthProvider>
-        <StatusBar style="dark" />
-        <RootNavigator />
-      </AuthProvider>
+      <ThemeProvider>
+        <AuthProvider>
+          <RootNavigator />
+        </AuthProvider>
+      </ThemeProvider>
     </SafeAreaProvider>
   );
 }
 
 function RootNavigator() {
   const { user, ready } = useAuth();
+  const { colors, scheme } = useTheme();
   const router = useRouter();
   const onIncoming = useCallback(() => router.push('/call'), [router]);
 
@@ -28,6 +30,7 @@ function RootNavigator() {
 
   return (
     <CallProvider onIncoming={onIncoming}>
+      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       <Stack
         screenOptions={{
           headerTintColor: colors.accent,

@@ -9,9 +9,12 @@ import { useAuth } from '@/lib/auth';
 import { useCall } from '@/lib/call';
 import type { UserProfile } from '@/lib/types';
 import { usePosts } from '@/lib/usePosts';
-import { colors, spacing } from '@/theme';
+import { useStyles, useTheme } from '@/lib/theme';
+import { spacing, type ThemeColors } from '@/theme';
 
 export default function UserScreen() {
+  const { colors } = useTheme();
+  const styles = useStyles(makeStyles);
   const { id } = useLocalSearchParams<{ id: string }>();
   const userId = Number(id);
   const { user: me } = useAuth();
@@ -111,7 +114,7 @@ export default function UserScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   header: { alignItems: 'center', padding: spacing.xl, gap: spacing.xs },
   name: { fontSize: 22, fontWeight: '800', color: colors.text, marginTop: spacing.sm },
   username: { color: colors.muted },
