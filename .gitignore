@@ -18,6 +18,7 @@ dist/
 
 # server runtime data
 server/*.db*
+server/media/
 
 # editors / OS
 .DS_Store
