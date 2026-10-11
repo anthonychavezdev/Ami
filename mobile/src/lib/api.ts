@@ -1,5 +1,5 @@
 import { API_URL } from './config';
-import type { Comment, Post, User, UserProfile } from './types';
+import type { Comment, Group, GroupMember, Post, User, UserProfile } from './types';
 
 let authToken: string | null = null;
 export function setAuthToken(token: string | null) {
@@ -56,7 +56,7 @@ export const api = {
 
   // posts
   feed: (before?: number) => get<Post[]>(`/api/feed${q({ before })}`),
-  createPost: (body: string) => post<Post>('/api/posts', { body }),
+  createPost: (body: string, group_id?: number) => post<Post>('/api/posts', { body, group_id }),
   post: (id: number) => get<Post>(`/api/posts/${id}`),
   deletePost: (id: number) => del<void>(`/api/posts/${id}`),
   comments: (postId: number) => get<Comment[]>(`/api/posts/${postId}/comments`),
@@ -70,4 +70,15 @@ export const api = {
   sendFriendRequest: (id: number) => post<{ friend_status: string }>(`/api/friends/${id}/request`),
   acceptFriendRequest: (id: number) => post<{ friend_status: string }>(`/api/friends/${id}/accept`),
   removeFriend: (id: number) => del<{ friend_status: string }>(`/api/friends/${id}`),
+
+  // groups
+  myGroups: () => get<Group[]>('/api/groups?mine=1'),
+  discoverGroups: (query: string) => get<Group[]>(`/api/groups${q({ q: query })}`),
+  createGroup: (name: string, description: string) => post<{ group: Group; members: GroupMember[] }>('/api/groups', { name, description }),
+  group: (id: number) => get<{ group: Group; members: GroupMember[] }>(`/api/groups/${id}`),
+  joinGroup: (id: number) => post<{ group: Group; members: GroupMember[] }>(`/api/groups/${id}/join`),
+  leaveGroup: (id: number) => post<{ group: Group; members: GroupMember[] }>(`/api/groups/${id}/leave`),
+  deleteGroup: (id: number) => del<void>(`/api/groups/${id}`),
+  groupPosts: (id: number, before?: number) => get<Post[]>(`/api/groups/${id}/posts${q({ before })}`),
+  removeGroupMember: (id: number, uid: number) => del<{ group: Group; members: GroupMember[] }>(`/api/groups/${id}/members/${uid}`),
 };
