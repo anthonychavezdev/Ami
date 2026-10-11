@@ -11,3 +11,4 @@ function defaultApiUrl(): string {
 }
 
 export const API_URL = (process.env.EXPO_PUBLIC_API_URL ?? defaultApiUrl()).replace(/\/$/, '');
+export const WS_URL = API_URL.replace(/^http/, 'ws') + '/ws';

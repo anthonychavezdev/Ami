@@ -8,6 +8,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { timeAgo } from '@/lib/time';
 import type { Conversation } from '@/lib/types';
+import { socket } from '@/lib/ws';
 import { colors } from '@/theme';
 
 export default function MessagesScreen() {
@@ -29,6 +30,7 @@ export default function MessagesScreen() {
   useFocusEffect(
     useCallback(() => {
       void load();
+      return socket.on('message', () => void load());
     }, [load]),
   );
 
