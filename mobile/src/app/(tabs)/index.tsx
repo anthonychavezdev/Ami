@@ -10,13 +10,13 @@ import { colors, spacing } from '@/theme';
 
 export default function FeedScreen() {
   const fetchPage = useCallback((before?: number) => api.feed(before), []);
-  const { posts, loading, refreshing, error, refresh, loadMore, remove, prepend } = usePosts(fetchPage);
+  const { posts, loading, refreshing, error, refresh, loadMore, update, remove, prepend } = usePosts(fetchPage);
 
   return (
     <FlatList
       data={posts}
       keyExtractor={(p) => String(p.id)}
-      renderItem={({ item }) => <PostCard post={item} onDelete={remove} />}
+      renderItem={({ item }) => <PostCard post={item} onChange={update} onDelete={remove} />}
       ListHeaderComponent={
         <>
           <Composer placeholder="What's on your mind?" onSubmit={async (body) => prepend(await api.createPost(body))} />

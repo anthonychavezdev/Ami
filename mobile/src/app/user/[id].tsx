@@ -16,7 +16,7 @@ export default function UserScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const fetchPage = useCallback((before?: number) => api.userPosts(userId, before), [userId]);
-  const { posts, loading, refreshing, refresh, loadMore, remove } = usePosts(fetchPage);
+  const { posts, loading, refreshing, refresh, loadMore, update, remove } = usePosts(fetchPage);
 
   const loadProfile = useCallback(async () => {
     try {
@@ -38,7 +38,7 @@ export default function UserScreen() {
       <FlatList
         data={posts}
         keyExtractor={(p) => String(p.id)}
-        renderItem={({ item }) => <PostCard post={item} onDelete={remove} />}
+        renderItem={({ item }) => <PostCard post={item} onChange={update} onDelete={remove} />}
         ListHeaderComponent={
           <View style={styles.header}>
             <Avatar user={profile} size={72} />

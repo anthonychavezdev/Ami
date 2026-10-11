@@ -15,6 +15,8 @@ export interface Post {
   body: string;
   created_at: string;
   comment_count: number;
+  reactions: Record<string, number>;
+  my_reaction: string;
 }
 
 export interface Comment {
