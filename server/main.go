@@ -1,25 +1,36 @@
 // Command server is the Ami backend: a single binary, SQLite on disk,
 // JSON over HTTP, and a hand-rolled WebSocket endpoint for realtime events
 // and WebRTC signaling.
+//
+// Production is the default: no CORS, rate-limited auth endpoints, session
+// tokens hashed at rest, strict timeouts. Development extras are opt-in (-dev).
 package main
 
 import (
+	"crypto/tls"
 	"database/sql"
 	"flag"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 )
 
 type server struct {
-	db  *sql.DB
-	hub *hub
+	db         *sql.DB
+	hub        *hub
+	limiter    *limiter
+	trustProxy bool
 }
 
 func main() {
 	addr := flag.String("addr", ":8080", "listen address")
 	dbPath := flag.String("db", "ami.db", "sqlite database path")
-	dev := flag.Bool("dev", false, "development mode: seed demo data into an empty database")
+	dev := flag.Bool("dev", false, "development mode: seed demo data into an empty database and allow any CORS origin")
+	origins := flag.String("allowed-origins", "", "comma-separated browser origins allowed to call the API (CORS); empty disables CORS")
+	trustProxy := flag.Bool("trust-proxy", false, "take client IPs from X-Forwarded-For (only behind a trusted reverse proxy)")
+	tlsCert := flag.String("tls-cert", "", "serve HTTPS with this certificate file (needs -tls-key)")
+	tlsKey := flag.String("tls-key", "", "private key for -tls-cert")
 	flag.Parse()
 
 	db, err := openDB(*dbPath)
@@ -28,21 +39,35 @@ func main() {
 	}
 	defer db.Close()
 
-	s := &server{db: db, hub: newHub()}
+	s := &server{db: db, hub: newHub(), limiter: newLimiter(10, time.Minute), trustProxy: *trustProxy}
+	if _, err := db.Exec(`DELETE FROM sessions WHERE expires_at < ?`, nowString()); err != nil {
+		log.Printf("purge expired sessions: %v", err)
+	}
 	if *dev {
 		if err := s.seedIfEmpty(); err != nil {
 			log.Fatalf("seed demo data: %v", err)
 		}
+	}
+	allowed := strings.Split(*origins, ",")
+	if *dev {
+		allowed = []string{"*"}
 	}
 	mux := http.NewServeMux()
 	s.routes(mux)
 
 	srv := &http.Server{
 		Addr:              *addr,
-		Handler:           cors(logRequests(mux)),
+		Handler:           secureHeaders(cors(allowed, logRequests(mux))),
 		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      60 * time.Second,
+		IdleTimeout:       2 * time.Minute,
+		TLSConfig:         &tls.Config{MinVersion: tls.VersionTLS12},
 	}
 	log.Printf("ami listening on %s (db %s)", *addr, *dbPath)
+	if *tlsCert != "" || *tlsKey != "" {
+		log.Fatal(srv.ListenAndServeTLS(*tlsCert, *tlsKey))
+	}
 	log.Fatal(srv.ListenAndServe())
 }
 
@@ -52,8 +77,8 @@ func (s *server) routes(mux *http.ServeMux) {
 	})
 
 	// auth
-	mux.HandleFunc("POST /api/register", s.register)
-	mux.HandleFunc("POST /api/login", s.login)
+	mux.HandleFunc("POST /api/register", s.throttle(s.register))
+	mux.HandleFunc("POST /api/login", s.throttle(s.login))
 	mux.HandleFunc("POST /api/logout", s.auth(s.logout))
 	mux.HandleFunc("GET /api/me", s.auth(s.me))
 
@@ -120,16 +145,38 @@ func logRequests(next http.Handler) http.Handler {
 	})
 }
 
-func cors(next http.Handler) http.Handler {
+// cors answers browser cross-origin requests for the allowed origins ("*" for
+// any). With none configured no CORS headers are sent, which is all the native
+// app needs.
+func cors(allowed []string, next http.Handler) http.Handler {
+	set := map[string]bool{}
+	for _, o := range allowed {
+		if o = strings.TrimSpace(o); o != "" {
+			set[o] = true
+		}
+	}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if origin := r.Header.Get("Origin"); origin != "" && (set["*"] || set[origin]) {
+			h := w.Header()
+			h.Set("Access-Control-Allow-Origin", origin)
+			h.Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+			h.Add("Vary", "Origin")
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func secureHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
-		h.Set("Access-Control-Allow-Origin", "*")
-		h.Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
-			return
-		}
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("Cache-Control", "no-store")
+		h.Set("Referrer-Policy", "no-referrer")
 		next.ServeHTTP(w, r)
 	})
 }
