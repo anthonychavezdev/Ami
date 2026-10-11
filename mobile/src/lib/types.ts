@@ -16,6 +16,8 @@ export interface UserProfile extends User {
 export interface Post {
   id: number;
   author: User;
+  group_id: number | null;
+  group_name?: string;
   body: string;
   created_at: string;
   comment_count: number;
@@ -29,4 +31,18 @@ export interface Comment {
   author: User;
   body: string;
   created_at: string;
+}
+
+export interface Group {
+  id: number;
+  name: string;
+  description: string;
+  owner_id: number;
+  created_at: string;
+  member_count: number;
+  my_role: 'admin' | 'member' | '';
+}
+
+export interface GroupMember extends User {
+  role: 'admin' | 'member';
 }
