@@ -5,7 +5,7 @@ import { api, setAuthToken } from './api';
 import type { User } from './types';
 import { socket } from './ws';
 
-const TOKEN_KEY = 'gosocial.token';
+const TOKEN_KEY = 'ami.token';
 
 interface AuthContextValue {
   user: User | null;

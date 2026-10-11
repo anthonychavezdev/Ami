@@ -1,8 +1,8 @@
 {
   "expo": {
-    "name": "go-social",
-    "slug": "go-social",
-    "scheme": "gosocial",
+    "name": "Ami",
+    "slug": "ami",
+    "scheme": "ami",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -10,13 +10,13 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "xyz.anthonychavez.gosocial",
+      "bundleIdentifier": "xyz.anthonychavez.ami",
       "infoPlist": {
         "UIBackgroundModes": ["audio", "voip"]
       }
     },
     "android": {
-      "package": "xyz.anthonychavez.gosocial",
+      "package": "xyz.anthonychavez.ami",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/android-icon-foreground.png",
@@ -42,8 +42,8 @@
       [
         "@config-plugins/react-native-webrtc",
         {
-          "cameraPermission": "go-social uses your camera for video calls.",
-          "microphonePermission": "go-social uses your microphone for calls."
+          "cameraPermission": "Ami uses your camera for video calls.",
+          "microphonePermission": "Ami uses your microphone for calls."
         }
       ],
       "./plugins/withWebRTCScreenShare"

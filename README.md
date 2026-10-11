@@ -1,6 +1,6 @@
-# go-social
+# Ami
 
-A small social network: posts, comments, emoji reactions, friend requests,
+Ami (short for *amigo*) is a small social network: posts, comments, emoji reactions, friend requests,
 groups, direct messages, and peer-to-peer voice/video calls with screen sharing.
 
 - `server/` — Go backend. Standard library only, plus one dependency:
@@ -75,4 +75,4 @@ GET    /ws?token=   (events: hello, message, friend.request, friend.accepted,
                      call.offer/answer/ice/streams/hangup/reject/busy/unavailable)
 ```
 
-Server flags: `-addr :8080 -db social.db`.
+Server flags: `-addr :8080 -db ami.db`.

@@ -1,4 +1,4 @@
-module gosocial
+module ami
 
 go 1.26.0
 
