@@ -41,7 +41,7 @@ in
   };
 
   packages = [
-    pkgs.sqlite   # `sqlite3 server/social.db` to poke at the database
+    pkgs.sqlite   # `sqlite3 server/ami.db` to poke at the database
     pkgs.watchman # faster Metro file watching
   ];
 
@@ -85,13 +85,13 @@ in
   # first run; a USB-connected phone takes precedence) and start Metro.
   scripts.android.exec = ''
     cd "$DEVENV_ROOT/mobile" && { [ -d node_modules ] || npm install; }
-    if ! avdmanager list avd -c 2>/dev/null | grep -qx gosocial; then
-      echo "Creating emulator 'gosocial' (${systemImage})..."
-      echo no | avdmanager create avd -n gosocial -d pixel_7 -k "${systemImage}"
+    if ! avdmanager list avd -c 2>/dev/null | grep -qx ami; then
+      echo "Creating emulator 'ami' (${systemImage})..."
+      echo no | avdmanager create avd -n ami -d pixel_7 -k "${systemImage}"
     fi
     npx expo run:android "$@"
   '';
 
   # `devenv up` runs the Go API with process-compose.
-  processes.server.exec = "cd $DEVENV_ROOT/server && go run . -addr :8080 -db social.db";
+  processes.server.exec = "cd $DEVENV_ROOT/server && go run . -addr :8080 -db ami.db";
 }

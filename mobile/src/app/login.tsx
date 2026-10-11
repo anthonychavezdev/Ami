@@ -29,7 +29,7 @@ export default function LoginScreen() {
   return (
     <SafeAreaView style={styles.safe}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={styles.container}>
-        <Text style={styles.logo}>go-social</Text>
+        <Text style={styles.logo}>Ami</Text>
         <Text style={styles.tagline}>Posts, friends, groups, calls.</Text>
         <ErrorBanner error={error} onDismiss={() => setError(null)} />
         <View style={styles.form}>
