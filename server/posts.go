@@ -8,7 +8,16 @@ import (
 )
 
 type Post struct {
+	ID           int64  `json:"id"`
+	Author       User   `json:"author"`
+	Body         string `json:"body"`
+	CreatedAt    string `json:"created_at"`
+	CommentCount int    `json:"comment_count"`
+}
+
+type Comment struct {
 	ID        int64  `json:"id"`
+	PostID    int64  `json:"post_id"`
 	Author    User   `json:"author"`
 	Body      string `json:"body"`
 	CreatedAt string `json:"created_at"`
@@ -16,7 +25,8 @@ type Post struct {
 
 const postSelect = `
 SELECT p.id, p.body, p.created_at,
-       ` + userCols + `
+       ` + userCols + `,
+       (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id)
 FROM posts p
 JOIN users u ON u.id = p.author_id
 `
@@ -24,7 +34,8 @@ JOIN users u ON u.id = p.author_id
 func scanPost(sc interface{ Scan(...any) error }) (Post, error) {
 	var p Post
 	err := sc.Scan(&p.ID, &p.Body, &p.CreatedAt,
-		&p.Author.ID, &p.Author.Username, &p.Author.DisplayName, &p.Author.CreatedAt)
+		&p.Author.ID, &p.Author.Username, &p.Author.DisplayName, &p.Author.CreatedAt,
+		&p.CommentCount)
 	return p, err
 }
 
@@ -129,4 +140,63 @@ func (s *server) deletePost(w http.ResponseWriter, r *http.Request, me *User) {
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *server) listComments(w http.ResponseWriter, r *http.Request, me *User) {
+	id, ok := pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	after := queryInt(r, "after", 0)
+	rows, err := s.db.Query(`SELECT c.id, c.post_id, c.body, c.created_at, `+userCols+`
+		FROM comments c JOIN users u ON u.id = c.author_id
+		WHERE c.post_id = ? AND c.id > ? ORDER BY c.id ASC LIMIT 200`, id, after)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	defer rows.Close()
+	out := []Comment{}
+	for rows.Next() {
+		var c Comment
+		if err := rows.Scan(&c.ID, &c.PostID, &c.Body, &c.CreatedAt,
+			&c.Author.ID, &c.Author.Username, &c.Author.DisplayName, &c.Author.CreatedAt); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		out = append(out, c)
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *server) createComment(w http.ResponseWriter, r *http.Request, me *User) {
+	id, ok := pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	var in struct {
+		Body string `json:"body"`
+	}
+	if !readJSON(w, r, &in) {
+		return
+	}
+	in.Body = strings.TrimSpace(in.Body)
+	if !clampLen(in.Body, 2000) {
+		writeError(w, http.StatusBadRequest, "body must be 1-2000 characters")
+		return
+	}
+	var exists int
+	if err := s.db.QueryRow(`SELECT 1 FROM posts WHERE id = ?`, id).Scan(&exists); err != nil {
+		writeError(w, http.StatusNotFound, "post not found")
+		return
+	}
+	createdAt := nowString()
+	res, err := s.db.Exec(`INSERT INTO comments(post_id, author_id, body, created_at) VALUES (?, ?, ?, ?)`,
+		id, me.ID, in.Body, createdAt)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	cid, _ := res.LastInsertId()
+	writeJSON(w, http.StatusCreated, Comment{ID: cid, PostID: id, Author: *me, Body: in.Body, CreatedAt: createdAt})
 }

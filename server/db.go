@@ -29,6 +29,15 @@ CREATE TABLE IF NOT EXISTS posts (
 	created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS posts_author ON posts(author_id, id);
+
+CREATE TABLE IF NOT EXISTS comments (
+	id         INTEGER PRIMARY KEY,
+	post_id    INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+	author_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	body       TEXT NOT NULL,
+	created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS comments_post ON comments(post_id, id);
 `
 
 func openDB(path string) (*sql.DB, error) {
