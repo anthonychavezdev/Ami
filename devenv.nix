@@ -10,6 +10,15 @@ let
   buildTools = "36.0.0";
   emulatorAbi = if pkgs.stdenv.hostPlatform.isAarch64 then "arm64-v8a" else "x86_64";
   systemImage = "system-images;android-${androidApi};google_apis;${emulatorAbi}";
+
+  # Xcode must not see the Nix toolchain (DEVELOPER_DIR, SDKROOT, CC/LD and the
+  # NIX_* flags garble the link step), so iOS commands run with a minimal
+  # environment: Apple's tools first, then node, npm and pod from this shell.
+  # CocoaPods needs a UTF-8 locale.
+  xcodeEnv = ''env -i HOME="$HOME" USER="$USER" TMPDIR="''${TMPDIR:-/tmp}" LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
+      PATH="/usr/bin:/bin:/usr/sbin:/sbin:$(dirname "$(command -v node)"):$(dirname "$(command -v npm)"):$(dirname "$(command -v pod)"):$(dirname "$(command -v watchman)")" \
+      npm_config_cache="$npm_config_cache" npm_config_prefix="$npm_config_prefix" npm_config_update_notifier=false \
+      CP_HOME_DIR="$CP_HOME_DIR" EXPO_NO_TELEMETRY="$EXPO_NO_TELEMETRY" EXPO_PUBLIC_API_URL="''${EXPO_PUBLIC_API_URL:-}" CI="''${CI:-false}"'';
 in
 {
   # Toolchains. Nothing is installed globally: Go, Node and the Android SDK come
@@ -101,38 +110,56 @@ in
       exit 1
     fi
     cd "$DEVENV_ROOT/mobile" && { [ -d node_modules ] || npm install; }
-    # Xcode must not see the Nix toolchain (DEVELOPER_DIR, SDKROOT, CC/LD and the
-    # NIX_* flags garble the link step), so run with a minimal environment:
-    # Apple's tools first, then node, npm and pod from this shell. CocoaPods
-    # needs a UTF-8 locale.
-    exec env -i HOME="$HOME" USER="$USER" TMPDIR="''${TMPDIR:-/tmp}" LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
-      PATH="/usr/bin:/bin:/usr/sbin:/sbin:$(dirname "$(command -v node)"):$(dirname "$(command -v npm)"):$(dirname "$(command -v pod)"):$(dirname "$(command -v watchman)")" \
-      npm_config_cache="$npm_config_cache" npm_config_prefix="$npm_config_prefix" npm_config_update_notifier=false \
-      CP_HOME_DIR="$CP_HOME_DIR" EXPO_NO_TELEMETRY="$EXPO_NO_TELEMETRY" EXPO_PUBLIC_API_URL="''${EXPO_PUBLIC_API_URL:-}" CI="''${CI:-}" \
-      npx expo run:ios "$@"
+    exec ${xcodeEnv} npx expo run:ios "$@"
   '';
-  # Production artifacts into ./dist: a stripped static server binary and a
-  # minified release APK signed with your own keystore (never the debug key).
-  # `build server` builds only the backend.
+  # Production artifacts into ./dist. `build` makes all of them; `build server`,
+  # `build android` or `build ios` makes one.
+  #   dist/ami-server       stripped static Go binary (GOOS/GOARCH to cross-compile)
+  #   dist/ami-release.apk  minified release APK signed with your own keystore
+  #   dist/Ami.ipa          iOS archive exported and signed by Xcode with your team
   scripts.build.exec = ''
     set -euo pipefail
     cd "$DEVENV_ROOT" && mkdir -p dist
-    echo "» server -> dist/ami-server (set GOOS/GOARCH to cross-compile, e.g. GOOS=linux GOARCH=amd64)"
-    (cd server && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o ../dist/ami-server .)
-    if [ "''${1:-}" = server ]; then exit 0; fi
+    target="''${1:-all}"
+    case "$target" in all|server|android|ios) ;; *) echo "usage: build [server|android|ios]" >&2; exit 2 ;; esac
+    if [ "$target" = all ] || [ "$target" = server ]; then
+      echo "» server -> dist/ami-server (set GOOS/GOARCH to cross-compile, e.g. GOOS=linux GOARCH=amd64)"
+      (cd server && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o ../dist/ami-server .)
+    fi
+    if [ "$target" = server ]; then exit 0; fi
     : "''${EXPO_PUBLIC_API_URL:?set EXPO_PUBLIC_API_URL=https://your.server (it is baked into the app)}"
     case "$EXPO_PUBLIC_API_URL" in https://*) ;; *) echo "EXPO_PUBLIC_API_URL must be https:// in production" >&2; exit 1 ;; esac
-    : "''${AMI_KEYSTORE:?path to your release keystore; create one with:
+    cd mobile && { [ -d node_modules ] || npm install; }
+    if [ "$target" = all ] || [ "$target" = android ]; then
+      : "''${AMI_KEYSTORE:?path to your release keystore; create one with:
   keytool -genkeypair -v -keystore ami-release.keystore -alias ami -keyalg RSA -keysize 2048 -validity 10000}"
-    : "''${AMI_KEYSTORE_PASSWORD:?password of the keystore and key}"
-    echo "» android release -> dist/ami-release.apk (API: $EXPO_PUBLIC_API_URL)"
-    cd mobile && npx expo prebuild --platform android --no-install
-    # phones only: x86/x86_64 are emulator ABIs and would double the APK size
-    (cd android && ./gradlew --quiet assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a)
-    apksigner="$ANDROID_HOME/build-tools/${buildTools}/apksigner"
-    "$apksigner" sign --ks "$AMI_KEYSTORE" --ks-pass env:AMI_KEYSTORE_PASSWORD --ks-key-alias "''${AMI_KEY_ALIAS:-ami}" --v4-signing-enabled false \
-      --out "$DEVENV_ROOT/dist/ami-release.apk" android/app/build/outputs/apk/release/app-release.apk
-    "$apksigner" verify "$DEVENV_ROOT/dist/ami-release.apk"
+      : "''${AMI_KEYSTORE_PASSWORD:?password of the keystore and key}"
+      echo "» android -> dist/ami-release.apk (API: $EXPO_PUBLIC_API_URL)"
+      npx expo prebuild --platform android --no-install
+      # phones only: x86/x86_64 are emulator ABIs and would double the APK size
+      (cd android && ./gradlew --quiet assembleRelease -PreactNativeArchitectures=arm64-v8a,armeabi-v7a)
+      apksigner="$ANDROID_HOME/build-tools/${buildTools}/apksigner"
+      "$apksigner" sign --ks "$AMI_KEYSTORE" --ks-pass env:AMI_KEYSTORE_PASSWORD --ks-key-alias "''${AMI_KEY_ALIAS:-ami}" --v4-signing-enabled false \
+        --out "$DEVENV_ROOT/dist/ami-release.apk" android/app/build/outputs/apk/release/app-release.apk
+      "$apksigner" verify "$DEVENV_ROOT/dist/ami-release.apk"
+    fi
+    if [ "$target" = all ] || [ "$target" = ios ]; then
+      : "''${AMI_APPLE_TEAM:?your Apple Developer team id (Xcode > Settings > Accounts), with Xcode signed in to that account}"
+      method="''${AMI_IOS_METHOD:-app-store-connect}" # or release-testing (ad hoc), debugging
+      echo "» ios -> dist/Ami.ipa ($method, API: $EXPO_PUBLIC_API_URL)"
+      ${xcodeEnv} npx expo prebuild --platform ios
+      printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>' \
+        '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
+        '<plist version="1.0"><dict>' "<key>method</key><string>$method</string>" "<key>teamID</key><string>$AMI_APPLE_TEAM</string>" \
+        '<key>signingStyle</key><string>automatic</string>' '</dict></plist>' > ios/ExportOptions.plist
+      ${xcodeEnv} AMI_APPLE_TEAM="$AMI_APPLE_TEAM" bash -c '
+        set -e; cd ios && rm -rf build/Ami.xcarchive build/export
+        xcodebuild -quiet -workspace Ami.xcworkspace -scheme Ami -configuration Release -destination "generic/platform=iOS" \
+          -archivePath build/Ami.xcarchive -allowProvisioningUpdates DEVELOPMENT_TEAM="$AMI_APPLE_TEAM" archive
+        xcodebuild -quiet -exportArchive -archivePath build/Ami.xcarchive -exportOptionsPlist ExportOptions.plist \
+          -exportPath build/export -allowProvisioningUpdates'
+      mv ios/build/export/Ami.ipa "$DEVENV_ROOT/dist/Ami.ipa"
+    fi
     ls -la "$DEVENV_ROOT/dist"
   '';
 
