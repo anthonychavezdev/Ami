@@ -1,0 +1,19 @@
+# devenv
+.devenv*
+devenv.local.nix
+.direnv
+.pre-commit-config.yaml
+
+# in-repo toolchain caches (see devenv.nix)
+.go/
+.npm/
+.gradle/
+.cocoapods/
+
+# server runtime data
+server/social.db*
+
+# editors / OS
+.DS_Store
+.idea/
+.vscode/
