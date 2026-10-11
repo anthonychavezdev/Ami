@@ -55,7 +55,8 @@
           }
         }
       ],
-      "./plugins/withWebRTCScreenShare"
+      "./plugins/withWebRTCScreenShare",
+      "./plugins/withSceneLifecycle"
     ]
   }
 }
