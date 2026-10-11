@@ -60,7 +60,7 @@ func (s *server) userPosts(w http.ResponseWriter, r *http.Request, me *User) {
 		return
 	}
 	before, limit := pagination(r)
-	posts, err := s.queryPosts(`WHERE p.author_id = ? AND p.id < ? ORDER BY p.id DESC LIMIT ?`, id, before, limit)
+	posts, err := s.queryPosts(me.ID, `WHERE p.author_id = ? AND p.id < ? ORDER BY p.id DESC LIMIT ?`, id, before, limit)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

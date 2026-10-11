@@ -38,6 +38,13 @@ CREATE TABLE IF NOT EXISTS comments (
 	created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS comments_post ON comments(post_id, id);
+
+CREATE TABLE IF NOT EXISTS reactions (
+	post_id INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
+	user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	emoji   TEXT NOT NULL,
+	PRIMARY KEY (post_id, user_id)
+);
 `
 
 func openDB(path string) (*sql.DB, error) {

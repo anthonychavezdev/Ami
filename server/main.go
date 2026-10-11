@@ -54,13 +54,15 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/users/{id}", s.auth(s.getUser))
 	mux.HandleFunc("GET /api/users/{id}/posts", s.auth(s.userPosts))
 
-	// posts, comments
+	// posts, comments, reactions
 	mux.HandleFunc("GET /api/feed", s.auth(s.feed))
 	mux.HandleFunc("POST /api/posts", s.auth(s.createPost))
 	mux.HandleFunc("GET /api/posts/{id}", s.auth(s.getPostHandler))
 	mux.HandleFunc("DELETE /api/posts/{id}", s.auth(s.deletePost))
 	mux.HandleFunc("GET /api/posts/{id}/comments", s.auth(s.listComments))
 	mux.HandleFunc("POST /api/posts/{id}/comments", s.auth(s.createComment))
+	mux.HandleFunc("PUT /api/posts/{id}/reaction", s.auth(s.setReaction))
+	mux.HandleFunc("DELETE /api/posts/{id}/reaction", s.auth(s.deleteReaction))
 }
 
 type statusWriter struct {
