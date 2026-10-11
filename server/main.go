@@ -1,4 +1,4 @@
-// Command server is the go-social backend: a single binary, SQLite on disk,
+// Command server is the Ami backend: a single binary, SQLite on disk,
 // JSON over HTTP, and a hand-rolled WebSocket endpoint for realtime events
 // and WebRTC signaling.
 package main
@@ -18,7 +18,7 @@ type server struct {
 
 func main() {
 	addr := flag.String("addr", ":8080", "listen address")
-	dbPath := flag.String("db", "social.db", "sqlite database path")
+	dbPath := flag.String("db", "ami.db", "sqlite database path")
 	flag.Parse()
 
 	db, err := openDB(*dbPath)
@@ -36,7 +36,7 @@ func main() {
 		Handler:           cors(logRequests(mux)),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
-	log.Printf("go-social listening on %s (db %s)", *addr, *dbPath)
+	log.Printf("ami listening on %s (db %s)", *addr, *dbPath)
 	log.Fatal(srv.ListenAndServe())
 }
 

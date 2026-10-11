@@ -14,7 +14,7 @@ devenv.local.nix
 local.properties
 
 # server runtime data
-server/social.db*
+server/*.db*
 
 # editors / OS
 .DS_Store
