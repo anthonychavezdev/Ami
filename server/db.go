@@ -21,6 +21,14 @@ CREATE TABLE IF NOT EXISTS sessions (
 	user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 	expires_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS posts (
+	id         INTEGER PRIMARY KEY,
+	author_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	body       TEXT NOT NULL,
+	created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS posts_author ON posts(author_id, id);
 `
 
 func openDB(path string) (*sql.DB, error) {
