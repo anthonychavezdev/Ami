@@ -9,6 +9,9 @@ devenv.local.nix
 .npm/
 .gradle/
 .cocoapods/
+.android/
+# written into the repo root by devenv's android module
+local.properties
 
 # server runtime data
 server/social.db*

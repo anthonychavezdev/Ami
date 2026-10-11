@@ -2,3 +2,6 @@
 inputs:
   nixpkgs:
     url: github:cachix/devenv-nixpkgs/rolling
+
+# The Android SDK ships under Google's (unfree) license.
+allow_unfree: true
