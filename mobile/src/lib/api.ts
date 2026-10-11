@@ -50,6 +50,7 @@ export const api = {
   me: () => get<User>('/api/me'),
 
   // users
+  searchUsers: (query: string) => get<UserProfile[]>(`/api/users${q({ q: query })}`),
   user: (id: number) => get<UserProfile>(`/api/users/${id}`),
   userPosts: (id: number, before?: number) => get<Post[]>(`/api/users/${id}/posts${q({ before })}`),
 
@@ -62,4 +63,11 @@ export const api = {
   addComment: (postId: number, body: string) => post<Comment>(`/api/posts/${postId}/comments`, { body }),
   react: (postId: number, emoji: string) => put<Post>(`/api/posts/${postId}/reaction`, { emoji }),
   unreact: (postId: number) => del<Post>(`/api/posts/${postId}/reaction`),
+
+  // friends
+  friends: () => get<User[]>('/api/friends'),
+  friendRequests: () => get<{ incoming: User[]; outgoing: User[] }>('/api/friends/requests'),
+  sendFriendRequest: (id: number) => post<{ friend_status: string }>(`/api/friends/${id}/request`),
+  acceptFriendRequest: (id: number) => post<{ friend_status: string }>(`/api/friends/${id}/accept`),
+  removeFriend: (id: number) => del<{ friend_status: string }>(`/api/friends/${id}`),
 };
