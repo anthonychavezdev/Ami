@@ -14,4 +14,13 @@ export interface Post {
   author: User;
   body: string;
   created_at: string;
+  comment_count: number;
+}
+
+export interface Comment {
+  id: number;
+  post_id: number;
+  author: User;
+  body: string;
+  created_at: string;
 }

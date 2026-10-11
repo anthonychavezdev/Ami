@@ -1,5 +1,5 @@
 import { API_URL } from './config';
-import type { Post, User, UserProfile } from './types';
+import type { Comment, Post, User, UserProfile } from './types';
 
 let authToken: string | null = null;
 export function setAuthToken(token: string | null) {
@@ -58,4 +58,6 @@ export const api = {
   createPost: (body: string) => post<Post>('/api/posts', { body }),
   post: (id: number) => get<Post>(`/api/posts/${id}`),
   deletePost: (id: number) => del<void>(`/api/posts/${id}`),
+  comments: (postId: number) => get<Comment[]>(`/api/posts/${postId}/comments`),
+  addComment: (postId: number, body: string) => post<Comment>(`/api/posts/${postId}/comments`, { body }),
 };
