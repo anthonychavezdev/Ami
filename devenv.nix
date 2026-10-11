@@ -2,15 +2,42 @@
 
 let
   root = config.devenv.root;
+
+  # Android API level the app compiles against (see
+  # mobile/node_modules/react-native/gradle/libs.versions.toml), and the
+  # emulator system-image ABI, which must match the host CPU.
+  androidApi = "36";
+  emulatorAbi = if pkgs.stdenv.hostPlatform.isAarch64 then "arm64-v8a" else "x86_64";
+  systemImage = "system-images;android-${androidApi};google_apis;${emulatorAbi}";
 in
 {
-  # Toolchains. Nothing is installed globally: Go and Node come from the Nix
-  # store, and every cache/dependency directory below lives inside this repo.
+  # Toolchains. Nothing is installed globally: Go, Node and the Android SDK come
+  # from the Nix store, and every cache/dependency directory below lives inside
+  # this repo.
   languages.go.enable = true;
   languages.javascript = {
     enable = true;
     npm.enable = true;
     directory = "${root}/mobile"; # puts mobile/node_modules/.bin on PATH
+  };
+
+  # Android SDK + NDK + emulator + JDK 17, pinned to what Expo 57 / React Native
+  # 0.86 build with. AVDs live in ./.android (set up by devenv's android module).
+  android = {
+    enable = true;
+    reactNative.enable = true; # JDK 17, as React Native expects
+    platforms.version = [ androidApi ];
+    # 36.0.0 is what the app module uses; library modules that don't pin a
+    # version get AGP's default (35.0.0), which it can't download into the
+    # read-only Nix SDK.
+    buildTools.version = [ "36.0.0" "35.0.0" ];
+    ndk.version = [ "27.1.12297006" ];
+    cmake.version = [ "3.22.1" ];
+    systemImageTypes = [ "google_apis" ];
+    abis = [ emulatorAbi ];
+    googleAPIs.enable = false;
+    googleTVAddOns.enable = false;
+    extras = [ ];
   };
 
   packages = [
@@ -53,6 +80,16 @@ in
   '';
   scripts.mobile.exec = ''
     cd "$DEVENV_ROOT/mobile" && { [ -d node_modules ] || npm install; } && npx expo start "$@"
+  '';
+  # Build the Android development build, install it on the emulator (created on
+  # first run; a USB-connected phone takes precedence) and start Metro.
+  scripts.android.exec = ''
+    cd "$DEVENV_ROOT/mobile" && { [ -d node_modules ] || npm install; }
+    if ! avdmanager list avd -c 2>/dev/null | grep -qx gosocial; then
+      echo "Creating emulator 'gosocial' (${systemImage})..."
+      echo no | avdmanager create avd -n gosocial -d pixel_7 -k "${systemImage}"
+    fi
+    npx expo run:android "$@"
   '';
 
   # `devenv up` runs the Go API with process-compose.

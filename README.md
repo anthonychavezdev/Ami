@@ -9,23 +9,22 @@ groups, direct messages, and peer-to-peer voice/video calls with screen sharing.
   WebRTC signaling are all stdlib.
 - `mobile/` — Expo / React Native app (TypeScript, Expo Router, `react-native-webrtc`).
 - `devenv.nix` — toolchains and env vars. Everything installs inside this repo
-  (`.go/`, `.npm/`, `mobile/node_modules/`, `.gradle/`, `.cocoapods/`).
+  (`.go/`, `.npm/`, `mobile/node_modules/`, `.gradle/`, `.android/`, `.cocoapods/`).
 
 ## Run
 
 ```sh
-devenv shell          # Go, Node, npm, sqlite3, watchman
+devenv shell          # Go, Node, npm, sqlite3, watchman, Android SDK + emulator, JDK 17
 setup                 # go mod tidy + npm install (first time)
 server                # API on :8080   (or `devenv up`)
-mobile                # Metro / Expo dev server
+android               # build the app, install it on the emulator (created on first run), start Metro
+mobile                # Metro only — once the app is installed, for day-to-day JS work
 ```
 
-The app needs a development build (not Expo Go) because of `react-native-webrtc`:
-
-```sh
-cd mobile
-npx expo run:android   # or: npx expo run:ios
-```
+The app needs a development build (not Expo Go) because of `react-native-webrtc`.
+`android` produces one and installs it on the emulator, or on a USB-connected
+phone if one is plugged in. Re-run it after changing native dependencies or
+`app.json`. For iOS you need Xcode: `cd mobile && npx expo run:ios`.
 
 The app finds the server automatically on the machine running Metro (port 8080).
 To point it elsewhere: `EXPO_PUBLIC_API_URL=http://192.168.1.10:8080 npx expo start`.
