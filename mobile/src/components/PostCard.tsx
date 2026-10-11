@@ -10,7 +10,19 @@ import { timeAgo } from '@/lib/time';
 import type { Post } from '@/lib/types';
 import { colors, radius, spacing } from '@/theme';
 
-export function PostCard({ post, onChange, onDelete }: { post: Post; onChange: (p: Post) => void; onDelete?: (id: number) => void }) {
+export function PostCard({
+  post,
+  onChange,
+  onDelete,
+  canDelete,
+  showGroup = true,
+}: {
+  post: Post;
+  onChange: (p: Post) => void;
+  onDelete?: (id: number) => void;
+  canDelete?: boolean;
+  showGroup?: boolean;
+}) {
   const { user } = useAuth();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -46,7 +58,7 @@ export function PostCard({ post, onChange, onDelete }: { post: Post; onChange: (
 
   const reactions = Object.entries(post.reactions).sort((a, b) => b[1] - a[1]);
   const total = reactions.reduce((n, [, c]) => n + c, 0);
-  const mayDelete = post.author.id === user?.id;
+  const mayDelete = canDelete || post.author.id === user?.id;
 
   return (
     <View style={styles.card}>
@@ -58,6 +70,7 @@ export function PostCard({ post, onChange, onDelete }: { post: Post; onChange: (
               <Text style={styles.name}>{post.author.display_name}</Text>
               <Text style={styles.meta}>
                 @{post.author.username} · {timeAgo(post.created_at)}
+                {showGroup && post.group_name ? ` · in ${post.group_name}` : ''}
               </Text>
             </View>
           </Pressable>
