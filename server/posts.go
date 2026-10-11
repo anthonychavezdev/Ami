@@ -75,10 +75,14 @@ func (s *server) getPost(viewer, id int64) (Post, error) {
 	return scanPost(s.db.QueryRow(postSelect+`WHERE p.id = ?`, viewer, id))
 }
 
-// feed: my own posts, newest first.
+// feed: my own posts and my friends' posts.
 func (s *server) feed(w http.ResponseWriter, r *http.Request, me *User) {
 	before, limit := pagination(r)
-	posts, err := s.queryPosts(me.ID, `WHERE p.author_id = ?1 AND p.id < ?2 ORDER BY p.id DESC LIMIT ?3`, before, limit)
+	posts, err := s.queryPosts(me.ID, `
+		WHERE p.id < ?2 AND (p.author_id = ?1 OR p.author_id IN (
+			SELECT CASE WHEN from_id = ?1 THEN to_id ELSE from_id END FROM friendships
+			WHERE status = 'accepted' AND (from_id = ?1 OR to_id = ?1)))
+		ORDER BY p.id DESC LIMIT ?3`, before, limit)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

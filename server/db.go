@@ -45,6 +45,16 @@ CREATE TABLE IF NOT EXISTS reactions (
 	emoji   TEXT NOT NULL,
 	PRIMARY KEY (post_id, user_id)
 );
+
+-- One row per pair. from_id is whoever sent the request.
+CREATE TABLE IF NOT EXISTS friendships (
+	from_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	to_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	status     TEXT NOT NULL CHECK (status IN ('pending', 'accepted')),
+	created_at TEXT NOT NULL,
+	PRIMARY KEY (from_id, to_id)
+);
+CREATE INDEX IF NOT EXISTS friendships_to ON friendships(to_id);
 `
 
 func openDB(path string) (*sql.DB, error) {
