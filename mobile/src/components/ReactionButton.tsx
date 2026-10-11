@@ -1,11 +1,13 @@
 import React, { useRef, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
-import { DEFAULT_REACTION, REACTION_EMOJIS, colors, radius, spacing } from '@/theme';
+import { useStyles } from '@/lib/theme';
+import { DEFAULT_REACTION, REACTION_EMOJIS, radius, spacing, type ThemeColors } from '@/theme';
 
 // Tap: toggle the default reaction. Press and hold: pick any emoji from a
 // popover anchored above the button.
 export function ReactionButton({ current, onReact }: { current: string; onReact: (emoji: string | null) => void }) {
+  const styles = useStyles(makeStyles);
   const ref = useRef<View>(null);
   const [anchor, setAnchor] = useState<{ x: number; y: number } | null>(null);
   const { width: screenWidth } = useWindowDimensions();
@@ -50,7 +52,7 @@ export function ReactionButton({ current, onReact }: { current: string; onReact:
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   btn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 12, borderRadius: radius.pill },
   btnActive: { backgroundColor: colors.accentSoft },
   btnText: { fontSize: 18 },

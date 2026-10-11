@@ -3,9 +3,11 @@ import { KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-na
 
 import { Button, ErrorBanner, Input } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
-import { colors, spacing } from '@/theme';
+import { useStyles } from '@/lib/theme';
+import { spacing, type ThemeColors } from '@/theme';
 
 export default function RegisterScreen() {
+  const styles = useStyles(makeStyles);
   const { register } = useAuth();
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -39,7 +41,7 @@ export default function RegisterScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   container: { flex: 1, justifyContent: 'center', padding: spacing.xl, backgroundColor: colors.bg },
   form: { gap: spacing.md },
   hint: { color: colors.muted, textAlign: 'center', marginTop: spacing.sm },
