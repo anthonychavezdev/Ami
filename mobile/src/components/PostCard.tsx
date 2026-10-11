@@ -1,4 +1,4 @@
-import { Link } from 'expo-router';
+import { Link, useRouter } from 'expo-router';
 import React from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -11,6 +11,7 @@ import { colors, radius, spacing } from '@/theme';
 
 export function PostCard({ post, onDelete }: { post: Post; onDelete?: (id: number) => void }) {
   const { user } = useAuth();
+  const router = useRouter();
 
   const remove = () =>
     Alert.alert('Delete post?', undefined, [
@@ -53,6 +54,12 @@ export function PostCard({ post, onDelete }: { post: Post; onDelete?: (id: numbe
       </View>
 
       <Text style={styles.body}>{post.body}</Text>
+
+      <View style={styles.footer}>
+        <Pressable onPress={() => router.push(`/post/${post.id}`)} style={styles.commentBtn}>
+          <Text style={styles.commentText}>💬 {post.comment_count > 0 ? `${post.comment_count} ` : ''}Comment</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -64,4 +71,7 @@ const styles = StyleSheet.create({
   name: { fontWeight: '700', color: colors.text, fontSize: 15 },
   meta: { color: colors.muted, fontSize: 13 },
   body: { color: colors.text, fontSize: 16, lineHeight: 22, marginTop: spacing.md },
+  footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.sm },
+  commentBtn: { paddingVertical: 6, paddingHorizontal: 12 },
+  commentText: { color: colors.muted, fontWeight: '600' },
 });
