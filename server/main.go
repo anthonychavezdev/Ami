@@ -80,6 +80,11 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/groups/{id}/leave", s.auth(s.leaveGroup))
 	mux.HandleFunc("GET /api/groups/{id}/posts", s.auth(s.groupPosts))
 	mux.HandleFunc("DELETE /api/groups/{id}/members/{uid}", s.auth(s.removeGroupMember))
+
+	// direct messages
+	mux.HandleFunc("GET /api/conversations", s.auth(s.listConversations))
+	mux.HandleFunc("GET /api/messages/{id}", s.auth(s.listMessages))
+	mux.HandleFunc("POST /api/messages/{id}", s.auth(s.sendMessage))
 }
 
 type statusWriter struct {
