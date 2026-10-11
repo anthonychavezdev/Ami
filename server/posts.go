@@ -15,6 +15,7 @@ type Post struct {
 	GroupID      *int64         `json:"group_id"`
 	GroupName    string         `json:"group_name,omitempty"`
 	Body         string         `json:"body"`
+	Attachments  []Attachment   `json:"attachments"`
 	CreatedAt    string         `json:"created_at"`
 	CommentCount int            `json:"comment_count"`
 	Reactions    map[string]int `json:"reactions"`   // emoji -> count
@@ -31,7 +32,7 @@ type Comment struct {
 
 // postSelect expects the viewer's user id as its first bound parameter.
 const postSelect = `
-SELECT p.id, p.body, p.created_at, p.group_id, COALESCE(g.name, ''),
+SELECT p.id, p.body, p.attachments, p.created_at, p.group_id, COALESCE(g.name, ''),
        ` + userCols + `,
        (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id),
        COALESCE((SELECT json_group_object(emoji, n) FROM
@@ -44,8 +45,8 @@ LEFT JOIN groups g ON g.id = p.group_id
 
 func scanPost(sc interface{ Scan(...any) error }) (Post, error) {
 	var p Post
-	var reactions string
-	err := sc.Scan(&p.ID, &p.Body, &p.CreatedAt, &p.GroupID, &p.GroupName,
+	var reactions, attachments string
+	err := sc.Scan(&p.ID, &p.Body, &attachments, &p.CreatedAt, &p.GroupID, &p.GroupName,
 		&p.Author.ID, &p.Author.Username, &p.Author.DisplayName, &p.Author.CreatedAt,
 		&p.CommentCount, &reactions, &p.MyReaction)
 	if err != nil {
@@ -53,6 +54,8 @@ func scanPost(sc interface{ Scan(...any) error }) (Post, error) {
 	}
 	p.Reactions = map[string]int{}
 	_ = json.Unmarshal([]byte(reactions), &p.Reactions)
+	p.Attachments = []Attachment{}
+	_ = json.Unmarshal([]byte(attachments), &p.Attachments)
 	return p, nil
 }
 
@@ -97,17 +100,30 @@ func (s *server) feed(w http.ResponseWriter, r *http.Request, me *User) {
 
 func (s *server) createPost(w http.ResponseWriter, r *http.Request, me *User) {
 	var in struct {
-		Body    string `json:"body"`
-		GroupID *int64 `json:"group_id"`
+		Body        string       `json:"body"`
+		GroupID     *int64       `json:"group_id"`
+		Attachments []Attachment `json:"attachments"`
 	}
 	if !readJSON(w, r, &in) {
 		return
 	}
 	in.Body = strings.TrimSpace(in.Body)
-	if !clampLen(in.Body, 5000) {
-		writeError(w, http.StatusBadRequest, "body must be 1-5000 characters")
+	if in.Body == "" && len(in.Attachments) == 0 {
+		writeError(w, http.StatusBadRequest, "a post needs text or an attachment")
 		return
 	}
+	if len(in.Body) > 5000 {
+		writeError(w, http.StatusBadRequest, "body must be at most 5000 characters")
+		return
+	}
+	if in.Attachments == nil {
+		in.Attachments = []Attachment{}
+	}
+	if err := s.validateAttachments(in.Attachments); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	attachments, _ := json.Marshal(in.Attachments)
 	if in.GroupID != nil {
 		role, err := s.groupRole(*in.GroupID, me.ID)
 		if err != nil || role == "" {
@@ -115,8 +131,8 @@ func (s *server) createPost(w http.ResponseWriter, r *http.Request, me *User) {
 			return
 		}
 	}
-	res, err := s.db.Exec(`INSERT INTO posts(author_id, group_id, body, created_at) VALUES (?, ?, ?, ?)`,
-		me.ID, in.GroupID, in.Body, nowString())
+	res, err := s.db.Exec(`INSERT INTO posts(author_id, group_id, body, attachments, created_at) VALUES (?, ?, ?, ?, ?)`,
+		me.ID, in.GroupID, in.Body, string(attachments), nowString())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
