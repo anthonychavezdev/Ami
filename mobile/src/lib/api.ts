@@ -1,5 +1,5 @@
 import { API_URL } from './config';
-import type { User } from './types';
+import type { Post, User, UserProfile } from './types';
 
 let authToken: string | null = null;
 export function setAuthToken(token: string | null) {
@@ -48,4 +48,14 @@ export const api = {
   login: (username: string, password: string) => post<{ token: string; user: User }>('/api/login', { username, password }),
   logout: () => post<void>('/api/logout'),
   me: () => get<User>('/api/me'),
+
+  // users
+  user: (id: number) => get<UserProfile>(`/api/users/${id}`),
+  userPosts: (id: number, before?: number) => get<Post[]>(`/api/users/${id}/posts${q({ before })}`),
+
+  // posts
+  feed: (before?: number) => get<Post[]>(`/api/feed${q({ before })}`),
+  createPost: (body: string) => post<Post>('/api/posts', { body }),
+  post: (id: number) => get<Post>(`/api/posts/${id}`),
+  deletePost: (id: number) => del<void>(`/api/posts/${id}`),
 };
