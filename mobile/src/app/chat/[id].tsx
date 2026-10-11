@@ -1,11 +1,12 @@
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
+import { FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Composer } from '@/components/Composer';
 import { Empty, Loading } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { useCall } from '@/lib/call';
 import { clock } from '@/lib/time';
 import type { Message, User } from '@/lib/types';
 import { socket } from '@/lib/ws';
@@ -15,6 +16,8 @@ export default function ChatScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const otherId = Number(id);
   const { user: me } = useAuth();
+  const { call } = useCall();
+  const router = useRouter();
   const [other, setOther] = useState<User | null>(null);
   const [messages, setMessages] = useState<Message[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -44,12 +47,32 @@ export default function ChatScreen() {
     if (older.length) setMessages((prev) => [...(prev ?? []), ...older.slice().reverse()]);
   }, [messages, otherId]);
 
+  const startCall = (video: boolean) => {
+    if (!other) return;
+    void call.startCall(other, video);
+    router.push('/call');
+  };
+
   if (error) return <Empty text={error} />;
   if (!messages || !other) return <Loading />;
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }} keyboardVerticalOffset={90}>
-      <Stack.Screen options={{ title: other.display_name }} />
+      <Stack.Screen
+        options={{
+          title: other.display_name,
+          headerRight: () => (
+            <View style={{ flexDirection: 'row', gap: spacing.md }}>
+              <Pressable onPress={() => startCall(false)} hitSlop={8}>
+                <Text style={styles.headerBtn}>📞</Text>
+              </Pressable>
+              <Pressable onPress={() => startCall(true)} hitSlop={8}>
+                <Text style={styles.headerBtn}>📹</Text>
+              </Pressable>
+            </View>
+          ),
+        }}
+      />
       <FlatList
         data={messages}
         inverted
@@ -76,6 +99,7 @@ export default function ChatScreen() {
 }
 
 const styles = StyleSheet.create({
+  headerBtn: { fontSize: 22 },
   bubbleRow: { flexDirection: 'row', marginBottom: spacing.sm },
   bubble: { maxWidth: '80%', paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.lg },
   mine: { backgroundColor: colors.accent, borderBottomRightRadius: 4 },

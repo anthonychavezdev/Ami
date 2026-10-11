@@ -6,6 +6,7 @@ import { PostCard } from '@/components/PostCard';
 import { Avatar, Button, Empty, ErrorBanner, Loading } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { useCall } from '@/lib/call';
 import type { UserProfile } from '@/lib/types';
 import { usePosts } from '@/lib/usePosts';
 import { colors, spacing } from '@/theme';
@@ -14,6 +15,7 @@ export default function UserScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const userId = Number(id);
   const { user: me } = useAuth();
+  const { call } = useCall();
   const router = useRouter();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -40,6 +42,12 @@ export default function UserScreen() {
     } catch (e) {
       Alert.alert('Error', e instanceof Error ? e.message : String(e));
     }
+  };
+
+  const startCall = (video: boolean) => {
+    if (!profile) return;
+    void call.startCall(profile, video);
+    router.push('/call');
   };
 
   if (!profile) return error ? <Empty text={error} /> : <Loading />;
@@ -73,6 +81,8 @@ export default function UserScreen() {
                 {profile.friend_status === 'friends' && (
                   <>
                     <Button title="Message" onPress={() => router.push(`/chat/${profile.id}`)} />
+                    <Button title="📞" variant="secondary" onPress={() => startCall(false)} />
+                    <Button title="📹" variant="secondary" onPress={() => startCall(true)} />
                     <Button
                       title="Unfriend"
                       variant="ghost"

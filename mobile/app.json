@@ -10,7 +10,10 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "xyz.anthonychavez.gosocial"
+      "bundleIdentifier": "xyz.anthonychavez.gosocial",
+      "infoPlist": {
+        "UIBackgroundModes": ["audio", "voip"]
+      }
     },
     "android": {
       "package": "xyz.anthonychavez.gosocial",
@@ -20,6 +23,11 @@
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ],
       "predictiveBackGestureEnabled": false
     },
     "web": {
@@ -27,7 +35,14 @@
     },
     "plugins": [
       "expo-router",
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "@config-plugins/react-native-webrtc",
+        {
+          "cameraPermission": "go-social uses your camera for video calls.",
+          "microphonePermission": "go-social uses your microphone for calls."
+        }
+      ]
     ]
   }
 }
