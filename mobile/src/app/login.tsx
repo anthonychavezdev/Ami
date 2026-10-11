@@ -40,6 +40,7 @@ export default function LoginScreen() {
         <Link href="/register" style={styles.link}>
           No account? Create one
         </Link>
+        {__DEV__ && <Text style={styles.hint}>Dev server demo accounts: ana, luis, sofia, diego… · password: amigo-demo</Text>}
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
@@ -52,4 +53,5 @@ const styles = StyleSheet.create({
   tagline: { color: colors.muted, textAlign: 'center', marginBottom: spacing.lg },
   form: { gap: spacing.md },
   link: { color: colors.accent, textAlign: 'center', fontWeight: '600', padding: spacing.md },
+  hint: { color: colors.muted, textAlign: 'center', fontSize: 12 },
 });
