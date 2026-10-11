@@ -46,3 +46,16 @@ export interface Group {
 export interface GroupMember extends User {
   role: 'admin' | 'member';
 }
+
+export interface Message {
+  id: number;
+  sender_id: number;
+  recipient_id: number;
+  body: string;
+  created_at: string;
+}
+
+export interface Conversation {
+  user: User;
+  last_message: Message;
+}

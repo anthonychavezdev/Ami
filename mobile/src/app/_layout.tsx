@@ -37,6 +37,7 @@ function RootNavigator() {
         <Stack.Screen name="post/[id]" options={{ title: 'Post' }} />
         <Stack.Screen name="user/[id]" options={{ title: 'Profile' }} />
         <Stack.Screen name="group/[id]" options={{ title: 'Group' }} />
+        <Stack.Screen name="chat/[id]" options={{ title: 'Chat' }} />
       </Stack.Protected>
       <Stack.Protected guard={!user}>
         <Stack.Screen name="login" options={{ headerShown: false }} />
