@@ -5,9 +5,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button, ErrorBanner, Input } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
-import { colors, spacing } from '@/theme';
+import { useStyles } from '@/lib/theme';
+import { spacing, type ThemeColors } from '@/theme';
 
 export default function LoginScreen() {
+  const styles = useStyles(makeStyles);
   const { login } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -46,7 +48,7 @@ export default function LoginScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.bg },
   container: { flex: 1, justifyContent: 'center', padding: spacing.xl, gap: spacing.lg },
   logo: { fontSize: 40, fontWeight: '800', color: colors.accent, textAlign: 'center' },

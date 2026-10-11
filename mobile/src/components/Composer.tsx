@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { Alert, StyleSheet, View } from 'react-native';
 
 import { Button, Input } from './ui';
-import { colors, spacing } from '@/theme';
+import { useStyles } from '@/lib/theme';
+import { spacing, type ThemeColors } from '@/theme';
 
 // Generic "write something and submit" box used for posts, comments and chat.
 export function Composer({
@@ -18,6 +19,7 @@ export function Composer({
   multiline?: boolean;
   compact?: boolean;
 }) {
+  const styles = useStyles(makeStyles);
   const [text, setText] = useState('');
   const [busy, setBusy] = useState(false);
 
@@ -51,7 +53,7 @@ export function Composer({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   wrap: { padding: spacing.lg, backgroundColor: colors.card, borderBottomWidth: 1, borderBottomColor: colors.border, gap: spacing.sm },
   row: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: 0, borderTopWidth: 1, borderTopColor: colors.border, padding: spacing.sm },
   input: { minHeight: 70, textAlignVertical: 'top' },

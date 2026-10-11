@@ -8,7 +8,8 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { timeAgo } from '@/lib/time';
 import type { Post } from '@/lib/types';
-import { colors, radius, spacing } from '@/theme';
+import { useStyles } from '@/lib/theme';
+import { radius, spacing, type ThemeColors } from '@/theme';
 
 export function PostCard({
   post,
@@ -23,6 +24,7 @@ export function PostCard({
   canDelete?: boolean;
   showGroup?: boolean;
 }) {
+  const styles = useStyles(makeStyles);
   const { user } = useAuth();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -106,7 +108,7 @@ export function PostCard({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   card: { backgroundColor: colors.card, borderRadius: radius.md, padding: spacing.lg, marginHorizontal: spacing.lg, marginBottom: spacing.md, borderWidth: 1, borderColor: colors.border },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   author: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md },

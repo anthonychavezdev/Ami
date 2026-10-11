@@ -2,7 +2,7 @@ import { Tabs } from 'expo-router';
 import React from 'react';
 import { Text } from 'react-native';
 
-import { colors } from '@/theme';
+import { useTheme } from '@/lib/theme';
 
 const icon = (glyph: string) =>
   function TabIcon({ focused }: { focused: boolean }) {
@@ -10,6 +10,7 @@ const icon = (glyph: string) =>
   };
 
 export default function TabsLayout() {
+  const { colors } = useTheme();
   return (
     <Tabs
       screenOptions={{

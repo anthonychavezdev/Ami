@@ -8,9 +8,11 @@ const Picker = ScreenCapturePickerView as React.ComponentType<any>;
 
 import { Avatar } from '@/components/ui';
 import { useCall } from '@/lib/call';
-import { colors, radius, spacing } from '@/theme';
+import { useStyles } from '@/lib/theme';
+import { radius, spacing, type ThemeColors } from '@/theme';
 
 export default function CallScreen() {
+  const styles = useStyles(makeStyles);
   const { state, call } = useCall();
   const router = useRouter();
   const pickerRef = useRef<any>(null);
@@ -139,6 +141,7 @@ function Control({
   success?: boolean;
   disabled?: boolean;
 }) {
+  const styles = useStyles(makeStyles);
   return (
     <Pressable onPress={onPress} disabled={disabled} style={({ pressed }) => [styles.control, pressed && { opacity: 0.7 }, disabled && { opacity: 0.35 }]}>
       <View style={[styles.controlCircle, active && styles.controlActive, danger && styles.controlDanger, success && styles.controlSuccess]}>
@@ -149,7 +152,7 @@ function Control({
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.dark },
   center: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
   overlay: { flex: 1, justifyContent: 'space-between' },

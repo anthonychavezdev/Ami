@@ -8,9 +8,11 @@ import { Avatar, Empty, ErrorBanner, Loading } from '@/components/ui';
 import { api } from '@/lib/api';
 import { timeAgo } from '@/lib/time';
 import type { Comment, Post } from '@/lib/types';
-import { colors, spacing } from '@/theme';
+import { useStyles } from '@/lib/theme';
+import { spacing, type ThemeColors } from '@/theme';
 
 export default function PostScreen() {
+  const styles = useStyles(makeStyles);
   const { id } = useLocalSearchParams<{ id: string }>();
   const postId = Number(id);
   const router = useRouter();
@@ -79,7 +81,7 @@ export default function PostScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   heading: { fontWeight: '700', color: colors.text, fontSize: 16, paddingHorizontal: spacing.lg, marginTop: spacing.sm, marginBottom: spacing.sm },
   comment: { flexDirection: 'row', gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm },
   name: { fontWeight: '700', color: colors.text },

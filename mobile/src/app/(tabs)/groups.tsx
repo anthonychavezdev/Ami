@@ -5,11 +5,13 @@ import { Alert, FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react
 import { Button, Empty, Input, Loading, Segmented } from '@/components/ui';
 import { api } from '@/lib/api';
 import type { Group } from '@/lib/types';
-import { colors, radius, spacing } from '@/theme';
+import { useStyles, useTheme } from '@/lib/theme';
+import { radius, spacing, type ThemeColors } from '@/theme';
 
 type Tab = 'mine' | 'discover';
 
 export default function GroupsScreen() {
+  const styles = useStyles(makeStyles);
   const [tab, setTab] = useState<Tab>('mine');
   const [creating, setCreating] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
@@ -41,6 +43,8 @@ export default function GroupsScreen() {
 }
 
 function GroupRow({ group }: { group: Group }) {
+  const { colors } = useTheme();
+  const styles = useStyles(makeStyles);
   const router = useRouter();
   return (
     <Pressable onPress={() => router.push(`/group/${group.id}`)} style={({ pressed }) => [styles.row, pressed && { opacity: 0.7 }]}>
@@ -108,6 +112,7 @@ function Discover() {
 }
 
 function CreateGroupModal({ visible, onClose, onCreated }: { visible: boolean; onClose: () => void; onCreated: () => void }) {
+  const styles = useStyles(makeStyles);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [busy, setBusy] = useState(false);
@@ -142,7 +147,7 @@ function CreateGroupModal({ visible, onClose, onCreated }: { visible: boolean; o
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, backgroundColor: colors.card, borderBottomWidth: 1, borderBottomColor: colors.border },
   groupIcon: { width: 44, height: 44, borderRadius: radius.md, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' },
   name: { fontWeight: '700', color: colors.text, fontSize: 15 },

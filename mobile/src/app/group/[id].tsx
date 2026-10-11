@@ -10,11 +10,14 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import type { Group, GroupMember } from '@/lib/types';
 import { usePosts } from '@/lib/usePosts';
-import { colors, spacing } from '@/theme';
+import { useStyles, useTheme } from '@/lib/theme';
+import { spacing, type ThemeColors } from '@/theme';
 
 type Tab = 'posts' | 'members';
 
 export default function GroupScreen() {
+  const { colors } = useTheme();
+  const styles = useStyles(makeStyles);
   const { id } = useLocalSearchParams<{ id: string }>();
   const groupId = Number(id);
   const { user: me } = useAuth();
@@ -155,7 +158,7 @@ export default function GroupScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   header: { padding: spacing.xl, paddingBottom: spacing.sm, gap: spacing.xs },
   name: { fontSize: 24, fontWeight: '800', color: colors.text },
   desc: { color: colors.text, fontSize: 15, lineHeight: 21 },

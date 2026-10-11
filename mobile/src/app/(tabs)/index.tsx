@@ -6,9 +6,11 @@ import { PostCard } from '@/components/PostCard';
 import { Empty, ErrorBanner, Loading } from '@/components/ui';
 import { api } from '@/lib/api';
 import { usePosts } from '@/lib/usePosts';
-import { colors, spacing } from '@/theme';
+import { useTheme } from '@/lib/theme';
+import { spacing } from '@/theme';
 
 export default function FeedScreen() {
+  const { colors } = useTheme();
   const fetchPage = useCallback((before?: number) => api.feed(before), []);
   const { posts, loading, refreshing, error, refresh, loadMore, update, remove, prepend } = usePosts(fetchPage);
 

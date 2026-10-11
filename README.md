@@ -67,6 +67,7 @@ ships no secrets. iOS release builds need an Apple developer account
 | Messages | Direct messages, delivered in real time. |
 | Calls | Voice or video, 1:1, WebRTC with STUN (`stun.l.google.com`). Mute, camera on/off, flip camera. |
 | Screen share | Toggle during a call; sent as a second video stream. |
+| Theme | Light, dark, or follow the device setting (Me tab). |
 
 ### Screen sharing caveats
 

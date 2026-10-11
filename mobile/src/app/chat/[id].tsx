@@ -10,9 +10,11 @@ import { useCall } from '@/lib/call';
 import { clock } from '@/lib/time';
 import type { Message, User } from '@/lib/types';
 import { socket } from '@/lib/ws';
-import { colors, radius, spacing } from '@/theme';
+import { useStyles } from '@/lib/theme';
+import { radius, spacing, type ThemeColors } from '@/theme';
 
 export default function ChatScreen() {
+  const styles = useStyles(makeStyles);
   const { id } = useLocalSearchParams<{ id: string }>();
   const otherId = Number(id);
   const { user: me } = useAuth();
@@ -98,7 +100,7 @@ export default function ChatScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   headerBtn: { fontSize: 22 },
   bubbleRow: { flexDirection: 'row', marginBottom: spacing.sm },
   bubble: { maxWidth: '80%', paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.lg },
