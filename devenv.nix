@@ -76,7 +76,7 @@ in
     (cd "$DEVENV_ROOT/mobile" && npm install)
   '';
   scripts.server.exec = ''
-    cd "$DEVENV_ROOT/server" && go run . "$@"
+    cd "$DEVENV_ROOT/server" && go run . -dev "$@"
   '';
   scripts.mobile.exec = ''
     cd "$DEVENV_ROOT/mobile" && { [ -d node_modules ] || npm install; } && npx expo start "$@"
@@ -93,5 +93,5 @@ in
   '';
 
   # `devenv up` runs the Go API with process-compose.
-  processes.server.exec = "cd $DEVENV_ROOT/server && go run . -addr :8080 -db ami.db";
+  processes.server.exec = "cd $DEVENV_ROOT/server && go run . -dev -addr :8080 -db ami.db";
 }
