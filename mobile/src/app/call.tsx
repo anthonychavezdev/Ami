@@ -1,8 +1,10 @@
 import { useRouter } from 'expo-router';
 import React, { useEffect, useRef } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Platform, Pressable, StyleSheet, Text, View, findNodeHandle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { type MediaStream, RTCView } from 'react-native-webrtc';
+import { type MediaStream, RTCView, ScreenCapturePickerView } from 'react-native-webrtc';
+
+const Picker = ScreenCapturePickerView as React.ComponentType<any>;
 
 import { Avatar } from '@/components/ui';
 import { useCall } from '@/lib/call';
@@ -11,7 +13,16 @@ import { colors, radius, spacing } from '@/theme';
 export default function CallScreen() {
   const { state, call } = useCall();
   const router = useRouter();
+  const pickerRef = useRef<any>(null);
   const wasActive = useRef(false);
+
+  // Register the iOS screen-capture picker so the manager can show it.
+  useEffect(() => {
+    if (Platform.OS === 'ios' && pickerRef.current) call.pickerHandle = findNodeHandle(pickerRef.current);
+    return () => {
+      call.pickerHandle = null;
+    };
+  }, [call]);
 
   // Leave the screen when the call ends.
   useEffect(() => {
@@ -31,21 +42,24 @@ export default function CallScreen() {
   const peer = state.peer;
   if (!peer) return <View style={styles.root} />;
 
-  const main = state.remoteStreams.find((s) => s.getVideoTracks().length > 0) ?? null;
+  const remoteScreen = state.remoteStreams.find((s) => s.id === state.remoteScreenId) ?? null;
+  const remoteCamera = state.remoteStreams.find((s) => s.id !== state.remoteScreenId && s.getVideoTracks().length > 0) ?? null;
+  const main = remoteScreen ?? remoteCamera;
+  const pip = remoteScreen ? remoteCamera : null;
   const localVideo = state.cameraOn && state.localStream?.getVideoTracks().length ? state.localStream : null;
 
   const subtitle = {
     incoming: `Incoming ${state.video ? 'video' : 'voice'} call`,
     outgoing: 'Calling…',
     connecting: 'Connecting…',
-    active: state.video || state.cameraOn ? 'Video call' : 'Voice call',
+    active: state.sharing ? 'You are sharing your screen' : state.video || state.cameraOn ? 'Video call' : 'Voice call',
     idle: '',
   }[state.status];
 
   return (
     <View style={styles.root}>
       {main ? (
-        <Video stream={main} style={StyleSheet.absoluteFill} fit="cover" version={state.version} />
+        <Video stream={main} style={StyleSheet.absoluteFill} fit={remoteScreen ? 'contain' : 'cover'} version={state.version} />
       ) : (
         <View style={styles.center}>
           <Avatar user={peer} size={120} />
@@ -64,6 +78,7 @@ export default function CallScreen() {
         </View>
 
         <View style={styles.pips} pointerEvents="none">
+          {pip && <Video stream={pip} style={styles.pip} fit="cover" version={state.version} />}
           {localVideo && <Video stream={localVideo} style={styles.pip} fit="cover" mirror version={state.version} zOrder={2} />}
         </View>
 
@@ -77,11 +92,13 @@ export default function CallScreen() {
             <Control label={state.muted ? 'Unmute' : 'Mute'} glyph={state.muted ? '🔇' : '🎙️'} active={state.muted} onPress={() => call.toggleMute()} />
             <Control label={state.cameraOn ? 'Camera off' : 'Camera'} glyph="📷" active={state.cameraOn} onPress={() => void call.toggleCamera()} />
             <Control label="Flip" glyph="🔄" disabled={!state.cameraOn} onPress={() => void call.flipCamera()} />
+            <Control label={state.sharing ? 'Stop share' : 'Share screen'} glyph="🖥️" active={state.sharing} disabled={state.status !== 'active'} onPress={() => void call.toggleScreenShare()} />
             <Control label="End" glyph="📵" danger onPress={() => call.hangup()} />
           </View>
         )}
       </SafeAreaView>
 
+      {Platform.OS === 'ios' && <Picker ref={pickerRef} style={{ width: 0, height: 0 }} />}
     </View>
   );
 }
