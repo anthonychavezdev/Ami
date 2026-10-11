@@ -45,7 +45,7 @@ export default function PostScreen() {
         keyExtractor={(c) => String(c.id)}
         ListHeaderComponent={
           <View style={{ paddingTop: spacing.lg }}>
-            <PostCard post={post} onDelete={() => router.back()} />
+            <PostCard post={post} onChange={setPost} onDelete={() => router.back()} />
             <ErrorBanner error={error} />
             <Text style={styles.heading}>Comments</Text>
           </View>

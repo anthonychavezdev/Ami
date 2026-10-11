@@ -60,4 +60,6 @@ export const api = {
   deletePost: (id: number) => del<void>(`/api/posts/${id}`),
   comments: (postId: number) => get<Comment[]>(`/api/posts/${postId}/comments`),
   addComment: (postId: number, body: string) => post<Comment>(`/api/posts/${postId}/comments`, { body }),
+  react: (postId: number, emoji: string) => put<Post>(`/api/posts/${postId}/reaction`, { emoji }),
+  unreact: (postId: number) => del<Post>(`/api/posts/${postId}/reaction`),
 };
