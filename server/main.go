@@ -42,6 +42,12 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
+
+	// auth
+	mux.HandleFunc("POST /api/register", s.register)
+	mux.HandleFunc("POST /api/login", s.login)
+	mux.HandleFunc("POST /api/logout", s.auth(s.logout))
+	mux.HandleFunc("GET /api/me", s.auth(s.me))
 }
 
 type statusWriter struct {
