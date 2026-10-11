@@ -13,12 +13,22 @@ export interface UserProfile extends User {
   post_count?: number;
 }
 
+export type AttachmentType = 'image' | 'video' | 'link';
+
+export interface Attachment {
+  type: AttachmentType;
+  url: string; // /media/<name> for uploads, absolute for links
+  width?: number;
+  height?: number;
+}
+
 export interface Post {
   id: number;
   author: User;
   group_id: number | null;
   group_name?: string;
   body: string;
+  attachments: Attachment[];
   created_at: string;
   comment_count: number;
   reactions: Record<string, number>;
