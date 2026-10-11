@@ -12,6 +12,8 @@ import (
 type Post struct {
 	ID           int64          `json:"id"`
 	Author       User           `json:"author"`
+	GroupID      *int64         `json:"group_id"`
+	GroupName    string         `json:"group_name,omitempty"`
 	Body         string         `json:"body"`
 	CreatedAt    string         `json:"created_at"`
 	CommentCount int            `json:"comment_count"`
@@ -29,7 +31,7 @@ type Comment struct {
 
 // postSelect expects the viewer's user id as its first bound parameter.
 const postSelect = `
-SELECT p.id, p.body, p.created_at,
+SELECT p.id, p.body, p.created_at, p.group_id, COALESCE(g.name, ''),
        ` + userCols + `,
        (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id),
        COALESCE((SELECT json_group_object(emoji, n) FROM
@@ -37,12 +39,13 @@ SELECT p.id, p.body, p.created_at,
        COALESCE((SELECT emoji FROM reactions r WHERE r.post_id = p.id AND r.user_id = ?), '')
 FROM posts p
 JOIN users u ON u.id = p.author_id
+LEFT JOIN groups g ON g.id = p.group_id
 `
 
 func scanPost(sc interface{ Scan(...any) error }) (Post, error) {
 	var p Post
 	var reactions string
-	err := sc.Scan(&p.ID, &p.Body, &p.CreatedAt,
+	err := sc.Scan(&p.ID, &p.Body, &p.CreatedAt, &p.GroupID, &p.GroupName,
 		&p.Author.ID, &p.Author.Username, &p.Author.DisplayName, &p.Author.CreatedAt,
 		&p.CommentCount, &reactions, &p.MyReaction)
 	if err != nil {
@@ -75,13 +78,15 @@ func (s *server) getPost(viewer, id int64) (Post, error) {
 	return scanPost(s.db.QueryRow(postSelect+`WHERE p.id = ?`, viewer, id))
 }
 
-// feed: my own posts and my friends' posts.
+// feed: my own posts, friends' profile posts, and posts in groups I belong to.
 func (s *server) feed(w http.ResponseWriter, r *http.Request, me *User) {
 	before, limit := pagination(r)
 	posts, err := s.queryPosts(me.ID, `
-		WHERE p.id < ?2 AND (p.author_id = ?1 OR p.author_id IN (
-			SELECT CASE WHEN from_id = ?1 THEN to_id ELSE from_id END FROM friendships
-			WHERE status = 'accepted' AND (from_id = ?1 OR to_id = ?1)))
+		WHERE p.id < ?2 AND (
+			(p.group_id IS NULL AND (p.author_id = ?1 OR p.author_id IN (
+				SELECT CASE WHEN from_id = ?1 THEN to_id ELSE from_id END FROM friendships
+				WHERE status = 'accepted' AND (from_id = ?1 OR to_id = ?1))))
+			OR p.group_id IN (SELECT group_id FROM group_members WHERE user_id = ?1))
 		ORDER BY p.id DESC LIMIT ?3`, before, limit)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -92,7 +97,8 @@ func (s *server) feed(w http.ResponseWriter, r *http.Request, me *User) {
 
 func (s *server) createPost(w http.ResponseWriter, r *http.Request, me *User) {
 	var in struct {
-		Body string `json:"body"`
+		Body    string `json:"body"`
+		GroupID *int64 `json:"group_id"`
 	}
 	if !readJSON(w, r, &in) {
 		return
@@ -102,8 +108,15 @@ func (s *server) createPost(w http.ResponseWriter, r *http.Request, me *User) {
 		writeError(w, http.StatusBadRequest, "body must be 1-5000 characters")
 		return
 	}
-	res, err := s.db.Exec(`INSERT INTO posts(author_id, body, created_at) VALUES (?, ?, ?)`,
-		me.ID, in.Body, nowString())
+	if in.GroupID != nil {
+		role, err := s.groupRole(*in.GroupID, me.ID)
+		if err != nil || role == "" {
+			writeError(w, http.StatusForbidden, "join the group to post in it")
+			return
+		}
+	}
+	res, err := s.db.Exec(`INSERT INTO posts(author_id, group_id, body, created_at) VALUES (?, ?, ?, ?)`,
+		me.ID, in.GroupID, in.Body, nowString())
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -133,14 +146,15 @@ func (s *server) getPostHandler(w http.ResponseWriter, r *http.Request, me *User
 	s.respondPost(w, http.StatusOK, me.ID, id)
 }
 
-// deletePost: only the author may delete a post.
+// deletePost: allowed for the author, or the admin of the group it was posted in.
 func (s *server) deletePost(w http.ResponseWriter, r *http.Request, me *User) {
 	id, ok := pathID(w, r, "id")
 	if !ok {
 		return
 	}
 	var author int64
-	err := s.db.QueryRow(`SELECT author_id FROM posts WHERE id = ?`, id).Scan(&author)
+	var groupID *int64
+	err := s.db.QueryRow(`SELECT author_id, group_id FROM posts WHERE id = ?`, id).Scan(&author, &groupID)
 	if errors.Is(err, sql.ErrNoRows) {
 		writeError(w, http.StatusNotFound, "post not found")
 		return
@@ -149,7 +163,12 @@ func (s *server) deletePost(w http.ResponseWriter, r *http.Request, me *User) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if author != me.ID {
+	allowed := author == me.ID
+	if !allowed && groupID != nil {
+		role, _ := s.groupRole(*groupID, me.ID)
+		allowed = role == "admin"
+	}
+	if !allowed {
 		writeError(w, http.StatusForbidden, "not allowed")
 		return
 	}

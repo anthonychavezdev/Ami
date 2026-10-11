@@ -57,7 +57,7 @@ func (s *server) getUser(w http.ResponseWriter, r *http.Request, me *User) {
 	p := UserProfile{User: u}
 	p.FriendStatus, _ = s.friendStatus(me.ID, id)
 	_ = s.db.QueryRow(`SELECT COUNT(*) FROM friendships WHERE status = 'accepted' AND (from_id = ?1 OR to_id = ?1)`, id).Scan(&p.FriendCount)
-	_ = s.db.QueryRow(`SELECT COUNT(*) FROM posts WHERE author_id = ?`, id).Scan(&p.PostCount)
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM posts WHERE author_id = ? AND group_id IS NULL`, id).Scan(&p.PostCount)
 	writeJSON(w, http.StatusOK, p)
 }
 
@@ -67,7 +67,7 @@ func (s *server) userPosts(w http.ResponseWriter, r *http.Request, me *User) {
 		return
 	}
 	before, limit := pagination(r)
-	posts, err := s.queryPosts(me.ID, `WHERE p.author_id = ? AND p.id < ? ORDER BY p.id DESC LIMIT ?`, id, before, limit)
+	posts, err := s.queryPosts(me.ID, `WHERE p.author_id = ? AND p.group_id IS NULL AND p.id < ? ORDER BY p.id DESC LIMIT ?`, id, before, limit)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

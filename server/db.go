@@ -22,13 +22,32 @@ CREATE TABLE IF NOT EXISTS sessions (
 	expires_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS groups (
+	id          INTEGER PRIMARY KEY,
+	name        TEXT NOT NULL,
+	description TEXT NOT NULL DEFAULT '',
+	owner_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	created_at  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS group_members (
+	group_id  INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+	user_id   INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	role      TEXT NOT NULL CHECK (role IN ('admin', 'member')),
+	joined_at TEXT NOT NULL,
+	PRIMARY KEY (group_id, user_id)
+);
+CREATE INDEX IF NOT EXISTS group_members_user ON group_members(user_id);
+
 CREATE TABLE IF NOT EXISTS posts (
 	id         INTEGER PRIMARY KEY,
 	author_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	group_id   INTEGER REFERENCES groups(id) ON DELETE CASCADE,
 	body       TEXT NOT NULL,
 	created_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS posts_author ON posts(author_id, id);
+CREATE INDEX IF NOT EXISTS posts_group ON posts(group_id, id);
 
 CREATE TABLE IF NOT EXISTS comments (
 	id         INTEGER PRIMARY KEY,
