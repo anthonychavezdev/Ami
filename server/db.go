@@ -74,6 +74,16 @@ CREATE TABLE IF NOT EXISTS friendships (
 	PRIMARY KEY (from_id, to_id)
 );
 CREATE INDEX IF NOT EXISTS friendships_to ON friendships(to_id);
+
+CREATE TABLE IF NOT EXISTS messages (
+	id           INTEGER PRIMARY KEY,
+	sender_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	recipient_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	body         TEXT NOT NULL,
+	created_at   TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS messages_sender ON messages(sender_id, recipient_id, id);
+CREATE INDEX IF NOT EXISTS messages_recipient ON messages(recipient_id, sender_id, id);
 `
 
 func openDB(path string) (*sql.DB, error) {
