@@ -13,6 +13,9 @@ devenv.local.nix
 # written into the repo root by devenv's android module
 local.properties
 
+# build output
+dist/
+
 # server runtime data
 server/*.db*
 
