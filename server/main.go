@@ -70,6 +70,16 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/friends/{id}/request", s.auth(s.sendFriendRequest))
 	mux.HandleFunc("POST /api/friends/{id}/accept", s.auth(s.acceptFriendRequest))
 	mux.HandleFunc("DELETE /api/friends/{id}", s.auth(s.removeFriend))
+
+	// groups
+	mux.HandleFunc("GET /api/groups", s.auth(s.listGroups))
+	mux.HandleFunc("POST /api/groups", s.auth(s.createGroup))
+	mux.HandleFunc("GET /api/groups/{id}", s.auth(s.getGroupHandler))
+	mux.HandleFunc("DELETE /api/groups/{id}", s.auth(s.deleteGroup))
+	mux.HandleFunc("POST /api/groups/{id}/join", s.auth(s.joinGroup))
+	mux.HandleFunc("POST /api/groups/{id}/leave", s.auth(s.leaveGroup))
+	mux.HandleFunc("GET /api/groups/{id}/posts", s.auth(s.groupPosts))
+	mux.HandleFunc("DELETE /api/groups/{id}/members/{uid}", s.auth(s.removeGroupMember))
 }
 
 type statusWriter struct {
