@@ -39,7 +39,8 @@ To point it elsewhere: `EXPO_PUBLIC_API_URL=http://192.168.1.10:8080 npx expo st
 
 ## Production
 
-`build` writes release artifacts to `dist/` (`build server` for the backend only):
+`build` writes release artifacts to `dist/`; `build server`, `build android` or
+`build ios` makes just one:
 
 - `dist/ami-server`: static, stripped binary (set `GOOS`/`GOARCH` to cross-compile).
   Run it with `-db /var/lib/ami/ami.db` and either `-tls-cert`/`-tls-key`, or
@@ -49,11 +50,15 @@ To point it elsewhere: `EXPO_PUBLIC_API_URL=http://192.168.1.10:8080 npx expo st
   shrinking) signed with your keystore, never the debug key. Required:
   `EXPO_PUBLIC_API_URL=https://…` (baked into the app), `AMI_KEYSTORE`,
   `AMI_KEYSTORE_PASSWORD`; optional `AMI_KEY_ALIAS` (default `ami`).
+- `dist/Ami.ipa`: Release archive exported by Xcode with automatic signing.
+  Needs Xcode signed in to your Apple Developer account and `AMI_APPLE_TEAM`
+  (the 10-character team id). `AMI_IOS_METHOD` picks the export:
+  `app-store-connect` (default; upload with Transporter or TestFlight),
+  `release-testing` (ad hoc, for registered devices) or `debugging`.
 
 The server stores session tokens hashed, rate-limits login/register per IP and
 sends `no-store`/`nosniff` headers. The app keeps its token in SecureStore and
-ships no secrets. iOS release builds need an Apple developer account
-(`npx expo run:ios --configuration Release`, or EAS Build).
+ships no secrets.
 
 ## Features
 
