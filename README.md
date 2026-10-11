@@ -20,5 +20,60 @@ server                # API on :8080   (or `devenv up`)
 mobile                # Metro / Expo dev server
 ```
 
+The app needs a development build (not Expo Go) because of `react-native-webrtc`:
+
+```sh
+cd mobile
+npx expo run:android   # or: npx expo run:ios
+```
+
 The app finds the server automatically on the machine running Metro (port 8080).
 To point it elsewhere: `EXPO_PUBLIC_API_URL=http://192.168.1.10:8080 npx expo start`.
+
+## Features
+
+| Area | Notes |
+|---|---|
+| Posts | Feed = your posts + friends' posts + posts in your groups. Profile posts are public. |
+| Reactions | Tap **React** to 👍; press-and-hold opens the emoji menu. One reaction per user per post, any emoji. |
+| Comments | On the post screen. |
+| Friends | Request → accept. Only friends can message/call each other. Pushed live over WebSocket. |
+| Groups | Creator is owner + admin; others join as members. Admin can remove members, delete posts, delete the group. |
+| Messages | Direct messages, delivered in real time. |
+| Calls | Voice or video, 1:1, WebRTC with STUN (`stun.l.google.com`). Mute, camera on/off, flip camera. |
+| Screen share | Toggle during a call; sent as a second video stream. |
+
+### Screen sharing caveats
+
+- **Android**: works out of the box (the config plugin in `mobile/plugins/`
+  enables react-native-webrtc's media-projection foreground service).
+- **iOS**: requires adding a *Broadcast Upload Extension* target in Xcode after
+  `npx expo prebuild` — see react-native-webrtc's iOS screen-sharing guide.
+- **Audio**: `getDisplayMedia({ audio: true })` is requested, so where the
+  platform supports it (web/desktop browsers) the shared window's audio is sent.
+  react-native-webrtc on Android/iOS captures screen video only; Discord-style
+  per-app audio capture would need a native `AudioPlaybackCapture` module.
+- Calls across different networks usually need a TURN server; add one to
+  `ICE_SERVERS` in `mobile/src/lib/config.ts`.
+
+## API
+
+All JSON. `Authorization: Bearer <token>` after `/api/register` or `/api/login`.
+
+```
+POST   /api/register  /api/login  /api/logout      GET /api/me
+GET    /api/users?q=   /api/users/{id}   /api/users/{id}/posts
+GET    /api/feed?before=&limit=
+POST   /api/posts {body, group_id?}    GET|DELETE /api/posts/{id}
+GET|POST /api/posts/{id}/comments      PUT|DELETE /api/posts/{id}/reaction {emoji}
+GET    /api/friends   /api/friends/requests
+POST   /api/friends/{id}/request   /api/friends/{id}/accept    DELETE /api/friends/{id}
+GET    /api/groups?mine=1|q=       POST /api/groups {name, description}
+GET|DELETE /api/groups/{id}        POST /api/groups/{id}/join | /leave
+GET    /api/groups/{id}/posts      DELETE /api/groups/{id}/members/{uid}
+GET    /api/conversations          GET|POST /api/messages/{userId}
+GET    /ws?token=   (events: hello, message, friend.request, friend.accepted,
+                     call.offer/answer/ice/streams/hangup/reject/busy/unavailable)
+```
+
+Server flags: `-addr :8080 -db social.db`.
