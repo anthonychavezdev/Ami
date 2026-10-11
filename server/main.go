@@ -48,6 +48,10 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/login", s.login)
 	mux.HandleFunc("POST /api/logout", s.auth(s.logout))
 	mux.HandleFunc("GET /api/me", s.auth(s.me))
+
+	// users
+	mux.HandleFunc("GET /api/users", s.auth(s.searchUsers))
+	mux.HandleFunc("GET /api/users/{id}", s.auth(s.getUser))
 }
 
 type statusWriter struct {
