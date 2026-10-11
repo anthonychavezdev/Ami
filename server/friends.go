@@ -116,6 +116,7 @@ func (s *server) sendFriendRequest(w http.ResponseWriter, r *http.Request, me *U
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.hub.sendTo(other, map[string]any{"type": "friend.request", "user": me})
 	writeJSON(w, http.StatusOK, map[string]string{"friend_status": "outgoing"})
 }
 
@@ -143,6 +144,7 @@ func (s *server) acceptFriend(w http.ResponseWriter, me *User, requester User) {
 		writeError(w, http.StatusNotFound, "no pending request from that user")
 		return
 	}
+	s.hub.sendTo(requester.ID, map[string]any{"type": "friend.accepted", "user": me})
 	writeJSON(w, http.StatusOK, map[string]string{"friend_status": "friends"})
 }
 
