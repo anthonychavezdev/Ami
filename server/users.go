@@ -7,6 +7,11 @@ import (
 	"strings"
 )
 
+type UserProfile struct {
+	User
+	PostCount int `json:"post_count"`
+}
+
 func (s *server) searchUsers(w http.ResponseWriter, r *http.Request, me *User) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
 	like := "%" + strings.NewReplacer("%", "\\%", "_", "\\_").Replace(q) + "%"
@@ -44,5 +49,21 @@ func (s *server) getUser(w http.ResponseWriter, r *http.Request, me *User) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, u)
+	p := UserProfile{User: u}
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM posts WHERE author_id = ?`, id).Scan(&p.PostCount)
+	writeJSON(w, http.StatusOK, p)
+}
+
+func (s *server) userPosts(w http.ResponseWriter, r *http.Request, me *User) {
+	id, ok := pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	before, limit := pagination(r)
+	posts, err := s.queryPosts(`WHERE p.author_id = ? AND p.id < ? ORDER BY p.id DESC LIMIT ?`, id, before, limit)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, posts)
 }
