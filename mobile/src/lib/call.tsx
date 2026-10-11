@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useEffect, useSyncExternalStore } from 'react';
+import { NativeModules, Platform } from 'react-native';
 import {
   MediaStream,
+  MediaStreamTrack,
   RTCIceCandidate,
   RTCPeerConnection,
   RTCSessionDescription,
@@ -18,9 +20,12 @@ export interface CallState {
   peer: User | null;
   video: boolean; // call was placed as a video call
   localStream: MediaStream | null;
+  localScreen: MediaStream | null;
   remoteStreams: MediaStream[];
+  remoteScreenId: string | null;
   muted: boolean;
   cameraOn: boolean;
+  sharing: boolean;
   error: string | null;
   version: number; // bumped whenever tracks change so views re-render
 }
@@ -30,9 +35,12 @@ const IDLE: CallState = {
   peer: null,
   video: false,
   localStream: null,
+  localScreen: null,
   remoteStreams: [],
+  remoteScreenId: null,
   muted: false,
   cameraOn: false,
+  sharing: false,
   error: null,
   version: 0,
 };
@@ -52,6 +60,8 @@ class CallManager {
   private pendingCandidates: any[] = [];
   private facing: 'user' | 'environment' = 'user';
   private ringTimer: ReturnType<typeof setTimeout> | null = null;
+  /** iOS: native handle of a rendered ScreenCapturePickerView (needed before getDisplayMedia). */
+  pickerHandle: number | null = null;
   /** Set by the UI so an incoming call can open the call screen. */
   onIncoming: (() => void) | null = null;
 
@@ -59,6 +69,7 @@ class CallManager {
     socket.on('call.offer', (e) => void this.onOffer(e));
     socket.on('call.answer', (e) => void this.onAnswer(e));
     socket.on('call.ice', (e) => void this.onIce(e));
+    socket.on('call.streams', (e) => this.onStreams(e));
     socket.on('call.hangup', (e) => this.onRemoteEnd(e, null));
     socket.on('call.reject', (e) => this.onRemoteEnd(e, 'Call declined'));
     socket.on('call.busy', (e) => this.onRemoteEnd(e, 'User is on another call'));
@@ -173,6 +184,46 @@ class CallManager {
     this.bump();
   }
 
+  async toggleScreenShare() {
+    const pc = this.pc;
+    if (!pc) return;
+    if (this.state.localScreen) {
+      this.stopScreenShare();
+      return;
+    }
+    try {
+      if (Platform.OS === 'ios' && this.pickerHandle != null) {
+        // iOS requires the ReplayKit picker to be shown by the app; the actual
+        // capture happens in the Broadcast Upload Extension (see README).
+        NativeModules.ScreenCapturePickerViewManager?.show(this.pickerHandle);
+      }
+      // On the web, {audio: true} also captures the shared window/tab audio;
+      // react-native-webrtc on Android/iOS captures video only.
+      const screen: MediaStream = await (mediaDevices.getDisplayMedia as any)({ video: true, audio: true });
+      screen.getTracks().forEach((t: MediaStreamTrack) => {
+        pc.addTrack(t, screen);
+        t.onended = () => this.stopScreenShare();
+      });
+      this.set({ localScreen: screen, sharing: true });
+      this.announceStreams();
+    } catch (e) {
+      this.set({ error: errorText(e) });
+    }
+  }
+
+  private stopScreenShare() {
+    const screen = this.state.localScreen;
+    const pc = this.pc;
+    if (!screen) return;
+    const ids = new Set(screen.getTracks().map((t) => t.id));
+    pc?.getSenders().forEach((s) => {
+      if (s.track && ids.has(s.track.id)) pc.removeTrack(s);
+    });
+    screen.getTracks().forEach((t) => t.stop());
+    this.set({ localScreen: null, sharing: false });
+    this.announceStreams();
+  }
+
   clearError() {
     this.set({ error: null });
   }
@@ -217,6 +268,7 @@ class CallManager {
         case 'connected':
           if (this.ringTimer) clearTimeout(this.ringTimer);
           this.set({ status: 'active' });
+          this.announceStreams();
           break;
         case 'failed':
         case 'closed':
@@ -231,6 +283,14 @@ class CallManager {
   private signal(msg: Record<string, unknown>) {
     const to = this.state.peer?.id;
     if (to) socket.send({ ...msg, to });
+  }
+
+  private announceStreams() {
+    this.signal({
+      type: 'call.streams',
+      camera: this.state.localStream?.id ?? null,
+      screen: this.state.localScreen?.id ?? null,
+    });
   }
 
   private async onOffer(e: WSEvent) {
@@ -307,6 +367,15 @@ class CallManager {
     }
   }
 
+  private onStreams(e: WSEvent) {
+    if (e.from !== this.state.peer?.id) return;
+    const screen: string | null = e.screen ?? null;
+    const remoteStreams = screen
+      ? this.state.remoteStreams
+      : this.state.remoteStreams.filter((s) => s.id !== this.state.remoteScreenId);
+    this.set({ remoteScreenId: screen, remoteStreams });
+  }
+
   private onRemoteEnd(e: WSEvent, reason: string | null) {
     if (this.state.status === 'idle' || e.from !== this.state.peer?.id) return;
     this.teardown(reason);
@@ -322,8 +391,9 @@ class CallManager {
   private teardown(reason: string | null) {
     if (this.ringTimer) clearTimeout(this.ringTimer);
     this.ringTimer = null;
-    const { localStream } = this.state;
+    const { localStream, localScreen } = this.state;
     localStream?.getTracks().forEach((t) => t.stop());
+    localScreen?.getTracks().forEach((t) => t.stop());
     try {
       this.pc?.close();
     } catch {

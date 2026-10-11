@@ -26,7 +26,10 @@
       "permissions": [
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
-        "android.permission.MODIFY_AUDIO_SETTINGS"
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION",
+        "android.permission.POST_NOTIFICATIONS"
       ],
       "predictiveBackGestureEnabled": false
     },
@@ -42,7 +45,8 @@
           "cameraPermission": "go-social uses your camera for video calls.",
           "microphonePermission": "go-social uses your microphone for calls."
         }
-      ]
+      ],
+      "./plugins/withWebRTCScreenShare"
     ]
   }
 }
