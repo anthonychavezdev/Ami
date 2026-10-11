@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 )
@@ -124,15 +125,41 @@ func (s *server) handleWS(w http.ResponseWriter, r *http.Request) {
 // Client -> server messages:
 //
 //	{"type":"ping"}
+//	{"type":"call.offer",  "to":<userID>, "sdp":{...}, "video":bool}
+//	{"type":"call.answer", "to":<userID>, "sdp":{...}}
+//	{"type":"call.ice",    "to":<userID>, "candidate":{...}}
+//	{"type":"call.streams","to":<userID>, "camera":"<streamID>", "screen":"<streamID>"}
+//	{"type":"call.reject" | "call.hangup" | "call.busy", "to":<userID>}
+//
+// call.* messages are relayed verbatim to the recipient with "from" (and, for
+// offers, "from_user") filled in by the server. Only friends can call each other.
 func (s *server) handleWSMessage(c *client, data []byte) {
 	var msg map[string]any
 	if err := json.Unmarshal(data, &msg); err != nil {
 		return
 	}
 	typ, _ := msg["type"].(string)
-	switch typ {
-	case "ping":
+	switch {
+	case typ == "ping":
 		s.hub.sendTo(c.user.ID, map[string]any{"type": "pong"})
+	case strings.HasPrefix(typ, "call."):
+		toF, _ := msg["to"].(float64)
+		to := int64(toF)
+		if to <= 0 || to == c.user.ID {
+			return
+		}
+		if ok, err := s.areFriends(c.user.ID, to); err != nil || !ok {
+			s.hub.sendTo(c.user.ID, map[string]any{"type": "error", "error": "you can only call friends"})
+			return
+		}
+		delete(msg, "to")
+		msg["from"] = c.user.ID
+		if typ == "call.offer" {
+			msg["from_user"] = c.user
+		}
+		if !s.hub.sendTo(to, msg) {
+			s.hub.sendTo(c.user.ID, map[string]any{"type": "call.unavailable", "from": to})
+		}
 	default:
 		log.Printf("ws: unknown message type %q from user %d", typ, c.user.ID)
 	}
