@@ -46,6 +46,15 @@
           "microphonePermission": "Ami uses your microphone for calls."
         }
       ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "enableMinifyInReleaseBuilds": true,
+            "enableShrinkResourcesInReleaseBuilds": true
+          }
+        }
+      ],
       "./plugins/withWebRTCScreenShare"
     ]
   }
