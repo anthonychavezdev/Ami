@@ -1,5 +1,5 @@
 import { API_URL } from './config';
-import type { Comment, Group, GroupMember, Post, User, UserProfile } from './types';
+import type { Comment, Conversation, Group, GroupMember, Message, Post, User, UserProfile } from './types';
 
 let authToken: string | null = null;
 export function setAuthToken(token: string | null) {
@@ -81,4 +81,9 @@ export const api = {
   deleteGroup: (id: number) => del<void>(`/api/groups/${id}`),
   groupPosts: (id: number, before?: number) => get<Post[]>(`/api/groups/${id}/posts${q({ before })}`),
   removeGroupMember: (id: number, uid: number) => del<{ group: Group; members: GroupMember[] }>(`/api/groups/${id}/members/${uid}`),
+
+  // messages
+  conversations: () => get<Conversation[]>('/api/conversations'),
+  messages: (userId: number, before?: number) => get<Message[]>(`/api/messages/${userId}${q({ before })}`),
+  sendMessage: (userId: number, body: string) => post<Message>(`/api/messages/${userId}`, { body }),
 };

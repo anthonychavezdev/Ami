@@ -1,4 +1,4 @@
-import { Stack, useLocalSearchParams } from 'expo-router';
+import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
@@ -14,6 +14,7 @@ export default function UserScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const userId = Number(id);
   const { user: me } = useAuth();
+  const router = useRouter();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -70,16 +71,19 @@ export default function UserScreen() {
                   </>
                 )}
                 {profile.friend_status === 'friends' && (
-                  <Button
-                    title="Unfriend"
-                    variant="ghost"
-                    onPress={() =>
-                      Alert.alert('Remove friend?', profile.display_name, [
-                        { text: 'Cancel', style: 'cancel' },
-                        { text: 'Remove', style: 'destructive', onPress: () => friendAction(() => api.removeFriend(profile.id)) },
-                      ])
-                    }
-                  />
+                  <>
+                    <Button title="Message" onPress={() => router.push(`/chat/${profile.id}`)} />
+                    <Button
+                      title="Unfriend"
+                      variant="ghost"
+                      onPress={() =>
+                        Alert.alert('Remove friend?', profile.display_name, [
+                          { text: 'Cancel', style: 'cancel' },
+                          { text: 'Remove', style: 'destructive', onPress: () => friendAction(() => api.removeFriend(profile.id)) },
+                        ])
+                      }
+                    />
+                  </>
                 )}
               </View>
             )}
