@@ -1,5 +1,6 @@
 // Command server is the go-social backend: a single binary, SQLite on disk,
-// JSON over HTTP, and a hand-rolled WebSocket endpoint for realtime events.
+// JSON over HTTP, and a hand-rolled WebSocket endpoint for realtime events
+// and WebRTC signaling.
 package main
 
 import (
@@ -87,7 +88,7 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/messages/{id}", s.auth(s.listMessages))
 	mux.HandleFunc("POST /api/messages/{id}", s.auth(s.sendMessage))
 
-	// realtime: events
+	// realtime: events + call signaling
 	mux.HandleFunc("GET /ws", s.handleWS)
 }
 
