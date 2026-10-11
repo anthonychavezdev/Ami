@@ -100,7 +100,7 @@ export default function GroupScreen() {
       />
       {tab === 'posts' && isMember && (
         <View style={{ marginBottom: spacing.md }}>
-          <Composer placeholder={`Post in ${group.name}`} onSubmit={async (body) => prepend(await api.createPost(body, groupId))} />
+          <Composer rich placeholder={`Post in ${group.name}`} onSubmit={async (body, attachments) => prepend(await api.createPost(body, groupId, attachments))} />
         </View>
       )}
     </View>

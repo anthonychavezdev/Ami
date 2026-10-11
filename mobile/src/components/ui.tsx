@@ -42,10 +42,10 @@ export function Button({
   );
 }
 
-export function Input(props: TextInputProps) {
+export function Input({ ref, ...props }: TextInputProps & { ref?: React.Ref<TextInput> }) {
   const { colors, scheme } = useTheme();
   const styles = useStyles(makeStyles);
-  return <TextInput placeholderTextColor={colors.muted} keyboardAppearance={scheme} {...props} style={[styles.input, props.style]} />;
+  return <TextInput ref={ref} placeholderTextColor={colors.muted} keyboardAppearance={scheme} {...props} style={[styles.input, props.style]} />;
 }
 
 export function Avatar({ user, size = 40 }: { user: Pick<User, 'display_name' | 'username'>; size?: number }) {

@@ -2,10 +2,12 @@ import { Link, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { AttachmentList } from './Attachments';
 import { ReactionButton } from './ReactionButton';
 import { Avatar } from './ui';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { PostMarkdown } from '@/lib/markdown';
 import { timeAgo } from '@/lib/time';
 import type { Post } from '@/lib/types';
 import { useStyles } from '@/lib/theme';
@@ -84,7 +86,12 @@ export function PostCard({
         )}
       </View>
 
-      <Text style={styles.body}>{post.body}</Text>
+      {post.body ? (
+        <View style={styles.body}>
+          <PostMarkdown>{post.body}</PostMarkdown>
+        </View>
+      ) : null}
+      {post.attachments?.length > 0 && <AttachmentList items={post.attachments} />}
 
       {total > 0 && (
         <View style={styles.reactions}>
@@ -114,7 +121,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   author: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   name: { fontWeight: '700', color: colors.text, fontSize: 15 },
   meta: { color: colors.muted, fontSize: 13 },
-  body: { color: colors.text, fontSize: 16, lineHeight: 22, marginTop: spacing.md },
+  body: { marginTop: spacing.md },
   reactions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: spacing.md },
   reactionPill: { backgroundColor: colors.bg, borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: colors.border },
   reactionMine: { borderColor: colors.accent, backgroundColor: colors.accentSoft },

@@ -12,7 +12,10 @@
       "supportsTablet": true,
       "bundleIdentifier": "xyz.anthonychavez.ami",
       "infoPlist": {
-        "UIBackgroundModes": ["audio", "voip"]
+        "UIBackgroundModes": [
+          "audio",
+          "voip"
+        ]
       }
     },
     "android": {
@@ -40,6 +43,12 @@
       "expo-router",
       "expo-secure-store",
       [
+        "expo-image-picker",
+        {
+          "photosPermission": "Ami needs access to your photos to attach pictures and videos to posts."
+        }
+      ],
+      [
         "@config-plugins/react-native-webrtc",
         {
           "cameraPermission": "Ami uses your camera for video calls.",
@@ -56,7 +65,8 @@
         }
       ],
       "./plugins/withWebRTCScreenShare",
-      "./plugins/withSceneLifecycle"
+      "./plugins/withSceneLifecycle",
+      "expo-video"
     ]
   }
 }
