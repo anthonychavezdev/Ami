@@ -64,7 +64,7 @@ ships no secrets.
 
 | Area | Notes |
 |---|---|
-| Posts | Feed = your posts + friends' posts + posts in your groups. Profile posts are public. |
+| Posts | Markdown text, pictures, videos and links, together or on their own. Feed = your posts + friends' posts + posts in your groups. Profile posts are public. |
 | Reactions | Tap **React** to 👍; press-and-hold opens the emoji menu. One reaction per user per post, any emoji. |
 | Comments | On the post screen. |
 | Friends | Request → accept. Only friends can message/call each other. Pushed live over WebSocket. |
@@ -97,6 +97,7 @@ GET    /api/users?q=   /api/users/{id}   /api/users/{id}/posts
 GET    /api/feed?before=&limit=
 POST   /api/posts {body, group_id?}    GET|DELETE /api/posts/{id}
 GET|POST /api/posts/{id}/comments      PUT|DELETE /api/posts/{id}/reaction {emoji}
+POST   /api/media (multipart "file") -> {type, url, width, height}   GET /media/{name}
 GET    /api/friends   /api/friends/requests
 POST   /api/friends/{id}/request   /api/friends/{id}/accept    DELETE /api/friends/{id}
 GET    /api/groups?mine=1|q=       POST /api/groups {name, description}
@@ -107,4 +108,4 @@ GET    /ws?token=   (events: hello, message, friend.request, friend.accepted,
                      call.offer/answer/ice/streams/hangup/reject/busy/unavailable)
 ```
 
-Server flags: `-addr :8080 -db ami.db`.
+Server flags: `-addr :8080 -db ami.db -media-dir media`.

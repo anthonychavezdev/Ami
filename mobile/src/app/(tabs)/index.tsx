@@ -21,7 +21,7 @@ export default function FeedScreen() {
       renderItem={({ item }) => <PostCard post={item} onChange={update} onDelete={remove} />}
       ListHeaderComponent={
         <>
-          <Composer placeholder="What's on your mind?" onSubmit={async (body) => prepend(await api.createPost(body))} />
+          <Composer rich placeholder="What's on your mind?" onSubmit={async (body, attachments) => prepend(await api.createPost(body, undefined, attachments))} />
           <ErrorBanner error={error} />
         </>
       }
