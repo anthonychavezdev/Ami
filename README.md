@@ -18,16 +18,42 @@ devenv shell          # Go, Node, npm, sqlite3, watchman, Android SDK + emulator
 setup                 # go mod tidy + npm install (first time)
 server                # API on :8080   (or `devenv up`)
 android               # build the app, install it on the emulator (created on first run), start Metro
+ios                   # same, in the iOS Simulator (needs Xcode from the App Store)
 mobile                # Metro only — once the app is installed, for day-to-day JS work
 ```
 
+`server` runs with `-dev`, which fills an empty database with demo accounts
+(`ana`, `luis`, `sofia`, `diego`, `valentina`, `mateo`, `camila`, `javier`,
+password `amigo-demo`) plus friendships, groups, posts and chats. Log in as
+`ana` to see every state. Production never seeds.
+
 The app needs a development build (not Expo Go) because of `react-native-webrtc`.
 `android` produces one and installs it on the emulator, or on a USB-connected
-phone if one is plugged in. Re-run it after changing native dependencies or
-`app.json`. For iOS you need Xcode: `cd mobile && npx expo run:ios`.
+phone if one is plugged in; `ios` does the same in the Simulator. The native
+projects (`mobile/android`, `mobile/ios`) are generated: after changing native
+dependencies, `app.json` or `mobile/plugins/`, run `npx expo prebuild --clean`
+in `mobile/` so the next `android`/`ios` picks the changes up.
 
 The app finds the server automatically on the machine running Metro (port 8080).
 To point it elsewhere: `EXPO_PUBLIC_API_URL=http://192.168.1.10:8080 npx expo start`.
+
+## Production
+
+`build` writes release artifacts to `dist/` (`build server` for the backend only):
+
+- `dist/ami-server`: static, stripped binary (set `GOOS`/`GOARCH` to cross-compile).
+  Run it with `-db /var/lib/ami/ami.db` and either `-tls-cert`/`-tls-key`, or
+  behind a TLS-terminating reverse proxy plus `-trust-proxy`. Never pass `-dev`.
+  Other flags: `-addr`, `-allowed-origins` (CORS is off by default).
+- `dist/ami-release.apk`: minified release build (Hermes bytecode, R8, resource
+  shrinking) signed with your keystore, never the debug key. Required:
+  `EXPO_PUBLIC_API_URL=https://…` (baked into the app), `AMI_KEYSTORE`,
+  `AMI_KEYSTORE_PASSWORD`; optional `AMI_KEY_ALIAS` (default `ami`).
+
+The server stores session tokens hashed, rate-limits login/register per IP and
+sends `no-store`/`nosniff` headers. The app keeps its token in SecureStore and
+ships no secrets. iOS release builds need an Apple developer account
+(`npx expo run:ios --configuration Release`, or EAS Build).
 
 ## Features
 
