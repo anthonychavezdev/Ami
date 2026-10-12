@@ -9,7 +9,9 @@ import { Empty, Loading } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useCall } from '@/lib/call';
+import { confirmAction } from '@/lib/confirm';
 import { clock } from '@/lib/time';
+import { toast } from '@/lib/toast';
 import type { Message, User } from '@/lib/types';
 import { unread } from '@/lib/unread';
 import { socket } from '@/lib/ws';
@@ -28,6 +30,7 @@ export default function ChatScreen() {
   const [messages, setMessages] = useState<Message[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<Message | null>(null); // my message being edited
+  const [selected, setSelected] = useState<number | null>(null); // my message showing Edit / Delete
   const list = useRef<FlatList<Message>>(null);
   const loaded = messages !== null;
 
@@ -84,6 +87,19 @@ export default function ChatScreen() {
       }),
     [],
   );
+  useEffect(() => socket.on('message.deleted', (e) => setMessages((prev) => prev?.filter((x) => x.id !== e.id) ?? prev)), []);
+
+  const remove = (m: Message) =>
+    confirmAction('Delete message?', m.body || 'picture', 'Delete', async () => {
+      try {
+        await api.deleteMessage(otherId, m.id);
+        setMessages((prev) => prev?.filter((x) => x.id !== m.id) ?? prev);
+        setSelected(null);
+        if (editing?.id === m.id) setEditing(null);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : String(e));
+      }
+    });
 
   const loadOlder = useCallback(async () => {
     if (!messages?.length) return;
@@ -126,8 +142,8 @@ export default function ChatScreen() {
           const mine = item.sender_id === me?.id;
           const hasAttachments = item.attachments?.length > 0;
           return (
-            <View style={[styles.bubbleRow, mine && { justifyContent: 'flex-end' }]}>
-              <Pressable onLongPress={mine ? () => setEditing(item) : undefined} delayLongPress={400} style={[styles.bubble, mine ? styles.mine : styles.theirs, hasAttachments && styles.wide]}>
+            <View style={[styles.bubbleRow, mine && { alignItems: 'flex-end' }]}>
+              <Pressable onLongPress={mine ? () => setSelected((s) => (s === item.id ? null : item.id)) : undefined} delayLongPress={400} style={[styles.bubble, mine ? styles.mine : styles.theirs, hasAttachments && styles.wide]}>
                 {item.edited_at ? (
                   <View style={styles.edited} accessibilityLabel="edited">
                     <Feather name="edit-2" size={10} color={mine ? 'rgba(255,255,255,0.75)' : colors.muted} />
@@ -138,6 +154,26 @@ export default function ChatScreen() {
                 {hasAttachments && <AttachmentList items={item.attachments} style={{ marginTop: item.body ? spacing.sm : 0 }} />}
                 <Text style={[styles.time, mine && { color: 'rgba(255,255,255,0.7)' }]}>{clock(item.created_at)}</Text>
               </Pressable>
+              {selected === item.id && (
+                <View style={styles.msgActions}>
+                  <Pressable
+                    onPress={() => {
+                      setSelected(null);
+                      setEditing(item);
+                    }}
+                    hitSlop={6}
+                    style={styles.msgAction}
+                    accessibilityLabel="Edit message"
+                  >
+                    <Feather name="edit-2" size={13} color={colors.muted} />
+                    <Text style={styles.msgActionText}>Edit</Text>
+                  </Pressable>
+                  <Pressable onPress={() => remove(item)} hitSlop={6} style={styles.msgAction} accessibilityLabel="Delete message">
+                    <Feather name="trash-2" size={13} color={colors.muted} />
+                    <Text style={styles.msgActionText}>Delete</Text>
+                  </Pressable>
+                </View>
+              )}
             </View>
           );
         }}
@@ -180,7 +216,10 @@ export default function ChatScreen() {
 }
 
 const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  bubbleRow: { flexDirection: 'row', marginBottom: spacing.sm },
+  bubbleRow: { marginBottom: spacing.sm, alignItems: 'flex-start' },
+  msgActions: { flexDirection: 'row', gap: spacing.lg, marginTop: 4, paddingHorizontal: spacing.sm },
+  msgAction: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  msgActionText: { color: colors.muted, fontSize: 12, fontWeight: '600' },
   bubble: { maxWidth: '80%', paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.lg },
   wide: { width: '80%' },
   mine: { backgroundColor: colors.accent, borderBottomRightRadius: 4 },
