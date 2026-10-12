@@ -64,8 +64,11 @@ func (s *server) listFriendRequests(w http.ResponseWriter, r *http.Request, me *
 	return ok(w, map[string][]User{"incoming": incoming, "outgoing": outgoing})
 }
 
+// friendStatusResponse answers a friendship change with the new status.
 func friendStatusResponse(w http.ResponseWriter, status string) error {
-	return ok(w, map[string]string{"friend_status": status})
+	return ok(w, struct {
+		FriendStatus string `json:"friend_status"`
+	}{status})
 }
 
 func (s *server) sendFriendRequest(w http.ResponseWriter, r *http.Request, me *User) error {
@@ -95,7 +98,7 @@ func (s *server) sendFriendRequest(w http.ResponseWriter, r *http.Request, me *U
 	if _, err := s.db.Exec(`INSERT INTO friendships(from_id, to_id, status, created_at) VALUES (?, ?, 'pending', ?)`, me.ID, other, nowString()); err != nil {
 		return err
 	}
-	s.hub.sendTo(other, map[string]any{"type": "friend.request", "user": me})
+	s.hub.sendTo(other, friendEvent{Type: "friend.request", User: me})
 	return friendStatusResponse(w, "outgoing")
 }
 
@@ -119,7 +122,7 @@ func (s *server) acceptFriend(w http.ResponseWriter, me *User, requester User) e
 	if n, _ := res.RowsAffected(); n == 0 {
 		return notFound("no pending request from that user")
 	}
-	s.hub.sendTo(requester.ID, map[string]any{"type": "friend.accepted", "user": me})
+	s.hub.sendTo(requester.ID, friendEvent{Type: "friend.accepted", User: me})
 	return friendStatusResponse(w, "friends")
 }
 

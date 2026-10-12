@@ -12,8 +12,9 @@ import (
 )
 
 // presenceGrace is how long a user stays "online" after their last
-// connection drops, so reconnects do not flicker.
-const presenceGrace = 5 * time.Second
+// connection drops, so reconnects do not flicker. A variable so tests can
+// shorten it.
+var presenceGrace = 5 * time.Second
 
 // hub tracks every live WebSocket connection per user and fans events out.
 type hub struct {
@@ -52,7 +53,7 @@ func (h *hub) add(c *client) {
 	hidden := h.hidden[c.user.ID]
 	h.mu.Unlock()
 	if !wasPresent && !hidden {
-		h.sendAll(map[string]any{"type": "presence", "user_id": c.user.ID, "online": true})
+		h.sendAll(presenceEvent{Type: "presence", UserID: c.user.ID, Online: true})
 	}
 }
 
@@ -76,7 +77,7 @@ func (h *hub) remove(c *client) {
 		delete(h.leaving, id)
 		h.mu.Unlock()
 		if !back && !hidden {
-			h.sendAll(map[string]any{"type": "presence", "user_id": id, "online": false})
+			h.sendAll(presenceEvent{Type: "presence", UserID: id, Online: false})
 		}
 	})
 }
@@ -109,7 +110,7 @@ func (h *hub) setHidden(userID int64, hidden bool) {
 	connected := len(h.users[userID]) > 0 || h.leaving[userID] != nil
 	h.mu.Unlock()
 	if was != hidden && connected {
-		h.sendAll(map[string]any{"type": "presence", "user_id": userID, "online": !hidden})
+		h.sendAll(presenceEvent{Type: "presence", UserID: userID, Online: !hidden})
 	}
 }
 
@@ -235,7 +236,7 @@ func (s *server) handleWS(w http.ResponseWriter, r *http.Request) {
 		ws.Close()
 	}()
 	unread, _ := s.unreadMessages(me.ID)
-	s.hub.sendTo(me.ID, map[string]any{"type": "hello", "user": me, "unread": unread, "online": s.hub.onlineIDs()})
+	s.hub.sendTo(me.ID, helloEvent{Type: "hello", User: me, Unread: unread, Online: s.hub.onlineIDs()})
 	burst, window := 0, time.Now()
 	for {
 		_ = ws.SetReadDeadline(time.Now().Add(wsPongWait))
@@ -253,20 +254,18 @@ func (s *server) handleWS(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// Client -> server messages: {"type":"ping"} and the call.* messages
-// documented in calls.go.
+// handleWSMessage dispatches one client message (see clientMessage in events.go).
 func (s *server) handleWSMessage(c *client, data []byte) {
-	var msg map[string]any
+	var msg clientMessage
 	if err := json.Unmarshal(data, &msg); err != nil {
 		return
 	}
-	typ, _ := msg["type"].(string)
 	switch {
-	case typ == "ping":
-		s.hub.sendTo(c.user.ID, map[string]any{"type": "pong"})
-	case strings.HasPrefix(typ, "call."):
-		s.handleCallMessage(c, typ, msg)
+	case msg.Type == "ping":
+		s.hub.sendTo(c.user.ID, pongEvent{Type: "pong"})
+	case strings.HasPrefix(msg.Type, "call."):
+		s.handleCallMessage(c, msg)
 	default:
-		log.Printf("ws: unknown message type %q from user %d", typ, c.user.ID)
+		log.Printf("ws: unknown message type %q from user %d", msg.Type, c.user.ID)
 	}
 }
