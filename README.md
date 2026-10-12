@@ -25,6 +25,10 @@ web                   # the same app in a browser tab (http://localhost:8081)
 test                  # gofmt, go vet, go test; tsc, eslint, prettier --check
 ```
 
+On Linux the emulator needs `/dev/kvm` access (NixOS: add your user to the
+`kvm` group). If `android` reports that no emulator could be started, run
+`emulator -avd ami` by hand to see the emulator's own error.
+
 `server` runs with `-dev`, which fills an empty database with demo accounts
 (`ana`, `luis`, `sofia`, `diego`, `valentina`, `mateo`, `camila`, `javier`,
 password `amigo-demo`) plus friendships, groups, posts and chats. Log in as
