@@ -24,3 +24,4 @@ server/media/
 .DS_Store
 .idea/
 .vscode/
+server/ami

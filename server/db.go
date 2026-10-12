@@ -81,6 +81,7 @@ CREATE TABLE IF NOT EXISTS messages (
 	sender_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 	recipient_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
 	body         TEXT NOT NULL,
+	attachments  TEXT NOT NULL DEFAULT '[]',
 	created_at   TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS messages_sender ON messages(sender_id, recipient_id, id);
@@ -100,9 +101,11 @@ func openDB(path string) (*sql.DB, error) {
 		return nil, err
 	}
 	// Columns added after the first release; CREATE TABLE IF NOT EXISTS won't add them.
-	if err := addColumn(db, "posts", "attachments", "TEXT NOT NULL DEFAULT '[]'"); err != nil {
-		db.Close()
-		return nil, err
+	for _, table := range []string{"posts", "messages"} {
+		if err := addColumn(db, table, "attachments", "TEXT NOT NULL DEFAULT '[]'"); err != nil {
+			db.Close()
+			return nil, err
+		}
 	}
 	return db, nil
 }

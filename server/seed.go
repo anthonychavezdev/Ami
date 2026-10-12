@@ -113,17 +113,18 @@ var demoPosts = []demoPost{
 }
 
 var demoMessages = []struct {
-	from, to, body string
-	ago            time.Duration
+	from, to, body, image string // image: optional demo picture attached to the message
+	ago                   time.Duration
 }{
-	{"luis", "ana", "¡Hola Ana! ¿Vienes el domingo al fútbol?", 26 * hour},
-	{"ana", "luis", "¡Claro! ¿A qué hora quedamos?", 25 * hour},
-	{"luis", "ana", "A las 10 en el parque. Trae agua 💧", 25*hour - 5*time.Minute},
-	{"ana", "luis", "Perfecto, ahí estaré 🙌", 24 * hour},
-	{"diego", "luis", "Nos vemos el domingo", 7 * hour},
-	{"sofia", "ana", "Te mando la receta de la paella esta noche", 6 * hour},
-	{"ana", "sofia", "¡Gracias! Tengo muchas ganas de probarla", 5 * hour},
-	{"luis", "ana", "¿Probamos una videollamada en Ami?", 30 * time.Minute},
+	{"luis", "ana", "¡Hola Ana! ¿Vienes el domingo al fútbol?", "", 26 * hour},
+	{"ana", "luis", "¡Claro! ¿A qué hora quedamos?", "", 25 * hour},
+	{"luis", "ana", "A las 10 en el parque. Trae agua 💧", "", 25*hour - 5*time.Minute},
+	{"ana", "luis", "Perfecto, ahí estaré 🙌", "", 24 * hour},
+	{"diego", "luis", "Nos vemos el domingo", "", 7 * hour},
+	{"sofia", "ana", "Te mando la receta de la paella esta noche", "", 6 * hour},
+	{"sofia", "ana", "Así quedó la última que hice 🥘", "demo-paella.png", 6*hour - 2*time.Minute},
+	{"ana", "sofia", "¡Gracias! Tengo muchas ganas de probarla", "", 5 * hour},
+	{"luis", "ana", "¿Probamos una videollamada en Ami?", "", 30 * time.Minute},
 }
 
 // seedIfEmpty inserts the demo content when the database has no users yet.
@@ -216,8 +217,13 @@ func (s *server) seedIfEmpty() error {
 		}
 	}
 	for _, m := range demoMessages {
-		if _, err := tx.Exec(`INSERT INTO messages(sender_id, recipient_id, body, created_at) VALUES (?, ?, ?, ?)`,
-			users[m.from], users[m.to], m.body, ts(m.ago)); err != nil {
+		atts := "[]"
+		if m.image != "" {
+			b, _ := json.Marshal([]Attachment{demoImage(m.image)})
+			atts = string(b)
+		}
+		if _, err := tx.Exec(`INSERT INTO messages(sender_id, recipient_id, body, attachments, created_at) VALUES (?, ?, ?, ?, ?)`,
+			users[m.from], users[m.to], m.body, atts, ts(m.ago)); err != nil {
 			return err
 		}
 	}
