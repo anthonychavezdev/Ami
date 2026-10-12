@@ -7,7 +7,7 @@ groups, direct messages, and peer-to-peer voice/video calls with screen sharing.
   `modernc.org/sqlite` (pure-Go SQLite, no cgo). HTTP routing, auth
   (PBKDF2 + session tokens), the WebSocket server (RFC 6455, hand-written) and
   WebRTC signaling are all stdlib.
-- `mobile/` — Expo / React Native app (TypeScript, Expo Router, `react-native-webrtc`).
+- `mobile/` — Expo / React Native app (TypeScript, Expo Router, `react-native-webrtc`); runs on Android, iOS and in the browser.
 - `devenv.nix` — toolchains and env vars. Everything installs inside this repo
   (`.go/`, `.npm/`, `mobile/node_modules/`, `.gradle/`, `.android/`, `.cocoapods/`).
 
@@ -20,6 +20,7 @@ server                # API on :8080   (or `devenv up`)
 android               # build the app, install it on the emulator (created on first run), start Metro
 ios                   # same, in the iOS Simulator (needs Xcode from the App Store)
 mobile                # Metro only — once the app is installed, for day-to-day JS work
+web                   # the same app in a browser tab (http://localhost:8081)
 ```
 
 `server` runs with `-dev`, which fills an empty database with demo accounts
@@ -39,13 +40,19 @@ To point it elsewhere: `EXPO_PUBLIC_API_URL=http://192.168.1.10:8080 npx expo st
 
 ## Production
 
-`build` writes release artifacts to `dist/`; `build server`, `build android` or
-`build ios` makes just one:
+`build` writes release artifacts to `dist/`; `build server`, `build web`,
+`build android` or `build ios` makes just one:
 
 - `dist/ami-server`: static, stripped binary (set `GOOS`/`GOARCH` to cross-compile).
   Run it with `-db /var/lib/ami/ami.db` and either `-tls-cert`/`-tls-key`, or
   behind a TLS-terminating reverse proxy plus `-trust-proxy`. Never pass `-dev`.
-  Other flags: `-addr`, `-allowed-origins` (CORS is off by default).
+  Other flags: `-addr`, `-allowed-origins` (CORS is off by default), `-web-dir`.
+- `dist/web`: the browser build (minified, hashed bundles). Serve it from the
+  same binary with `-web-dir dist/web`: the page then talks to the origin it
+  was loaded from, so no CORS setup is needed. If `EXPO_PUBLIC_API_URL` is set
+  it is baked in instead (then pass `-allowed-origins https://your.site`).
+  Browsers only allow camera and microphone access, so calls, on HTTPS or
+  `localhost`.
 - `dist/ami-release.apk`: minified release build (Hermes bytecode, R8, resource
   shrinking) signed with your keystore, never the debug key. Required:
   `EXPO_PUBLIC_API_URL=https://…` (baked into the app), `AMI_KEYSTORE`,

@@ -92,6 +92,10 @@ in
   scripts.mobile.exec = ''
     cd "$DEVENV_ROOT/mobile" && { [ -d node_modules ] || npm install; } && npx expo start "$@"
   '';
+  # The same app in a browser tab (react-native-web), served by Metro.
+  scripts.web.exec = ''
+    cd "$DEVENV_ROOT/mobile" && { [ -d node_modules ] || npm install; } && npx expo start --web "$@"
+  '';
   # Build the Android development build, install it on the emulator (created on
   # first run; a USB-connected phone takes precedence) and start Metro.
   scripts.android.exec = ''
@@ -121,15 +125,21 @@ in
     set -euo pipefail
     cd "$DEVENV_ROOT" && mkdir -p dist
     target="''${1:-all}"
-    case "$target" in all|server|android|ios) ;; *) echo "usage: build [server|android|ios]" >&2; exit 2 ;; esac
+    case "$target" in all|server|web|android|ios) ;; *) echo "usage: build [server|web|android|ios]" >&2; exit 2 ;; esac
     if [ "$target" = all ] || [ "$target" = server ]; then
       echo "» server -> dist/ami-server (set GOOS/GOARCH to cross-compile, e.g. GOOS=linux GOARCH=amd64)"
       (cd server && CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o ../dist/ami-server .)
     fi
     if [ "$target" = server ]; then exit 0; fi
+    cd mobile && { [ -d node_modules ] || npm install; }
+    if [ "$target" = all ] || [ "$target" = web ]; then
+      echo "» web -> dist/web (API: ''${EXPO_PUBLIC_API_URL:-the origin it is served from}); serve it with: ami-server -web-dir dist/web"
+      rm -rf "$DEVENV_ROOT/dist/web"
+      npx expo export --platform web --output-dir "$DEVENV_ROOT/dist/web"
+    fi
+    if [ "$target" = web ]; then ls -la "$DEVENV_ROOT/dist"; exit 0; fi
     : "''${EXPO_PUBLIC_API_URL:?set EXPO_PUBLIC_API_URL=https://your.server (it is baked into the app)}"
     case "$EXPO_PUBLIC_API_URL" in https://*) ;; *) echo "EXPO_PUBLIC_API_URL must be https:// in production" >&2; exit 1 ;; esac
-    cd mobile && { [ -d node_modules ] || npm install; }
     if [ "$target" = all ] || [ "$target" = android ]; then
       : "''${AMI_KEYSTORE:?path to your release keystore; create one with:
   keytool -genkeypair -v -keystore ami-release.keystore -alias ami -keyalg RSA -keysize 2048 -validity 10000}"
