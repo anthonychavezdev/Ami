@@ -18,7 +18,16 @@ let
   xcodeEnv = ''env -i HOME="$HOME" USER="$USER" TMPDIR="''${TMPDIR:-/tmp}" LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
       PATH="/usr/bin:/bin:/usr/sbin:/sbin:$(dirname "$(command -v node)"):$(dirname "$(command -v npm)"):$(dirname "$(command -v pod)"):$(dirname "$(command -v watchman)")" \
       npm_config_cache="$npm_config_cache" npm_config_prefix="$npm_config_prefix" npm_config_update_notifier=false \
-      CP_HOME_DIR="$CP_HOME_DIR" EXPO_NO_TELEMETRY="$EXPO_NO_TELEMETRY" EXPO_PUBLIC_API_URL="''${EXPO_PUBLIC_API_URL:-}" CI="''${CI:-false}"'';
+      CP_HOME_DIR="$CP_HOME_DIR" EXPO_NO_TELEMETRY="$EXPO_NO_TELEMETRY" CI="''${CI:-false}" \
+      EXPO_PUBLIC_API_URL="''${EXPO_PUBLIC_API_URL:-}" EXPO_PUBLIC_API_PORT="''${EXPO_PUBLIC_API_PORT:-}" REACT_NATIVE_PACKAGER_HOSTNAME="''${REACT_NATIVE_PACKAGER_HOSTNAME:-}"'';
+
+  # Hands the ports and addresses from `env` below to Expo: the app reads
+  # EXPO_PUBLIC_API_PORT (mobile/src/lib/config.ts) and Expo CLI tells phones to
+  # reach Metro at REACT_NATIVE_PACKAGER_HOSTNAME.
+  expoEnv = ''
+    export EXPO_PUBLIC_API_PORT="$AMI_PORT"
+    if [ -n "$AMI_HOST" ]; then export REACT_NATIVE_PACKAGER_HOSTNAME="$AMI_HOST"; fi
+  '';
 in
 {
   # Toolchains. Nothing is installed globally: Go, Node and the Android SDK come
@@ -60,7 +69,19 @@ in
     pkgs.cocoapods # iOS native builds (Xcode itself must come from the App Store)
   ];
 
+  # Ports and addresses. The defaults live here; override them in a gitignored
+  # `.env` at the repo root (NAME=value per line, loaded when you enter the
+  # shell), in devenv.local.nix (`env.AMI_PORT = "9000";`) or for one command:
+  # `AMI_PORT=9000 server`. Unless EXPO_PUBLIC_API_URL says otherwise, the app
+  # calls the API on the machine it was loaded from (the host in the browser's
+  # address bar, or the machine running Metro) at port AMI_PORT.
+  dotenv.enable = true;
   env = {
+    AMI_PORT = lib.mkOptionDefault "8080"; # the Go API, on every interface
+    AMI_METRO_PORT = lib.mkOptionDefault "8081"; # Metro, which also serves the web app; native dev builds bake it in, so rebuild (android/ios) after changing it
+    AMI_HOST = lib.mkOptionDefault ""; # address phones use to reach this machine, when Expo's LAN detection picks the wrong interface (VPNs, several networks)
+    EXPO_PUBLIC_API_URL = lib.mkOptionDefault ""; # full URL of the API when it runs on another machine; release builds require it (https)
+
     # Go: module cache, build cache and `go install` binaries under ./.go
     # (devenv's Go module defaults GOPATH to .devenv/state/go; we keep it all in one place)
     GOPATH = lib.mkForce "${root}/.go";
@@ -91,14 +112,16 @@ in
     (cd "$DEVENV_ROOT/mobile" && npm install)
   '';
   scripts.server.exec = ''
-    cd "$DEVENV_ROOT/server" && go run . -dev "$@"
+    cd "$DEVENV_ROOT/server" && go run . -dev -addr ":$AMI_PORT" "$@"
   '';
   scripts.mobile.exec = ''
-    cd "$DEVENV_ROOT/mobile" && { [ -d node_modules ] || npm install; } && npx expo start "$@"
+    ${expoEnv}
+    cd "$DEVENV_ROOT/mobile" && { [ -d node_modules ] || npm install; } && npx expo start --port "$AMI_METRO_PORT" "$@"
   '';
   # The same app in a browser tab (react-native-web), served by Metro.
   scripts.web.exec = ''
-    cd "$DEVENV_ROOT/mobile" && { [ -d node_modules ] || npm install; } && npx expo start --web "$@"
+    ${expoEnv}
+    cd "$DEVENV_ROOT/mobile" && { [ -d node_modules ] || npm install; } && npx expo start --web --port "$AMI_METRO_PORT" "$@"
   '';
   # Build the Android development build, install it on the emulator (created on
   # first run; a USB-connected phone takes precedence) and start Metro.
@@ -108,7 +131,8 @@ in
       echo "Creating emulator 'ami' (${systemImage})..."
       echo no | avdmanager create avd -n ami -d pixel_7 -k "${systemImage}"
     fi
-    npx expo run:android "$@"
+    ${expoEnv}
+    npx expo run:android --port "$AMI_METRO_PORT" "$@"
   '';
   # Same for the iOS Simulator. Nix cannot provide Xcode, so check for it first.
   scripts.ios.exec = ''
@@ -118,7 +142,8 @@ in
       exit 1
     fi
     cd "$DEVENV_ROOT/mobile" && { [ -d node_modules ] || npm install; }
-    exec ${xcodeEnv} npx expo run:ios "$@"
+    ${expoEnv}
+    exec ${xcodeEnv} npx expo run:ios --port "$AMI_METRO_PORT" "$@"
   '';
   # Production artifacts into ./dist. `build` makes all of them; `build server`,
   # `build android` or `build ios` makes one.
@@ -178,5 +203,5 @@ in
   '';
 
   # `devenv up` runs the Go API with process-compose.
-  processes.server.exec = "cd $DEVENV_ROOT/server && go run . -dev -addr :8080 -db ami.db";
+  processes.server.exec = "cd $DEVENV_ROOT/server && go run . -dev -addr :$AMI_PORT -db ami.db";
 }
