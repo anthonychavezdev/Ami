@@ -13,6 +13,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -34,6 +35,7 @@ func main() {
 	trustProxy := flag.Bool("trust-proxy", false, "take client IPs from X-Forwarded-For (only behind a trusted reverse proxy)")
 	tlsCert := flag.String("tls-cert", "", "serve HTTPS with this certificate file (needs -tls-key)")
 	tlsKey := flag.String("tls-key", "", "private key for -tls-cert")
+	webDir := flag.String("web-dir", "", "serve the browser build from this directory (see `build web`)")
 	flag.Parse()
 
 	db, err := openDB(*dbPath)
@@ -60,6 +62,12 @@ func main() {
 	}
 	mux := http.NewServeMux()
 	s.routes(mux)
+	if *webDir != "" {
+		if _, err := os.Stat(filepath.Join(*webDir, "index.html")); err != nil {
+			log.Fatalf("web dir: %v (build it with `build web`)", err)
+		}
+		mux.Handle("/", webApp(*webDir))
+	}
 
 	srv := &http.Server{
 		Addr:              *addr,
