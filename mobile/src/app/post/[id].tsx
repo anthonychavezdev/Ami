@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Composer } from '@/components/Composer';
+import { contextMenuProps, pressPoint, useContextMenu, type MenuItem } from '@/components/ContextMenu';
 import { PostCard } from '@/components/PostCard';
 import { Avatar, Empty, ErrorBanner, Loading } from '@/components/ui';
 import { api } from '@/lib/api';
@@ -49,6 +50,8 @@ export default function PostScreen() {
   const [comments, setComments] = useState<Comment[]>([]);
   const [replyTo, setReplyTo] = useState<Comment | null>(null);
   const [editing, setEditing] = useState<Comment | null>(null);
+  const [hoveredId, setHoveredId] = useState<number | null>(null); // web: comment showing the ⋯ button
+  const { open: openMenu, menu } = useContextMenu();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const threaded = useMemo(() => thread(comments), [comments]);
@@ -117,6 +120,20 @@ export default function PostScreen() {
       }
     });
 
+  // Web menu (right-click or ⋯): Reply, plus Edit and Delete on your own comments.
+  const commentMenu = (c: Comment): MenuItem[] =>
+    c.deleted
+      ? []
+      : [
+          { label: 'Reply', icon: 'corner-down-right', onPress: () => startReply(c) },
+          ...(c.author.id === me?.id
+            ? [
+                { label: 'Edit', icon: 'edit-2', onPress: () => startEdit(c) } as MenuItem,
+                { label: 'Delete', icon: 'trash-2', danger: true, onPress: () => remove(c) } as MenuItem,
+              ]
+            : []),
+        ];
+
   if (loading) return <Loading />;
   if (!post) return <Empty text={error ?? 'Post not found'} />;
 
@@ -136,7 +153,12 @@ export default function PostScreen() {
         renderItem={({ item }) => {
           const mine = !item.deleted && item.author.id === me?.id;
           return (
-            <View style={[styles.comment, { marginLeft: spacing.lg + Math.min(item.depth, 6) * 14 }, item.depth > 0 && styles.nested]}>
+            <View
+              style={[styles.comment, { marginLeft: spacing.lg + Math.min(item.depth, 6) * 14 }, item.depth > 0 && styles.nested]}
+              onPointerEnter={() => setHoveredId(item.id)}
+              onPointerLeave={() => setHoveredId((h) => (h === item.id ? null : h))}
+              {...(item.deleted ? {} : contextMenuProps((x, y) => openMenu(commentMenu(item), x, y)))}
+            >
               {item.deleted ? (
                 <View style={styles.deletedAvatar}>
                   <Feather name="user" size={16} color={colors.muted} />
@@ -145,7 +167,7 @@ export default function PostScreen() {
                 <Avatar user={item.author} size={32} />
               )}
               <View style={{ flex: 1 }}>
-                <Text style={styles.meta}>
+                <Text style={[styles.meta, { paddingRight: 24 }]}>
                   <Text style={[styles.name, item.deleted && styles.deletedText]}>{item.author.display_name}</Text> · {timeAgo(item.created_at)}
                   {item.edited_at ? (
                     <Text accessibilityLabel="edited">
@@ -155,6 +177,11 @@ export default function PostScreen() {
                   ) : null}
                 </Text>
                 <Text style={[styles.body, item.deleted && styles.deletedText]}>{item.body}</Text>
+                {Platform.OS === 'web' && !item.deleted && hoveredId === item.id && (
+                  <Pressable onPress={(e) => openMenu(commentMenu(item), pressPoint(e).x, pressPoint(e).y)} hitSlop={8} style={styles.dots} accessibilityLabel="Comment options">
+                    <Feather name="more-horizontal" size={18} color={colors.muted} />
+                  </Pressable>
+                )}
                 {!item.deleted && (
                   <View style={styles.actions}>
                     <Pressable onPress={() => startReply(item)} hitSlop={6} style={styles.action} accessibilityLabel="Reply">
@@ -222,6 +249,7 @@ export default function PostScreen() {
           setReplyTo(null);
         }}
       />
+      {menu}
     </KeyboardAvoidingView>
   );
 }
@@ -236,6 +264,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   deletedText: { color: colors.muted, fontStyle: 'italic', fontWeight: '400' },
   deletedAvatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   actions: { flexDirection: 'row', gap: spacing.lg, marginTop: 4 },
+  dots: { position: 'absolute', right: 0, top: 0 },
   action: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   actionText: { color: colors.muted, fontSize: 12, fontWeight: '600' },
   bar: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, backgroundColor: colors.card, borderTopWidth: 1, borderTopColor: colors.border, borderRadius: radius.sm },

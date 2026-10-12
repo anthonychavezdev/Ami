@@ -5,6 +5,7 @@ import { AppState, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleShe
 
 import { AttachmentList } from '@/components/Attachments';
 import { Composer } from '@/components/Composer';
+import { contextMenuProps, pressPoint, useContextMenu, type MenuItem } from '@/components/ContextMenu';
 import { Empty, Loading } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
@@ -32,9 +33,7 @@ export default function ChatScreen() {
   const [editing, setEditing] = useState<Message | null>(null); // my message being edited
   const [selected, setSelected] = useState<number | null>(null); // my message showing Edit / Delete
   const [hovered, setHovered] = useState<number | null>(null); // web: bubble under the mouse (shows the dots)
-  const [menu, setMenu] = useState<{ id: number; x: number; y: number } | null>(null); // web: context menu
-  const rootRef = useRef<View>(null);
-  const rootSize = useRef({ width: 0, height: 0 });
+  const { open: openMenu, menu } = useContextMenu();
   const list = useRef<FlatList<Message>>(null);
   const loaded = messages !== null;
 
@@ -93,32 +92,11 @@ export default function ChatScreen() {
   );
   useEffect(() => socket.on('message.deleted', (e) => setMessages((prev) => prev?.filter((x) => x.id !== e.id) ?? prev)), []);
 
-  // Web: right-clicking one of my bubbles (they carry a msg-<id> DOM id) opens the menu.
-  useEffect(() => {
-    if (Platform.OS !== 'web' || !loaded) return;
-    const root = rootRef.current as unknown as HTMLElement | null;
-    if (!root?.addEventListener) return;
-    const onContextMenu = (e: MouseEvent) => {
-      const el = (e.target as HTMLElement | null)?.closest?.('[id^="msg-"]');
-      if (!el) return;
-      e.preventDefault();
-      openMenu(Number(el.id.slice(4)), e.clientX, e.clientY);
-    };
-    root.addEventListener('contextmenu', onContextMenu);
-    return () => root.removeEventListener('contextmenu', onContextMenu);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loaded]);
-
-  // Places the menu at a viewport point, kept inside the screen.
-  const openMenu = (id: number, clientX: number, clientY: number) => {
-    const root = rootRef.current as unknown as HTMLElement | null;
-    const rect = root?.getBoundingClientRect?.() ?? { left: 0, top: 0 };
-    const x = Math.max(0, Math.min(clientX - rect.left, rootSize.current.width - 150));
-    const y = Math.max(0, Math.min(clientY - rect.top, rootSize.current.height - 90));
-    setSelected(null);
-    setMenu({ id, x, y });
-  };
-  const menuMessage = menu ? messages?.find((x) => x.id === menu.id) : undefined;
+  // Web menu (right-click or ⋯) for my messages.
+  const messageMenu = (m: Message): MenuItem[] => [
+    { label: 'Edit', icon: 'edit-2', onPress: () => setEditing(m) },
+    { label: 'Delete', icon: 'trash-2', danger: true, onPress: () => remove(m) },
+  ];
 
   const remove = (m: Message) =>
     confirmAction('Delete message?', m.body || 'picture', 'Delete', async () => {
@@ -149,7 +127,7 @@ export default function ChatScreen() {
 
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }} keyboardVerticalOffset={90}>
-      <View ref={rootRef} style={{ flex: 1 }} onLayout={(e) => (rootSize.current = { width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}>
+      <View style={{ flex: 1 }}>
         <Stack.Screen
           options={{
             title: other.display_name,
@@ -176,23 +154,15 @@ export default function ChatScreen() {
             return (
               <View style={[styles.bubbleRow, mine && { alignItems: 'flex-end' }]}>
                 <Pressable
-                  nativeID={mine ? `msg-${item.id}` : undefined}
+                  {...(mine ? contextMenuProps((x, y) => openMenu(messageMenu(item), x, y)) : {})}
                   onLongPress={mine ? () => setSelected((s) => (s === item.id ? null : item.id)) : undefined}
                   delayLongPress={400}
                   onHoverIn={mine ? () => setHovered(item.id) : undefined}
                   onHoverOut={mine ? () => setHovered((h) => (h === item.id ? null : h)) : undefined}
                   style={[styles.bubble, mine ? styles.mine : styles.theirs, hasAttachments && styles.wide]}
                 >
-                  {mine && Platform.OS === 'web' && (hovered === item.id || menu?.id === item.id) && (
-                    <Pressable
-                      onPress={(e) => {
-                        const ne = e.nativeEvent as unknown as { clientX?: number; pageX?: number; clientY?: number; pageY?: number };
-                        openMenu(item.id, ne.clientX ?? ne.pageX ?? 0, ne.clientY ?? ne.pageY ?? 0);
-                      }}
-                      hitSlop={6}
-                      style={styles.dots}
-                      accessibilityLabel="Message options"
-                    >
+                  {mine && Platform.OS === 'web' && hovered === item.id && (
+                    <Pressable onPress={(e) => openMenu(messageMenu(item), pressPoint(e).x, pressPoint(e).y)} hitSlop={6} style={styles.dots} accessibilityLabel="Message options">
                       <Feather name="more-horizontal" size={18} color={colors.muted} />
                     </Pressable>
                   )}
@@ -263,35 +233,7 @@ export default function ChatScreen() {
             }
           }}
         />
-        {menuMessage && (
-          <>
-            <Pressable style={StyleSheet.absoluteFill} onPress={() => setMenu(null)} accessibilityLabel="Close menu" />
-            <View style={[styles.ctxMenu, { left: menu!.x, top: menu!.y }]}>
-              <Pressable
-                onPress={() => {
-                  setMenu(null);
-                  setEditing(menuMessage);
-                }}
-                style={({ pressed }) => [styles.ctxItem, pressed && { backgroundColor: colors.bg }]}
-                accessibilityLabel="Edit message"
-              >
-                <Feather name="edit-2" size={14} color={colors.text} />
-                <Text style={styles.ctxText}>Edit</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => {
-                  setMenu(null);
-                  remove(menuMessage);
-                }}
-                style={({ pressed }) => [styles.ctxItem, pressed && { backgroundColor: colors.bg }]}
-                accessibilityLabel="Delete message"
-              >
-                <Feather name="trash-2" size={14} color={colors.danger} />
-                <Text style={[styles.ctxText, { color: colors.danger }]}>Delete</Text>
-              </Pressable>
-            </View>
-          </>
-        )}
+        {menu}
       </View>
     </KeyboardAvoidingView>
   );
@@ -301,9 +243,6 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   bubbleRow: { marginBottom: spacing.sm, alignItems: 'flex-start' },
   msgActions: { flexDirection: 'row', gap: spacing.lg, marginTop: 4, paddingHorizontal: spacing.sm },
   dots: { position: 'absolute', left: -30, top: 0, bottom: 0, width: 26, alignItems: 'center', justifyContent: 'center' },
-  ctxMenu: { position: 'absolute', width: 150, backgroundColor: colors.card, borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, paddingVertical: 4, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 6, zIndex: 50 },
-  ctxItem: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.md, paddingVertical: spacing.sm },
-  ctxText: { color: colors.text, fontSize: 14 },
   msgAction: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   msgActionText: { color: colors.muted, fontSize: 12, fontWeight: '600' },
   bubble: { maxWidth: '80%', paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.lg },
