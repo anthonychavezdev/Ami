@@ -5,6 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Button, ErrorBanner, Input } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
+import { setupNotifications } from '@/lib/notifications';
 import { useStyles } from '@/lib/theme';
 import { spacing, type ThemeColors } from '@/theme';
 
@@ -17,6 +18,7 @@ export default function LoginScreen() {
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
+    if (Platform.OS === 'web') void setupNotifications(); // browsers only ask on a click
     setBusy(true);
     setError(null);
     try {

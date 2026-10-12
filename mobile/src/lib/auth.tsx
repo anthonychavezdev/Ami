@@ -2,7 +2,9 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 
 import { api, setAuthToken } from './api';
 import type { User } from './types';
+import { setupNotifications, teardownNotifications } from './notifications';
 import { storage } from './storage';
+import { unread } from './unread';
 import { socket } from './ws';
 
 const TOKEN_KEY = 'ami.token';
@@ -24,8 +26,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const establish = useCallback(async (token: string, u: User) => {
     setAuthToken(token);
     await storage.set(TOKEN_KEY, token);
+    unread.setUser(u.id);
     socket.connect(token);
     setUser(u);
+    void setupNotifications();
   }, []);
 
   useEffect(() => {
@@ -35,8 +39,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (token) {
           setAuthToken(token);
           const u = await api.me();
+          unread.setUser(u.id);
           socket.connect(token);
           setUser(u);
+          void setupNotifications();
         }
       } catch {
         setAuthToken(null);
@@ -60,7 +66,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await establish(r.token, r.user);
       },
       logout: async () => {
+        await teardownNotifications().catch(() => {});
         await api.logout().catch(() => {});
+        unread.setUser(null);
         socket.disconnect();
         setAuthToken(null);
         await storage.remove(TOKEN_KEY).catch(() => {});
