@@ -43,7 +43,7 @@ func scanComment(sc interface{ Scan(...any) error }) (Comment, error) {
 	var c Comment
 	var deleted *string
 	err := sc.Scan(&c.ID, &c.PostID, &c.ParentID, &c.Body, &c.CreatedAt, &c.EditedAt, &deleted,
-		&c.Author.ID, &c.Author.Username, &c.Author.DisplayName, &c.Author.CreatedAt, &c.Author.AvatarURL, &c.Author.Pronouns)
+		&c.Author.ID, &c.Author.Username, &c.Author.DisplayName, &c.Author.CreatedAt, &c.Author.AvatarURL, &c.Author.Pronouns, &c.Author.AvatarCrop)
 	if deleted != nil {
 		c.Deleted, c.Body, c.EditedAt, c.Author = true, "[deleted]", nil, deletedUser
 	}
@@ -81,7 +81,7 @@ func scanPost(sc interface{ Scan(...any) error }) (Post, error) {
 	var p Post
 	var reactions, attachments string
 	err := sc.Scan(&p.ID, &p.Body, &attachments, &p.CreatedAt, &p.EditedAt, &p.GroupID, &p.GroupName,
-		&p.Author.ID, &p.Author.Username, &p.Author.DisplayName, &p.Author.CreatedAt, &p.Author.AvatarURL, &p.Author.Pronouns,
+		&p.Author.ID, &p.Author.Username, &p.Author.DisplayName, &p.Author.CreatedAt, &p.Author.AvatarURL, &p.Author.Pronouns, &p.Author.AvatarCrop,
 		&p.CommentCount, &reactions, &p.MyReaction)
 	if err != nil {
 		return p, err
