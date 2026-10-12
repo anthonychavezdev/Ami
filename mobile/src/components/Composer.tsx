@@ -23,6 +23,7 @@ export function Composer({
   compact = false,
   rich = false,
   media = false,
+  inputRef,
 }: {
   placeholder: string;
   buttonTitle?: string;
@@ -31,6 +32,7 @@ export function Composer({
   compact?: boolean;
   rich?: boolean;
   media?: boolean;
+  inputRef?: React.RefObject<TextInput | null>; // lets a parent focus the box
 }) {
   const allowMedia = rich || media;
   const styles = useStyles(makeStyles);
@@ -150,7 +152,10 @@ export function Composer({
       <View style={compact ? styles.row : styles.column}>
         {compact && allowMedia && <Tool icon="image" label="Add picture or video" onPress={() => void pickMedia()} />}
         <Input
-          ref={input}
+          ref={(el: TextInput | null) => {
+            input.current = el;
+            if (inputRef) inputRef.current = el;
+          }}
           value={text}
           onChangeText={setText}
           placeholder={placeholder}

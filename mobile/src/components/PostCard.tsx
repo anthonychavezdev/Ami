@@ -20,12 +20,14 @@ export function PostCard({
   post,
   onChange,
   onDelete,
+  onComment,
   canDelete,
   showGroup = true,
 }: {
   post: Post;
   onChange: (p: Post) => void;
   onDelete?: (id: number) => void;
+  onComment?: () => void; // on the post screen: focus the comment box instead of opening the post
   canDelete?: boolean;
   showGroup?: boolean;
 }) {
@@ -109,7 +111,7 @@ export function PostCard({
 
       <View style={styles.footer}>
         <ReactionButton current={post.my_reaction} onReact={react} />
-        <Pressable onPress={() => router.push(`/post/${post.id}`)} style={styles.commentBtn}>
+        <Pressable onPress={onComment ?? (() => router.push(`/post/${post.id}`))} style={styles.commentBtn}>
           <Feather name="message-circle" size={16} color={colors.muted} />
           <Text style={styles.commentText}>{post.comment_count > 0 ? `${post.comment_count} ` : ''}Comment</Text>
         </Pressable>
