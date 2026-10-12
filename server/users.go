@@ -5,6 +5,50 @@ import (
 	"strings"
 )
 
+// User is what everyone sees of an account. Me adds the private settings,
+// UserProfile what a profile page shows.
+type User struct {
+	ID          int64      `json:"id"`
+	Username    string     `json:"username"`
+	DisplayName string     `json:"display_name"`
+	CreatedAt   string     `json:"created_at"`
+	AvatarURL   string     `json:"avatar_url,omitempty"` // an uploaded picture under /media, or empty for initials
+	AvatarCrop  AvatarCrop `json:"avatar_crop"`          // the part of the picture shown in the circle (W == 0: whole picture, centred)
+	Pronouns    string     `json:"pronouns,omitempty"`
+	Online      bool       `json:"online"` // has a live connection; filled in by markPresence (presence.go) on output
+}
+
+// userCols selects a User from the users table (alias u); fields() scans it.
+// A new column goes in both, in the same position, and in the schema (db.go).
+const userCols = `u.id, u.username, u.display_name, u.created_at, u.avatar_url, u.pronouns, u.avatar_crop`
+
+// fields are the scan targets for userCols, in that order.
+func (u *User) fields() []any {
+	return []any{&u.ID, &u.Username, &u.DisplayName, &u.CreatedAt, &u.AvatarURL, &u.Pronouns, &u.AvatarCrop}
+}
+
+func scanUser(sc scanner) (User, error) {
+	var u User
+	return u, sc.Scan(u.fields()...)
+}
+
+func (s *server) userByID(id int64) (User, error) {
+	return scanUser(s.db.QueryRow(`SELECT `+userCols+` FROM users u WHERE u.id = ?`, id))
+}
+
+// Me is the caller's own user with private settings and the full profile.
+type Me struct {
+	User
+	Invisible bool   `json:"invisible"` // appear offline to everyone
+	Bio       string `json:"bio"`
+}
+
+func (s *server) meFor(u User) Me {
+	m := Me{User: u}
+	_ = s.db.QueryRow(`SELECT invisible, bio FROM users WHERE id = ?`, u.ID).Scan(&m.Invisible, &m.Bio)
+	return m
+}
+
 type UserProfile struct {
 	User
 	Bio          string `json:"bio"`

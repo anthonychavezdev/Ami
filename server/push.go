@@ -73,7 +73,7 @@ func messageNotification(from *User, m Message, groupName string) notification {
 func (s *server) pushMessage(to int64, from *User, m Message, unread int) {
 	groupName := ""
 	if m.GroupID != nil {
-		groupName, _ = s.groupSummary(*m.GroupID)["name"].(string)
+		groupName = s.groupSummary(*m.GroupID).Name
 	}
 	s.push(to, messageNotification(from, m, groupName), unread)
 }

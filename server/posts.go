@@ -50,9 +50,8 @@ LEFT JOIN groups g ON g.id = p.group_id
 func scanPost(sc scanner) (Post, error) {
 	var p Post
 	var reactions, attachments string
-	err := sc.Scan(&p.ID, &p.Body, &attachments, &p.CreatedAt, &p.EditedAt, &p.GroupID, &p.GroupName,
-		&p.Author.ID, &p.Author.Username, &p.Author.DisplayName, &p.Author.CreatedAt, &p.Author.AvatarURL, &p.Author.Pronouns, &p.Author.AvatarCrop,
-		&p.CommentCount, &reactions, &p.MyReaction)
+	err := sc.Scan(fields([]any{&p.ID, &p.Body, &attachments, &p.CreatedAt, &p.EditedAt, &p.GroupID, &p.GroupName},
+		p.Author.fields(), []any{&p.CommentCount, &reactions, &p.MyReaction})...)
 	if err != nil {
 		return p, err
 	}
@@ -120,7 +119,7 @@ func (s *server) broadcastPost(typ string, id int64) {
 			continue
 		}
 		if p, err := s.getPost(uid, id); err == nil {
-			s.hub.sendTo(uid, map[string]any{"type": typ, "post": p})
+			s.hub.sendTo(uid, postEvent{Type: typ, Post: p})
 		}
 	}
 }
@@ -253,7 +252,7 @@ func (s *server) deletePost(w http.ResponseWriter, r *http.Request, me *User) er
 	if _, err := s.db.Exec(`DELETE FROM posts WHERE id = ?`, id); err != nil {
 		return err
 	}
-	s.hub.sendToMany(audience, map[string]any{"type": "post.deleted", "id": id, "group_id": o.groupID})
+	s.hub.sendToMany(audience, postDeletedEvent{Type: "post.deleted", ID: id, GroupID: o.groupID})
 	return noContent(w)
 }
 
@@ -316,8 +315,7 @@ const commentCols = `c.id, c.post_id, c.parent_id, c.body, c.created_at, c.edite
 func scanComment(sc scanner) (Comment, error) {
 	var c Comment
 	var deleted *string
-	err := sc.Scan(&c.ID, &c.PostID, &c.ParentID, &c.Body, &c.CreatedAt, &c.EditedAt, &deleted,
-		&c.Author.ID, &c.Author.Username, &c.Author.DisplayName, &c.Author.CreatedAt, &c.Author.AvatarURL, &c.Author.Pronouns, &c.Author.AvatarCrop)
+	err := sc.Scan(fields([]any{&c.ID, &c.PostID, &c.ParentID, &c.Body, &c.CreatedAt, &c.EditedAt, &deleted}, c.Author.fields())...)
 	if deleted != nil {
 		c.Deleted, c.Body, c.EditedAt, c.Author = true, "[deleted]", nil, deletedUser
 	}
@@ -415,7 +413,7 @@ func (s *server) createComment(w http.ResponseWriter, r *http.Request, me *User)
 		return err
 	}
 	c.ID, _ = res.LastInsertId()
-	s.hub.sendToMany(s.postAudience(o.author, o.groupID), map[string]any{"type": "comment.created", "comment": c})
+	s.hub.sendToMany(s.postAudience(o.author, o.groupID), commentEvent{Type: "comment.created", Comment: c})
 	s.broadcastPost("post.updated", id)
 	return created(w, c)
 }
@@ -446,7 +444,7 @@ func (s *server) updateComment(w http.ResponseWriter, r *http.Request, me *User)
 	if err != nil {
 		return err
 	}
-	s.hub.sendToMany(s.commentAudience(c.PostID), map[string]any{"type": "comment.updated", "comment": c})
+	s.hub.sendToMany(s.commentAudience(c.PostID), commentEvent{Type: "comment.updated", Comment: c})
 	return ok(w, c)
 }
 
@@ -465,7 +463,7 @@ func (s *server) deleteComment(w http.ResponseWriter, r *http.Request, me *User)
 	if err := s.removeComment(c); err != nil {
 		return err
 	}
-	s.hub.sendToMany(s.commentAudience(c.PostID), map[string]any{"type": "comment.deleted", "post_id": c.PostID, "id": id})
+	s.hub.sendToMany(s.commentAudience(c.PostID), commentDeletedEvent{Type: "comment.deleted", PostID: c.PostID, ID: id})
 	s.broadcastPost("post.updated", c.PostID)
 	return noContent(w)
 }

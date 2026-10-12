@@ -117,6 +117,11 @@ func pagination(r *http.Request) (before, limit int64) {
 
 func clampLen(s string, max int) bool { return len(s) > 0 && len(s) <= max }
 
+// unreadCount is the answer of the read-marker routes.
+type unreadCount struct {
+	Unread int `json:"unread"`
+}
+
 // jsonString encodes v for a JSON text column.
 func jsonString(v any) string {
 	b, _ := json.Marshal(v)
@@ -144,6 +149,16 @@ func without[T comparable](xs []T, x T) []T {
 }
 
 // ---- database helpers
+
+// fields joins groups of scan targets, so a row that spans several structs
+// (a message and its sender, say) is scanned through each struct's own list.
+func fields(groups ...[]any) []any {
+	var out []any
+	for _, g := range groups {
+		out = append(out, g...)
+	}
+	return out
+}
 
 type scanner = interface{ Scan(dest ...any) error }
 
@@ -177,8 +192,10 @@ func queryIDs(db *sql.DB, query string, args ...any) []int64 {
 }
 
 // inTx runs fn in a transaction that is committed when fn returns nil.
-func (s *server) inTx(fn func(tx *sql.Tx) error) error {
-	tx, err := s.db.Begin()
+func (s *server) inTx(fn func(tx *sql.Tx) error) error { return inTx(s.db, fn) }
+
+func inTx(db *sql.DB, fn func(tx *sql.Tx) error) error {
+	tx, err := db.Begin()
 	if err != nil {
 		return err
 	}

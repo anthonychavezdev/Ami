@@ -2,10 +2,14 @@ package main
 
 import (
 	"database/sql"
+	"fmt"
+	"log"
 
 	_ "modernc.org/sqlite" // pure-Go SQLite driver (the only non-stdlib dependency)
 )
 
+// schema is what a new database gets: every table and index of the current
+// version. An existing database is brought here by the migrations below.
 const schema = `
 CREATE TABLE IF NOT EXISTS users (
 	id            INTEGER PRIMARY KEY,
@@ -13,7 +17,7 @@ CREATE TABLE IF NOT EXISTS users (
 	display_name  TEXT NOT NULL,
 	password_hash BLOB NOT NULL,
 	salt          BLOB NOT NULL,
-	password_iterations INTEGER NOT NULL DEFAULT 210000,
+	password_iterations INTEGER NOT NULL DEFAULT 210000, -- the count of the first release; login upgrades it (sessions.go)
 	invisible     INTEGER NOT NULL DEFAULT 0,
 	avatar_url    TEXT NOT NULL DEFAULT '',
 	bio           TEXT NOT NULL DEFAULT '',
@@ -123,30 +127,28 @@ CREATE TABLE IF NOT EXISTS push_tokens (
 CREATE INDEX IF NOT EXISTS push_tokens_user ON push_tokens(user_id);
 `
 
-// Columns added after the first release; CREATE TABLE IF NOT EXISTS won't add
-// them to a database that already exists.
-var addedColumns = []struct{ table, column, definition string }{
-	{"posts", "attachments", "TEXT NOT NULL DEFAULT '[]'"},
-	{"posts", "edited_at", "TEXT"},
-	{"messages", "attachments", "TEXT NOT NULL DEFAULT '[]'"},
-	{"messages", "edited_at", "TEXT"},
-	{"users", "password_iterations", "INTEGER NOT NULL DEFAULT 210000"},
-	{"users", "invisible", "INTEGER NOT NULL DEFAULT 0"},
-	{"users", "avatar_url", "TEXT NOT NULL DEFAULT ''"},
-	{"users", "bio", "TEXT NOT NULL DEFAULT ''"},
-	{"users", "pronouns", "TEXT NOT NULL DEFAULT ''"},
-	{"users", "avatar_crop", "TEXT NOT NULL DEFAULT ''"},
-	{"comments", "parent_id", "INTEGER"},
-	{"comments", "edited_at", "TEXT"},
-	{"comments", "deleted_at", "TEXT"},
-	{"groups", "private", "INTEGER NOT NULL DEFAULT 0"},
-}
-
-// Indexes on added columns, created only once those columns exist.
+// lateIndexes are on columns that older databases gain in migration 1, so
+// they are created after those columns exist.
 const lateIndexes = `
 CREATE INDEX IF NOT EXISTS comments_parent ON comments(parent_id);
 CREATE INDEX IF NOT EXISTS messages_group ON messages(group_id, id);
 `
+
+// A database records its schema version in PRAGMA user_version. A new
+// database gets `schema` and the latest version at once; an existing one
+// runs every migration past its version, in order, each in a transaction.
+//
+// To change the schema: edit `schema` (what new databases get) and append a
+// migration that brings an existing database to the same place. The version
+// number is the migration's position, so nothing else needs bumping.
+var migrations = []migration{
+	{"everything up to group chats", upgradeUnversioned},
+}
+
+type migration struct {
+	name string
+	run  func(tx *sql.Tx) error
+}
 
 func openDB(path string) (*sql.DB, error) {
 	dsn := "file:" + path + "?_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)&_pragma=busy_timeout(5000)"
@@ -165,17 +167,103 @@ func openDB(path string) (*sql.DB, error) {
 
 // migrate brings a database of any earlier version up to date.
 func migrate(db *sql.DB) error {
-	hadReads := tableExists(db, "conversation_reads")
+	version, err := userVersion(db)
+	if err != nil {
+		return err
+	}
+	if version == 0 && !tableExists(db, "users") { // a new database
+		if err := exec(db, schema+lateIndexes); err != nil {
+			return err
+		}
+		return setUserVersion(db, len(migrations))
+	}
+	for ; version < len(migrations); version++ {
+		m := migrations[version]
+		err := inTx(db, func(tx *sql.Tx) error {
+			if err := m.run(tx); err != nil {
+				return err
+			}
+			return setUserVersion(tx, version+1)
+		})
+		if err != nil {
+			return fmt.Errorf("migration %d (%s): %w", version+1, m.name, err)
+		}
+		log.Printf("db: migrated to version %d (%s)", version+1, m.name)
+	}
+	return nil
+}
+
+// dbtx is what *sql.DB and *sql.Tx have in common.
+type dbtx interface {
+	Exec(query string, args ...any) (sql.Result, error)
+	QueryRow(query string, args ...any) *sql.Row
+}
+
+func exec(db dbtx, statements string) error {
+	_, err := db.Exec(statements)
+	return err
+}
+
+func userVersion(db dbtx) (int, error) {
+	var v int
+	err := db.QueryRow(`PRAGMA user_version`).Scan(&v)
+	return v, err
+}
+
+func setUserVersion(db dbtx, v int) error {
+	return exec(db, fmt.Sprintf(`PRAGMA user_version = %d`, v))
+}
+
+func tableExists(db dbtx, name string) bool {
+	var n int
+	_ = db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, name).Scan(&n)
+	return n > 0
+}
+
+func columnExists(db dbtx, table, column string) bool {
+	var n int
+	_ = db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name = ?`, table, column).Scan(&n)
+	return n > 0
+}
+
+// ---- migration 1
+
+// Columns added between the first release and group chats; CREATE TABLE IF
+// NOT EXISTS does not add them to a table that already exists.
+var addedColumns = []struct{ table, column, definition string }{
+	{"posts", "attachments", "TEXT NOT NULL DEFAULT '[]'"},
+	{"posts", "edited_at", "TEXT"},
+	{"messages", "attachments", "TEXT NOT NULL DEFAULT '[]'"},
+	{"messages", "edited_at", "TEXT"},
+	{"users", "password_iterations", "INTEGER NOT NULL DEFAULT 210000"},
+	{"users", "invisible", "INTEGER NOT NULL DEFAULT 0"},
+	{"users", "avatar_url", "TEXT NOT NULL DEFAULT ''"},
+	{"users", "bio", "TEXT NOT NULL DEFAULT ''"},
+	{"users", "pronouns", "TEXT NOT NULL DEFAULT ''"},
+	{"users", "avatar_crop", "TEXT NOT NULL DEFAULT ''"},
+	{"comments", "parent_id", "INTEGER"},
+	{"comments", "edited_at", "TEXT"},
+	{"comments", "deleted_at", "TEXT"},
+	{"groups", "private", "INTEGER NOT NULL DEFAULT 0"},
+}
+
+// upgradeUnversioned brings a database from before versioning (any release up
+// to group chats) to version 1. Those databases were upgraded piecemeal, so
+// each step checks what is missing: tables, columns added after the first
+// release, the messages table rebuilt for group chats, and read markers for
+// chats older than unread tracking.
+func upgradeUnversioned(tx *sql.Tx) error {
+	hadReads := tableExists(tx, "conversation_reads")
 	steps := []func() error{
-		func() error { return exec(db, schema) },
-		func() error { return addColumns(db) },
-		func() error { return migrateMessages(db) },
-		func() error { return exec(db, lateIndexes) },
+		func() error { return exec(tx, schema) },
+		func() error { return addColumns(tx) },
+		func() error { return rebuildMessages(tx) },
+		func() error { return exec(tx, lateIndexes) },
 		func() error {
 			if hadReads {
 				return nil
 			}
-			return markOldChatsRead(db)
+			return markOldChatsRead(tx)
 		},
 	}
 	for _, step := range steps {
@@ -186,52 +274,30 @@ func migrate(db *sql.DB) error {
 	return nil
 }
 
-func exec(db *sql.DB, statements string) error {
-	_, err := db.Exec(statements)
-	return err
-}
-
-func tableExists(db *sql.DB, name string) bool {
-	var n int
-	_ = db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, name).Scan(&n)
-	return n > 0
-}
-
-func addColumns(db *sql.DB) error {
+func addColumns(tx *sql.Tx) error {
 	for _, c := range addedColumns {
-		if err := addColumn(db, c.table, c.column, c.definition); err != nil {
+		if columnExists(tx, c.table, c.column) {
+			continue
+		}
+		if err := exec(tx, `ALTER TABLE `+c.table+` ADD COLUMN `+c.column+` `+c.definition); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func addColumn(db *sql.DB, table, column, definition string) error {
-	rows, err := db.Query(`SELECT 1 FROM pragma_table_info(?) WHERE name = ?`, table, column)
-	if err != nil {
-		return err
-	}
-	exists := rows.Next()
-	rows.Close() // the single connection must be free before the ALTER below
-	if exists {
-		return nil
-	}
-	_, err = db.Exec(`ALTER TABLE ` + table + ` ADD COLUMN ` + column + ` ` + definition)
-	return err
-}
-
-// migrateMessages rebuilds a messages table from before group chats, where
+// rebuildMessages rebuilds a messages table from before group chats, where
 // recipient_id was NOT NULL and there was no group_id (SQLite cannot relax a
 // constraint in place). Nothing references messages, so the copy is safe.
-func migrateMessages(db *sql.DB) error {
+func rebuildMessages(tx *sql.Tx) error {
 	var notNull int
-	if err := db.QueryRow(`SELECT "notnull" FROM pragma_table_info('messages') WHERE name = 'recipient_id'`).Scan(&notNull); err != nil {
+	if err := tx.QueryRow(`SELECT "notnull" FROM pragma_table_info('messages') WHERE name = 'recipient_id'`).Scan(&notNull); err != nil {
 		return err
 	}
 	if notNull == 0 {
 		return nil
 	}
-	return exec(db, `
+	return exec(tx, `
 		CREATE TABLE messages_v2 (
 			id           INTEGER PRIMARY KEY,
 			sender_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -251,7 +317,7 @@ func migrateMessages(db *sql.DB) error {
 }
 
 // markOldChatsRead: chats from before unread tracking start out read.
-func markOldChatsRead(db *sql.DB) error {
-	return exec(db, `INSERT OR IGNORE INTO conversation_reads(user_id, peer_id, last_read_id)
+func markOldChatsRead(tx *sql.Tx) error {
+	return exec(tx, `INSERT OR IGNORE INTO conversation_reads(user_id, peer_id, last_read_id)
 		SELECT recipient_id, sender_id, MAX(id) FROM messages WHERE group_id IS NULL GROUP BY recipient_id, sender_id`)
 }

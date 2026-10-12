@@ -23,6 +23,14 @@ type GroupMember struct {
 	Role string `json:"role"`
 }
 
+// GroupDetail is the answer of the group routes: the group, who is in it and
+// who is in its call right now.
+type GroupDetail struct {
+	Group   Group         `json:"group"`
+	Members []GroupMember `json:"members"`
+	Call    []int64       `json:"call"`
+}
+
 // ---- reading groups
 
 // groupSelect expects the viewer's user id as its first bound parameter.
@@ -41,7 +49,7 @@ func scanGroup(sc scanner) (Group, error) {
 
 func scanGroupMember(sc scanner) (GroupMember, error) {
 	var m GroupMember
-	err := sc.Scan(&m.ID, &m.Username, &m.DisplayName, &m.CreatedAt, &m.AvatarURL, &m.Pronouns, &m.AvatarCrop, &m.Role)
+	err := sc.Scan(fields(m.User.fields(), []any{&m.Role})...)
 	return m, err
 }
 
@@ -81,10 +89,10 @@ func (s *server) groupMemberIDs(groupID int64) []int64 {
 }
 
 // groupSummary is what call and message events say about a group.
-func (s *server) groupSummary(id int64) map[string]any {
-	var name string
-	_ = s.db.QueryRow(`SELECT name FROM groups WHERE id = ?`, id).Scan(&name)
-	return map[string]any{"id": id, "name": name}
+func (s *server) groupSummary(id int64) groupRef {
+	g := groupRef{ID: id}
+	_ = s.db.QueryRow(`SELECT name FROM groups WHERE id = ?`, id).Scan(&g.Name)
+	return g
 }
 
 // listGroups: ?mine=1 lists groups I belong to; otherwise discover public
@@ -116,7 +124,7 @@ func (s *server) respondGroup(w http.ResponseWriter, code int, viewer, id int64)
 	if err != nil {
 		return err
 	}
-	writeJSON(w, code, map[string]any{"group": g, "members": members, "call": s.calls.participants(groupRoomKey(id))})
+	writeJSON(w, code, GroupDetail{Group: g, Members: members, Call: s.calls.participants(groupRoomKey(id))})
 	return nil
 }
 
@@ -295,8 +303,7 @@ func (s *server) addGroupMembers(w http.ResponseWriter, r *http.Request, me *Use
 	if err := s.inTx(func(tx *sql.Tx) error { return addMembers(tx, id, members, nowString()) }); err != nil {
 		return err
 	}
-	added := map[string]any{"type": "group.added", "group": s.groupSummary(id), "by": me}
-	s.hub.sendToMany(members, added)
+	s.hub.sendToMany(members, groupAddedEvent{Type: "group.added", Group: s.groupSummary(id), By: me})
 	return s.respondGroup(w, http.StatusOK, me.ID, id)
 }
 
@@ -356,5 +363,5 @@ func (s *server) dropMember(groupID, userID int64) error {
 // stopped counting for them.
 func (s *server) refreshBadge(userID, groupID int64) {
 	unread, _ := s.unreadMessages(userID)
-	s.hub.sendTo(userID, map[string]any{"type": "messages.read", "group_id": groupID, "unread": unread})
+	s.hub.sendTo(userID, chat{group: groupID}.readEvent(unread))
 }
