@@ -106,6 +106,12 @@ in
 
   enterShell = ''
     if [ -f "$DEVENV_ROOT/.env" ]; then set -a; . "$DEVENV_ROOT/.env"; set +a; fi # per-machine overrides (see env above)
+    # devenv's Android module puts the NDK's host toolchain libraries on
+    # LD_LIBRARY_PATH. On Linux the NDK's old libc++ there shadows the one the
+    # emulator bundles and the emulator dies at start ("libabseil_dll.so:
+    # undefined symbol: ...__hash_memory..."); the NDK's own tools find their
+    # libraries without it, so that entry is dropped.
+    export LD_LIBRARY_PATH="$(printf %s "$LD_LIBRARY_PATH" | tr ':' '\n' | grep -v '/toolchains/llvm/prebuilt/' | paste -sd: -)"
     export PATH="$GOBIN:$npm_config_prefix/bin:$PATH"
     mkdir -p "$GOMODCACHE" "$GOCACHE" "$GOBIN" "$npm_config_cache" "$npm_config_prefix/bin"
   '';
