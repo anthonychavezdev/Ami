@@ -15,6 +15,7 @@ import { radius, spacing, type ThemeColors } from '@/theme';
 // aspectRatio for percentage widths inside a wrapping row.
 export function AttachmentList({ items, style }: { items: Attachment[]; style?: StyleProp<ViewStyle> }) {
   const styles = useStyles(makeStyles);
+  const { colors } = useTheme();
   const [width, setWidth] = useState(0);
   const [open, setOpen] = useState<number | null>(null);
   const media = items.filter((a) => a.type !== 'link');
@@ -39,7 +40,7 @@ export function AttachmentList({ items, style }: { items: Attachment[]; style?: 
       {links.map((a, i) => (
         <LinkCard key={`${a.url}-${i}`} url={a.url} />
       ))}
-      <MediaViewer items={media} index={open} onClose={() => setOpen(null)} />
+      <MediaViewer items={media} index={open} accent={colors.accent} onClose={() => setOpen(null)} />
     </View>
   );
 }
