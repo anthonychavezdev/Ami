@@ -125,6 +125,7 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/feed", s.auth(s.feed))
 	mux.HandleFunc("POST /api/posts", s.auth(s.createPost))
 	mux.HandleFunc("GET /api/posts/{id}", s.auth(s.getPostHandler))
+	mux.HandleFunc("PUT /api/posts/{id}", s.auth(s.updatePost))
 	mux.HandleFunc("DELETE /api/posts/{id}", s.auth(s.deletePost))
 	mux.HandleFunc("GET /api/posts/{id}/comments", s.auth(s.listComments))
 	mux.HandleFunc("POST /api/posts/{id}/comments", s.auth(s.createComment))
@@ -155,6 +156,7 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/messages/{id}", s.auth(s.listMessages))
 	mux.HandleFunc("POST /api/messages/{id}", s.auth(s.sendMessage))
 	mux.HandleFunc("POST /api/messages/{id}/read", s.auth(s.markRead))
+	mux.HandleFunc("PUT /api/messages/{id}/{mid}", s.auth(s.updateMessage))
 	mux.HandleFunc("PUT /api/push-token", s.auth(s.setPushToken))
 	mux.HandleFunc("DELETE /api/push-token", s.auth(s.deletePushToken))
 
