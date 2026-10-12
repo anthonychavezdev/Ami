@@ -7,8 +7,11 @@ import (
 	"crypto/subtle"
 	"database/sql"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
+	"image"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -26,13 +29,75 @@ const (
 var usernameRe = regexp.MustCompile(`^[A-Za-z0-9_]{3,24}$`)
 
 type User struct {
-	ID          int64  `json:"id"`
-	Username    string `json:"username"`
-	DisplayName string `json:"display_name"`
-	CreatedAt   string `json:"created_at"`
-	AvatarURL   string `json:"avatar_url,omitempty"` // an uploaded picture under /media, or empty for initials
-	Pronouns    string `json:"pronouns,omitempty"`
-	Online      bool   `json:"online"` // has a live connection; filled in by markPresence on output
+	ID          int64      `json:"id"`
+	Username    string     `json:"username"`
+	DisplayName string     `json:"display_name"`
+	CreatedAt   string     `json:"created_at"`
+	AvatarURL   string     `json:"avatar_url,omitempty"` // an uploaded picture under /media, or empty for initials
+	AvatarCrop  AvatarCrop `json:"avatar_crop"`          // the part of the picture shown in the circle (W == 0: whole picture, centred)
+	Pronouns    string     `json:"pronouns,omitempty"`
+	Online      bool       `json:"online"` // has a live connection; filled in by markPresence on output
+}
+
+// AvatarCrop is a square window on the profile picture: X and Y are the
+// top-left corner as fractions of the width and height, W the side as a
+// fraction of the width, and Aspect the picture's width/height ratio (the
+// side as a fraction of the height is W*Aspect). Stored as JSON text.
+type AvatarCrop struct {
+	X      float64 `json:"x"`
+	Y      float64 `json:"y"`
+	W      float64 `json:"w"`
+	Aspect float64 `json:"aspect"`
+}
+
+func (c *AvatarCrop) Scan(src any) error {
+	*c = AvatarCrop{}
+	var raw string
+	switch v := src.(type) {
+	case string:
+		raw = v
+	case []byte:
+		raw = string(v)
+	}
+	if raw == "" {
+		return nil
+	}
+	return json.Unmarshal([]byte(raw), c)
+}
+
+// pictureAspect is width/height of an uploaded picture, or 0 when it cannot
+// be decoded (WebP has no decoder in the standard library).
+func (s *server) pictureAspect(url string) float64 {
+	f, err := os.Open(filepath.Join(s.mediaDir, strings.TrimPrefix(url, "/media/")))
+	if err != nil {
+		return 0
+	}
+	defer f.Close()
+	cfg, _, err := image.DecodeConfig(f)
+	if err != nil || cfg.Height == 0 {
+		return 0
+	}
+	return float64(cfg.Width) / float64(cfg.Height)
+}
+
+// defaultCrop is the largest centred square of a picture.
+func defaultCrop(aspect float64) AvatarCrop {
+	if aspect <= 0 {
+		aspect = 1
+	}
+	w := math.Min(1, 1/aspect)
+	return AvatarCrop{X: (1 - w) / 2, Y: (1 - w*aspect) / 2, W: w, Aspect: aspect}.rounded()
+}
+
+// rounded trims floating-point noise (e.g. 2.8e-17) before storing.
+func (c AvatarCrop) rounded() AvatarCrop {
+	r := func(v float64) float64 { return math.Round(v*10000) / 10000 }
+	return AvatarCrop{X: r(c.X), Y: r(c.Y), W: r(c.W), Aspect: r(c.Aspect)}
+}
+
+func (c AvatarCrop) valid() bool {
+	const eps = 0.001
+	return c.W > 0 && c.W <= 1+eps && c.Aspect > 0.05 && c.Aspect < 20 && c.X >= -eps && c.Y >= -eps && c.X+c.W <= 1+eps && c.Y+c.W*c.Aspect <= 1+eps
 }
 
 // Me is the caller's own user with private settings and the full profile.
@@ -57,11 +122,12 @@ var avatarExts = map[string]bool{".jpg": true, ".png": true, ".gif": true, ".web
 // username must be valid, not reserved and not anyone else's (any case).
 func (s *server) updateMe(w http.ResponseWriter, r *http.Request, me *User) {
 	var in struct {
-		Username    *string `json:"username"`
-		DisplayName *string `json:"display_name"`
-		Bio         *string `json:"bio"`
-		Pronouns    *string `json:"pronouns"`
-		AvatarURL   *string `json:"avatar_url"`
+		Username    *string     `json:"username"`
+		DisplayName *string     `json:"display_name"`
+		Bio         *string     `json:"bio"`
+		Pronouns    *string     `json:"pronouns"`
+		AvatarURL   *string     `json:"avatar_url"`
+		AvatarCrop  *AvatarCrop `json:"avatar_crop"`
 	}
 	if !readJSON(w, r, &in) {
 		return
@@ -114,8 +180,10 @@ func (s *server) updateMe(w http.ResponseWriter, r *http.Request, me *User) {
 		}
 		sets, args = append(sets, "pronouns = ?"), append(args, pr)
 	}
+	avatarURL, newAvatar := "", false
 	if in.AvatarURL != nil {
 		a := strings.TrimSpace(*in.AvatarURL)
+		avatarURL, newAvatar = a, a != ""
 		if a != "" {
 			name := strings.TrimPrefix(a, "/media/")
 			if name == a || name == "" || strings.ContainsAny(name, `/\`) || !avatarExts[strings.ToLower(filepath.Ext(name))] {
@@ -128,6 +196,34 @@ func (s *server) updateMe(w http.ResponseWriter, r *http.Request, me *User) {
 			}
 		}
 		sets, args = append(sets, "avatar_url = ?"), append(args, a)
+		if a == "" { // no picture, no crop
+			sets, args = append(sets, "avatar_crop = ?"), append(args, "")
+			in.AvatarCrop = nil
+		}
+	}
+	// The picture decides its aspect ratio; a new picture without a crop gets
+	// the centred square, so every avatar always has a usable crop.
+	if newAvatar || in.AvatarCrop != nil {
+		if !newAvatar {
+			if err := s.db.QueryRow(`SELECT avatar_url FROM users WHERE id = ?`, me.ID).Scan(&avatarURL); err != nil || avatarURL == "" {
+				writeError(w, http.StatusBadRequest, "no profile picture to position")
+				return
+			}
+		}
+		aspect := s.pictureAspect(avatarURL)
+		crop := defaultCrop(aspect)
+		if in.AvatarCrop != nil {
+			crop = *in.AvatarCrop
+			if aspect > 0 {
+				crop.Aspect = aspect
+			}
+			if !crop.valid() {
+				writeError(w, http.StatusBadRequest, "avatar_crop must be a square inside the picture: x, y, w in 0-1")
+				return
+			}
+		}
+		raw, _ := json.Marshal(crop.rounded())
+		sets, args = append(sets, "avatar_crop = ?"), append(args, string(raw))
 	}
 	if len(sets) == 0 {
 		writeError(w, http.StatusBadRequest, "nothing to update")
@@ -172,11 +268,11 @@ func (s *server) setPresence(w http.ResponseWriter, r *http.Request, me *User) {
 	writeJSON(w, http.StatusOK, map[string]bool{"invisible": in.Invisible})
 }
 
-const userCols = `u.id, u.username, u.display_name, u.created_at, u.avatar_url, u.pronouns`
+const userCols = `u.id, u.username, u.display_name, u.created_at, u.avatar_url, u.pronouns, u.avatar_crop`
 
 func scanUser(sc interface{ Scan(...any) error }) (User, error) {
 	var u User
-	err := sc.Scan(&u.ID, &u.Username, &u.DisplayName, &u.CreatedAt, &u.AvatarURL, &u.Pronouns)
+	err := sc.Scan(&u.ID, &u.Username, &u.DisplayName, &u.CreatedAt, &u.AvatarURL, &u.Pronouns, &u.AvatarCrop)
 	return u, err
 }
 
@@ -229,7 +325,7 @@ func (s *server) userForToken(token string) (*User, error) {
 	row := s.db.QueryRow(`SELECT `+userCols+`, s.expires_at FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ?`, tokenHash(token))
 	var u User
 	var expires string
-	if err := row.Scan(&u.ID, &u.Username, &u.DisplayName, &u.CreatedAt, &u.AvatarURL, &u.Pronouns, &expires); err != nil {
+	if err := row.Scan(&u.ID, &u.Username, &u.DisplayName, &u.CreatedAt, &u.AvatarURL, &u.Pronouns, &u.AvatarCrop, &expires); err != nil {
 		return nil, errUnauthorized
 	}
 	if exp, err := time.Parse(time.RFC3339Nano, expires); err != nil || exp.Before(now()) {

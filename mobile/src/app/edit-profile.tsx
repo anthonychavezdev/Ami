@@ -1,13 +1,17 @@
+import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
+import { AvatarEditor, defaultCrop } from '@/components/AvatarEditor';
 import { Avatar, Button, ErrorBanner, Input } from '@/components/ui';
 import { api } from '@/lib/api';
+import { API_URL } from '@/lib/config';
 import { useAuth } from '@/lib/auth';
 import { useStyles, useTheme } from '@/lib/theme';
 import { toast } from '@/lib/toast';
+import type { AvatarCrop } from '@/lib/types';
 import { radius, spacing, type ThemeColors } from '@/theme';
 
 const USERNAME = /^[A-Za-z0-9_]{3,24}$/;
@@ -22,6 +26,7 @@ export default function EditProfileScreen() {
   const [pronouns, setPronouns] = useState(user?.pronouns ?? '');
   const [bio, setBio] = useState(user?.bio ?? '');
   const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url ?? '');
+  const [crop, setCrop] = useState<AvatarCrop | null>(user?.avatar_crop?.w ? user.avatar_crop : null); // null until the picture's size is known
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +34,12 @@ export default function EditProfileScreen() {
 
   const usernameOk = USERNAME.test(username.trim());
   const changed =
-    username.trim() !== user.username || displayName.trim() !== user.display_name || pronouns.trim() !== (user.pronouns ?? '') || bio.trim() !== user.bio || avatarUrl !== (user.avatar_url ?? '');
+    username.trim() !== user.username ||
+    displayName.trim() !== user.display_name ||
+    pronouns.trim() !== (user.pronouns ?? '') ||
+    bio.trim() !== user.bio ||
+    avatarUrl !== (user.avatar_url ?? '') ||
+    (!!avatarUrl && !!crop && JSON.stringify(crop) !== JSON.stringify(user.avatar_crop ?? null));
 
   // Pictures only; no cropping so animated GIFs stay animated.
   const pickPicture = async () => {
@@ -42,6 +52,7 @@ export default function EditProfileScreen() {
       const att = await api.uploadMedia({ uri: asset.uri, name: asset.fileName ?? 'photo.jpg', type: asset.mimeType ?? 'image/jpeg' });
       if (att.type !== 'image') throw new Error('Profile pictures must be pictures');
       setAvatarUrl(att.url);
+      setCrop(att.width && att.height ? defaultCrop(att.width / att.height) : null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -59,6 +70,7 @@ export default function EditProfileScreen() {
       if (pronouns.trim() !== (user.pronouns ?? '')) patch.pronouns = pronouns.trim();
       if (bio.trim() !== user.bio) patch.bio = bio.trim();
       if (avatarUrl !== (user.avatar_url ?? '')) patch.avatar_url = avatarUrl;
+      if (avatarUrl && crop && JSON.stringify(crop) !== JSON.stringify(user.avatar_crop ?? null)) patch.avatar_crop = crop;
       const me = await api.updateMe(patch);
       update(me);
       toast.success('Profile updated');
@@ -70,7 +82,7 @@ export default function EditProfileScreen() {
     }
   };
 
-  const preview = { ...user, avatar_url: avatarUrl, display_name: displayName || user.display_name };
+  const preview = { ...user, avatar_url: avatarUrl, avatar_crop: crop ?? undefined, display_name: displayName || user.display_name };
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }} keyboardVerticalOffset={90}>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
@@ -80,9 +92,28 @@ export default function EditProfileScreen() {
         </Pressable>
         <View style={styles.avatarActions}>
           <Button title={avatarUrl ? 'Change picture' : 'Add picture'} icon="image" variant="secondary" small onPress={() => void pickPicture()} disabled={uploading} />
-          {!!avatarUrl && <Button title="Remove" icon="trash-2" variant="ghost" small onPress={() => setAvatarUrl('')} disabled={uploading} />}
+          {!!avatarUrl && (
+            <Button
+              title="Remove"
+              icon="trash-2"
+              variant="ghost"
+              small
+              onPress={() => {
+                setAvatarUrl('');
+                setCrop(null);
+              }}
+              disabled={uploading}
+            />
+          )}
         </View>
-        <Text style={styles.hint}>JPG, PNG, WebP or GIF (animated GIFs play).</Text>
+        {!!avatarUrl &&
+          (crop ? (
+            <AvatarEditor uri={API_URL + avatarUrl} crop={crop} onChange={setCrop} />
+          ) : (
+            // Older pictures carry no size: read it from the picture itself, then the editor appears.
+            <Image source={{ uri: API_URL + avatarUrl }} style={{ width: 1, height: 1, opacity: 0 }} onLoad={(e) => setCrop(defaultCrop(e.source.width / e.source.height))} />
+          ))}
+        <Text style={styles.hint}>JPG, PNG, WebP or GIF (animated GIFs play). The small circle above is what others see.</Text>
 
         <ErrorBanner error={error} onDismiss={() => setError(null)} />
 

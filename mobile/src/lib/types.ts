@@ -5,7 +5,17 @@ export interface User {
   created_at: string;
   online?: boolean; // as of when the object was fetched; presence events keep it current
   avatar_url?: string; // uploaded picture under /media; empty = initials
+  avatar_crop?: AvatarCrop; // the square shown in the circle; w === 0 means the whole picture, centred
   pronouns?: string;
+}
+
+// A square window on a picture: x/y top-left and w side as fractions of the
+// width (the side as a fraction of the height is w * aspect).
+export interface AvatarCrop {
+  x: number;
+  y: number;
+  w: number;
+  aspect: number;
 }
 
 // The signed-in user with private settings.
