@@ -82,6 +82,17 @@ func (h *hub) remove(c *client) {
 	})
 }
 
+// closeAll drops every connection (shutdown); each handleWS then runs its cleanup.
+func (h *hub) closeAll() {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for _, set := range h.users {
+		for c := range set {
+			c.ws.Close()
+		}
+	}
+}
+
 // online is whether events can be delivered right now.
 func (h *hub) online(userID int64) bool {
 	h.mu.RLock()

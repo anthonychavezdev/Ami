@@ -44,7 +44,7 @@ type testServer struct {
 func newTestServer(t *testing.T, dev bool) *testServer {
 	t.Helper()
 	dir := t.TempDir()
-	s, err := newServer(config{dbPath: filepath.Join(dir, "test.db"), mediaDir: filepath.Join(dir, "media"), dev: dev, origins: "http://good.example"})
+	s, err := newServer(t.Context(), config{dbPath: filepath.Join(dir, "test.db"), mediaDir: filepath.Join(dir, "media"), dev: dev, origins: "http://good.example"})
 	if err != nil {
 		t.Fatal(err)
 	}

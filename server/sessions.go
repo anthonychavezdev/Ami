@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/pbkdf2"
 	"crypto/rand"
 	"crypto/sha256"
@@ -87,13 +88,19 @@ func (s *server) createSession(userID int64) (string, error) {
 	return token, err
 }
 
-// purgeSessions drops expired sessions once an hour (and once at start).
-func (s *server) purgeSessions() {
+// purgeSessions drops expired sessions at start and then hourly, until ctx ends.
+func (s *server) purgeSessions(ctx context.Context) {
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
 	for {
 		if _, err := s.db.Exec(`DELETE FROM sessions WHERE expires_at < ?`, nowString()); err != nil {
 			log.Printf("purge expired sessions: %v", err)
 		}
-		time.Sleep(time.Hour)
+		select {
+		case <-ticker.C:
+		case <-ctx.Done():
+			return
+		}
 	}
 }
 
