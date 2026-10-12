@@ -83,7 +83,9 @@ export const api = {
   deletePost: (id: number) => del<void>(`/api/posts/${id}`),
   updatePost: (id: number, body: string, attachments: Attachment[]) => put<Post>(`/api/posts/${id}`, { body, attachments }),
   comments: (postId: number) => get<Comment[]>(`/api/posts/${postId}/comments`),
-  addComment: (postId: number, body: string) => post<Comment>(`/api/posts/${postId}/comments`, { body }),
+  addComment: (postId: number, body: string, parentId?: number) => post<Comment>(`/api/posts/${postId}/comments`, { body, parent_id: parentId ?? null }),
+  updateComment: (id: number, body: string) => put<Comment>(`/api/comments/${id}`, { body }),
+  deleteComment: (id: number) => del<void>(`/api/comments/${id}`),
   react: (postId: number, emoji: string) => put<Post>(`/api/posts/${postId}/reaction`, { emoji }),
   unreact: (postId: number) => del<Post>(`/api/posts/${postId}/reaction`),
 

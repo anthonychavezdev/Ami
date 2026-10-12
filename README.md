@@ -97,7 +97,7 @@ project id the app simply never registers a push token.
 
 | Area | Notes |
 |---|---|
-| Posts | Markdown text, pictures, videos and links, together or on their own; tap a picture or video to view it fullscreen. Authors can edit their posts (a pencil marks edited ones). Feed = your posts + friends' posts + posts in your groups. Profile posts are public. |
+| Posts | Markdown text, pictures, videos and links, together or on their own; tap a picture or video to view it fullscreen. Authors can edit their posts (a pencil marks edited ones). Comments thread like Reddit: reply under a comment, edit or delete your own; a deleted comment with replies stays as [deleted]. Feed = your posts + friends' posts + posts in your groups. Profile posts are public. |
 | Reactions | Tap **React** to 👍; press-and-hold opens the emoji menu. One reaction per user per post, any emoji. |
 | Comments | On the post screen. |
 | Friends | Request → accept. Only friends can message/call each other. Pushed live over WebSocket. |
@@ -129,7 +129,8 @@ POST   /api/register  /api/login  /api/logout      GET /api/me
 GET    /api/users?q=   /api/users/{id}   /api/users/{id}/posts
 GET    /api/feed?before=&limit=
 POST   /api/posts {body, group_id?}    GET|PUT|DELETE /api/posts/{id}   (PUT: author, {body, attachments})
-GET|POST /api/posts/{id}/comments      PUT|DELETE /api/posts/{id}/reaction {emoji}
+GET|POST /api/posts/{id}/comments {body, parent_id?}   PUT|DELETE /api/comments/{id} (author)
+PUT|DELETE /api/posts/{id}/reaction {emoji}
 POST   /api/media (multipart "file") -> {type, url, width, height}   GET /media/{name}
 GET    /api/friends   /api/friends/requests
 POST   /api/friends/{id}/request   /api/friends/{id}/accept    DELETE /api/friends/{id}
@@ -140,7 +141,7 @@ GET    /api/conversations          GET|POST /api/messages/{userId} {body, attach
 POST   /api/messages/{userId}/read   PUT /api/messages/{userId}/{messageId} {body}   (sender)
 PUT|DELETE /api/push-token {token}
 GET    /ws?token=   (events: hello, message, message.updated, messages.read, friend.request, friend.accepted,
-                     post.created/updated/deleted, comment.created,
+                     post.created/updated/deleted, comment.created/updated/deleted,
                      call.offer/answer/ice/streams/hangup/reject/busy/unavailable)
 ```
 
