@@ -12,8 +12,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "xyz.anthonychavez.ami",
       "infoPlist": {
-        "UIBackgroundModes": ["audio", "voip"],
-        "UIViewControllerBasedStatusBarAppearance": true
+        "UIBackgroundModes": ["audio", "voip"]
       }
     },
     "android": {
