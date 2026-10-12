@@ -100,7 +100,7 @@ project id the app simply never registers a push token.
 | Posts | Markdown text, pictures, videos and links, together or on their own; tap a picture or video to view it fullscreen. Authors can edit their posts (a pencil marks edited ones). Comments thread like Reddit: reply under a comment, edit or delete your own; a deleted comment with replies stays as [deleted]. In the browser, your posts, comments and messages get a ⋯ button on hover and a right-click menu. Feed = your posts + friends' posts + posts in your groups. Profile posts are public. |
 | Reactions | Tap **React** to 👍; press-and-hold opens the emoji menu. One reaction per user per post, any emoji. |
 | Comments | On the post screen. |
-| Friends | Request → accept. Only friends can message/call each other. Pushed live over WebSocket. |
+| Friends | Request → accept. Only friends can message/call each other. Pushed live over WebSocket. Every avatar carries a presence dot: green while the user has the app open, gray otherwise. |
 | Groups | Creator is owner + admin; others join as members. Admin can remove members, delete posts, delete the group. |
 | Messages | Direct messages with pictures and videos, delivered in real time. Hold one of your messages to edit or delete it. Unread badge on the Messages tab and OS notifications (browser, Android, iOS). |
 | Calls | Voice or video, 1:1, WebRTC with STUN (`stun.l.google.com`). Mute, camera on/off, flip camera. |
@@ -140,7 +140,7 @@ GET    /api/groups/{id}/posts      DELETE /api/groups/{id}/members/{uid}
 GET    /api/conversations          GET|POST /api/messages/{userId} {body, attachments}
 POST   /api/messages/{userId}/read   PUT|DELETE /api/messages/{userId}/{messageId}   (sender; PUT {body})
 PUT|DELETE /api/push-token {token}
-GET    /ws?token=   (events: hello, message, message.updated, message.deleted, messages.read, friend.request, friend.accepted,
+GET    /ws?token=   (events: hello, presence, message, message.updated, message.deleted, messages.read, friend.request, friend.accepted,
                      post.created/updated/deleted, comment.created/updated/deleted,
                      call.offer/answer/ice/streams/hangup/reject/busy/unavailable)
 ```

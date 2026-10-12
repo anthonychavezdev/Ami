@@ -3,6 +3,7 @@ export interface User {
   username: string;
   display_name: string;
   created_at: string;
+  online?: boolean; // as of when the object was fetched; presence events keep it current
 }
 
 export type FriendStatus = 'self' | 'none' | 'friends' | 'outgoing' | 'incoming';
