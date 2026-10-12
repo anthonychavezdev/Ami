@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppState, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AttachmentList } from '@/components/Attachments';
 import { Composer } from '@/components/Composer';
@@ -11,6 +11,7 @@ import { useAuth } from '@/lib/auth';
 import { useCall } from '@/lib/call';
 import { clock } from '@/lib/time';
 import type { Message, User } from '@/lib/types';
+import { unread } from '@/lib/unread';
 import { socket } from '@/lib/ws';
 import { useStyles, useTheme } from '@/lib/theme';
 import { radius, spacing, type ThemeColors } from '@/theme';
@@ -48,8 +49,21 @@ export default function ChatScreen() {
       .then(([u, m]) => {
         setOther(u);
         setMessages(m.slice().reverse()); // newest first for the inverted list
+        void api.markRead(otherId);
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+  }, [otherId]);
+
+  // While this chat is open, new messages in it are read, not notified.
+  useEffect(() => {
+    unread.setActiveChat(otherId);
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') void api.markRead(otherId);
+    });
+    return () => {
+      unread.setActiveChat(null);
+      sub.remove();
+    };
   }, [otherId]);
 
   useEffect(

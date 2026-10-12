@@ -1,20 +1,20 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { FlatList, RefreshControl } from 'react-native';
+import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
 import { UserRow } from '@/components/UserRow';
 import { Empty, Loading } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
+import { messagePreview } from '@/lib/messages';
 import { timeAgo } from '@/lib/time';
-import type { Conversation, Message } from '@/lib/types';
+import type { Conversation } from '@/lib/types';
 import { socket } from '@/lib/ws';
-import { useTheme } from '@/lib/theme';
-
-// Text of the last message, or what kind of attachment it was.
-const preview = (m: Message) => m.body || (m.attachments?.[0]?.type === 'video' ? 'Video' : m.attachments?.[0]?.type === 'link' ? 'Link' : 'Picture');
+import { useStyles, useTheme } from '@/lib/theme';
+import { type ThemeColors, radius, spacing } from '@/theme';
 
 export default function MessagesScreen() {
+  const styles = useStyles(makeStyles);
   const { colors } = useTheme();
   const { user: me } = useAuth();
   const router = useRouter();
@@ -34,7 +34,8 @@ export default function MessagesScreen() {
   useFocusEffect(
     useCallback(() => {
       void load();
-      return socket.on('message', () => void load());
+      const offs = [socket.on('message', () => void load()), socket.on('messages.read', () => void load())];
+      return () => offs.forEach((off) => off());
     }, [load]),
   );
 
@@ -46,7 +47,14 @@ export default function MessagesScreen() {
       renderItem={({ item }) => (
         <UserRow
           user={item.user}
-          subtitle={`${item.last_message.sender_id === me?.id ? 'You: ' : ''}${preview(item.last_message)} · ${timeAgo(item.last_message.created_at)}`}
+          subtitle={`${item.last_message.sender_id === me?.id ? 'You: ' : ''}${messagePreview(item.last_message)} · ${timeAgo(item.last_message.created_at)}`}
+          right={
+            item.unread > 0 ? (
+              <View style={styles.badge} accessibilityLabel={`${item.unread} unread`}>
+                <Text style={styles.badgeText}>{item.unread > 99 ? '99+' : item.unread}</Text>
+              </View>
+            ) : undefined
+          }
           onPress={() => router.push(`/chat/${item.user.id}`)}
         />
       )}
@@ -56,3 +64,8 @@ export default function MessagesScreen() {
     />
   );
 }
+
+const makeStyles = (colors: ThemeColors) => StyleSheet.create({
+  badge: { minWidth: 22, height: 22, borderRadius: radius.pill, paddingHorizontal: 6, backgroundColor: colors.danger, alignItems: 'center', justifyContent: 'center' },
+  badgeText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+});

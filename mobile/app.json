@@ -45,6 +45,12 @@
       "expo-router",
       "expo-secure-store",
       [
+        "expo-notifications",
+        {
+          "defaultChannel": "messages"
+        }
+      ],
+      [
         "expo-image-picker",
         {
           "photosPermission": "Ami needs access to your photos to attach pictures and videos to posts."

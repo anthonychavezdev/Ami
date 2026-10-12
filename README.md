@@ -63,6 +63,17 @@ To point it elsewhere: `EXPO_PUBLIC_API_URL=http://192.168.1.10:8080 npx expo st
   `app-store-connect` (default; upload with Transporter or TestFlight),
   `release-testing` (ad hoc, for registered devices) or `debugging`.
 
+### Notifications
+
+A message to someone who is not looking at that chat shows an OS notification:
+in the browser through the Notification API (asked for on login), on Android
+and iOS through `expo-notifications` as long as the app is running. For
+notifications while the app is closed, the server pushes through Expo's push
+service to devices that have no live connection. That needs an EAS project:
+`eas init` in `mobile/` (adds `extra.eas.projectId` to `app.json`), then
+`eas credentials` to upload FCM (Android) and APNs (iOS) keys. Without a
+project id the app simply never registers a push token.
+
 The server stores session tokens hashed, rate-limits login/register per IP and
 sends `no-store`/`nosniff` headers. The app keeps its token in SecureStore and
 ships no secrets.
@@ -76,7 +87,7 @@ ships no secrets.
 | Comments | On the post screen. |
 | Friends | Request → accept. Only friends can message/call each other. Pushed live over WebSocket. |
 | Groups | Creator is owner + admin; others join as members. Admin can remove members, delete posts, delete the group. |
-| Messages | Direct messages with pictures and videos, delivered in real time. |
+| Messages | Direct messages with pictures and videos, delivered in real time. Unread badge on the Messages tab and OS notifications (browser, Android, iOS). |
 | Calls | Voice or video, 1:1, WebRTC with STUN (`stun.l.google.com`). Mute, camera on/off, flip camera. |
 | Screen share | Toggle during a call; sent as a second video stream. |
 | Theme | Light, dark, or follow the device setting (Me tab). |
@@ -111,7 +122,8 @@ GET    /api/groups?mine=1|q=       POST /api/groups {name, description}
 GET|DELETE /api/groups/{id}        POST /api/groups/{id}/join | /leave
 GET    /api/groups/{id}/posts      DELETE /api/groups/{id}/members/{uid}
 GET    /api/conversations          GET|POST /api/messages/{userId} {body, attachments}
-GET    /ws?token=   (events: hello, message, friend.request, friend.accepted,
+POST   /api/messages/{userId}/read   PUT|DELETE /api/push-token {token}
+GET    /ws?token=   (events: hello, message, messages.read, friend.request, friend.accepted,
                      post.created/updated/deleted, comment.created,
                      call.offer/answer/ice/streams/hangup/reject/busy/unavailable)
 ```

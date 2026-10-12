@@ -108,4 +108,7 @@ export const api = {
   conversations: () => get<Conversation[]>('/api/conversations'),
   messages: (userId: number, before?: number) => get<Message[]>(`/api/messages/${userId}${q({ before })}`),
   sendMessage: (userId: number, body: string, attachments: Attachment[] = []) => post<Message>(`/api/messages/${userId}`, { body, attachments }),
+  markRead: (userId: number) => post<{ unread: number }>(`/api/messages/${userId}/read`),
+  setPushToken: (token: string) => put<void>('/api/push-token', { token }),
+  deletePushToken: (token: string) => request<void>('DELETE', '/api/push-token', { token }),
 };
