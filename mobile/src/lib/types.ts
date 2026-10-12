@@ -30,6 +30,7 @@ export interface Post {
   body: string;
   attachments: Attachment[];
   created_at: string;
+  edited_at: string | null;
   comment_count: number;
   reactions: Record<string, number>;
   my_reaction: string;
@@ -64,6 +65,7 @@ export interface Message {
   body: string;
   attachments: Attachment[];
   created_at: string;
+  edited_at: string | null;
 }
 
 export interface Conversation {

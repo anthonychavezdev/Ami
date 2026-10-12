@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AttachmentList } from './Attachments';
+import { Composer } from './Composer';
 import { ReactionButton } from './ReactionButton';
 import { Avatar } from './ui';
 import { ApiError, api } from '@/lib/api';
@@ -67,6 +68,8 @@ export function PostCard({
   const reactions = Object.entries(post.reactions).sort((a, b) => b[1] - a[1]);
   const total = reactions.reduce((n, [, c]) => n + c, 0);
   const mayDelete = canDelete || post.author.id === user?.id;
+  const mine = post.author.id === user?.id;
+  const [editing, setEditing] = useState(false);
 
   return (
     <View style={styles.card}>
@@ -79,23 +82,54 @@ export function PostCard({
               <Text style={styles.meta}>
                 @{post.author.username} · {timeAgo(post.created_at)}
                 {showGroup && post.group_name ? ` · in ${post.group_name}` : ''}
+                {post.edited_at ? (
+                  <Text accessibilityLabel="edited">
+                    {' · '}
+                    <Feather name="edit-2" size={11} color={colors.muted} /> edited
+                  </Text>
+                ) : null}
               </Text>
             </View>
           </Pressable>
         </Link>
-        {mayDelete && (
-          <Pressable onPress={remove} hitSlop={10}>
-            <Feather name="x" size={18} color={colors.muted} />
-          </Pressable>
-        )}
+        <View style={styles.headerActions}>
+          {mine && !editing && (
+            <Pressable onPress={() => setEditing(true)} hitSlop={10} accessibilityLabel="Edit post">
+              <Feather name="edit-2" size={17} color={colors.muted} />
+            </Pressable>
+          )}
+          {mayDelete && (
+            <Pressable onPress={remove} hitSlop={10} accessibilityLabel="Delete post">
+              <Feather name="x" size={18} color={colors.muted} />
+            </Pressable>
+          )}
+        </View>
       </View>
 
-      {post.body ? (
-        <View style={styles.body}>
-          <PostMarkdown>{post.body}</PostMarkdown>
-        </View>
-      ) : null}
-      {post.attachments?.length > 0 && <AttachmentList items={post.attachments} />}
+      {editing ? (
+        <Composer
+          rich
+          autoFocus
+          initialText={post.body}
+          initialAttachments={post.attachments}
+          placeholder="Edit your post"
+          buttonTitle="Save"
+          onCancel={() => setEditing(false)}
+          onSubmit={async (body, attachments) => {
+            onChange(await api.updatePost(post.id, body, attachments));
+            setEditing(false);
+          }}
+        />
+      ) : (
+        <>
+          {post.body ? (
+            <View style={styles.body}>
+              <PostMarkdown>{post.body}</PostMarkdown>
+            </View>
+          ) : null}
+          {post.attachments?.length > 0 && <AttachmentList items={post.attachments} />}
+        </>
+      )}
 
       {total > 0 && (
         <View style={styles.reactions}>
@@ -123,6 +157,7 @@ export function PostCard({
 const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   card: { backgroundColor: colors.card, borderRadius: radius.md, padding: spacing.lg, marginHorizontal: spacing.lg, marginBottom: spacing.md, borderWidth: 1, borderColor: colors.border },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   author: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
   name: { fontWeight: '700', color: colors.text, fontSize: 15 },
   meta: { color: colors.muted, fontSize: 13 },

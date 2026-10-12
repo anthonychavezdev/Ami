@@ -34,7 +34,7 @@ export default function MessagesScreen() {
   useFocusEffect(
     useCallback(() => {
       void load();
-      const offs = [socket.on('message', () => void load()), socket.on('messages.read', () => void load())];
+      const offs = [socket.on('message', () => void load()), socket.on('message.updated', () => void load()), socket.on('messages.read', () => void load())];
       return () => offs.forEach((off) => off());
     }, [load]),
   );

@@ -27,6 +27,7 @@ export default function ChatScreen() {
   const [other, setOther] = useState<User | null>(null);
   const [messages, setMessages] = useState<Message[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState<Message | null>(null); // my message being edited
   const list = useRef<FlatList<Message>>(null);
   const loaded = messages !== null;
 
@@ -75,6 +76,14 @@ export default function ChatScreen() {
       }),
     [otherId],
   );
+  useEffect(
+    () =>
+      socket.on('message.updated', (e) => {
+        const m: Message = e.message;
+        setMessages((prev) => prev?.map((x) => (x.id === m.id ? m : x)) ?? prev);
+      }),
+    [],
+  );
 
   const loadOlder = useCallback(async () => {
     if (!messages?.length) return;
@@ -118,11 +127,17 @@ export default function ChatScreen() {
           const hasAttachments = item.attachments?.length > 0;
           return (
             <View style={[styles.bubbleRow, mine && { justifyContent: 'flex-end' }]}>
-              <View style={[styles.bubble, mine ? styles.mine : styles.theirs, hasAttachments && styles.wide]}>
+              <Pressable onLongPress={mine ? () => setEditing(item) : undefined} delayLongPress={400} style={[styles.bubble, mine ? styles.mine : styles.theirs, hasAttachments && styles.wide]}>
+                {item.edited_at ? (
+                  <View style={styles.edited} accessibilityLabel="edited">
+                    <Feather name="edit-2" size={10} color={mine ? 'rgba(255,255,255,0.75)' : colors.muted} />
+                    <Text style={[styles.editedText, mine && { color: 'rgba(255,255,255,0.75)' }]}>edited</Text>
+                  </View>
+                ) : null}
                 {item.body ? <Text style={[styles.text, mine && { color: '#fff' }]}>{item.body}</Text> : null}
                 {hasAttachments && <AttachmentList items={item.attachments} style={{ marginTop: item.body ? spacing.sm : 0 }} />}
                 <Text style={[styles.time, mine && { color: 'rgba(255,255,255,0.7)' }]}>{clock(item.created_at)}</Text>
-              </View>
+              </Pressable>
             </View>
           );
         }}
@@ -131,7 +146,35 @@ export default function ChatScreen() {
         ListEmptyComponent={<Text style={styles.empty}>Say hi to {other.display_name} 👋</Text>}
         contentContainerStyle={{ padding: spacing.lg, flexGrow: 1 }}
       />
-      <Composer placeholder="Message" buttonTitle="Send" multiline={false} compact media onSubmit={async (body, attachments) => void (await api.sendMessage(otherId, body, attachments))} />
+      {editing && (
+        <View style={styles.editBar}>
+          <Feather name="edit-2" size={14} color={colors.accent} />
+          <Text style={styles.editText} numberOfLines={1}>
+            Editing: {editing.body || 'picture'}
+          </Text>
+          <Pressable onPress={() => setEditing(null)} hitSlop={8} accessibilityLabel="Cancel editing">
+            <Feather name="x" size={18} color={colors.muted} />
+          </Pressable>
+        </View>
+      )}
+      <Composer
+        key={editing?.id ?? 'new'}
+        placeholder="Message"
+        buttonTitle={editing ? 'Save' : 'Send'}
+        initialText={editing?.body}
+        autoFocus={!!editing}
+        multiline={false}
+        compact
+        media={!editing}
+        onSubmit={async (body, attachments) => {
+          if (editing) {
+            await api.updateMessage(otherId, editing.id, body);
+            setEditing(null);
+          } else {
+            await api.sendMessage(otherId, body, attachments);
+          }
+        }}
+      />
     </KeyboardAvoidingView>
   );
 }
@@ -145,4 +188,8 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   text: { fontSize: 16, color: colors.text },
   time: { fontSize: 11, color: colors.muted, marginTop: 2, alignSelf: 'flex-end' },
   empty: { color: colors.muted, textAlign: 'center', transform: [{ scaleY: -1 }] },
+  edited: { flexDirection: 'row', alignItems: 'center', gap: 3, marginBottom: 2 },
+  editedText: { fontSize: 10, color: colors.muted },
+  editBar: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, backgroundColor: colors.card, borderTopWidth: 1, borderTopColor: colors.border },
+  editText: { flex: 1, color: colors.text, fontSize: 13 },
 });
