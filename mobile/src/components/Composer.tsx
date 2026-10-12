@@ -13,7 +13,8 @@ import { radius, spacing, type ThemeColors } from '@/theme';
 type Selection = { start: number; end: number };
 
 // Generic "write something and submit" box used for posts, comments and chat.
-// `rich` adds a Markdown toolbar plus picture, video and link attachments.
+// `rich` adds a Markdown toolbar plus picture, video and link attachments;
+// `media` adds just the picture/video picker (used by chats).
 export function Composer({
   placeholder,
   buttonTitle = 'Post',
@@ -21,6 +22,7 @@ export function Composer({
   multiline = true,
   compact = false,
   rich = false,
+  media = false,
 }: {
   placeholder: string;
   buttonTitle?: string;
@@ -28,7 +30,9 @@ export function Composer({
   multiline?: boolean;
   compact?: boolean;
   rich?: boolean;
+  media?: boolean;
 }) {
+  const allowMedia = rich || media;
   const styles = useStyles(makeStyles);
   const { colors } = useTheme();
   const input = useRef<TextInput>(null);
@@ -109,8 +113,25 @@ export function Composer({
     setLinkDraft(null);
   };
 
+  const chips = allowMedia && (attachments.length > 0 || uploading > 0) && (
+    <View style={styles.chips}>
+      {attachments.map((a, i) => (
+        <View key={`${a.url}-${i}`} style={styles.chip}>
+          {a.type === 'image' ? <Image source={{ uri: mediaUrl(a) }} style={styles.thumb} /> : <Feather name={a.type === 'video' ? 'video' : 'link'} size={16} color={colors.muted} style={styles.chipIcon} />}
+          <Text numberOfLines={1} style={styles.chipText}>
+            {a.type === 'link' ? a.url.replace(/^https?:\/\//, '') : a.type}
+          </Text>
+          <Pressable onPress={() => setAttachments((prev) => prev.filter((_, j) => j !== i))} hitSlop={8} accessibilityLabel="Remove attachment">
+            <Feather name="x" size={14} color={colors.muted} />
+          </Pressable>
+        </View>
+      ))}
+      {uploading > 0 && <ActivityIndicator color={colors.accent} />}
+    </View>
+  );
+
   return (
-    <View style={[styles.wrap, compact ? styles.row : null]}>
+    <View style={[styles.wrap, compact && styles.wrapCompact]}>
       {rich && (
         <View style={styles.toolbar}>
           <Tool icon="bold" label="Bold" onPress={() => wrap('**', '**', 'bold')} />
@@ -125,41 +146,30 @@ export function Composer({
           <Tool icon="globe" label="Attach a link" active={linkDraft !== null} onPress={() => setLinkDraft((d) => (d === null ? '' : null))} />
         </View>
       )}
-      <Input
-        ref={input}
-        value={text}
-        onChangeText={setText}
-        placeholder={placeholder}
-        multiline={multiline}
-        style={[compact ? styles.inputRow : styles.input, rich && styles.inputRich]}
-        onSubmitEditing={multiline ? undefined : submit}
-        returnKeyType={multiline ? 'default' : 'send'}
-        selection={rich ? selection : undefined}
-        onSelectionChange={rich ? (e) => setSelection(e.nativeEvent.selection) : undefined}
-      />
-      {rich && linkDraft !== null && (
-        <View style={styles.linkRow}>
-          <Input placeholder="https://…" autoCapitalize="none" autoCorrect={false} keyboardType="url" value={linkDraft} onChangeText={setLinkDraft} onSubmitEditing={addLink} style={{ flex: 1 }} />
-          <Button title="Add link" small onPress={addLink} />
-        </View>
-      )}
-      {rich && (attachments.length > 0 || uploading > 0) && (
-        <View style={styles.chips}>
-          {attachments.map((a, i) => (
-            <View key={`${a.url}-${i}`} style={styles.chip}>
-              {a.type === 'image' ? <Image source={{ uri: mediaUrl(a) }} style={styles.thumb} /> : <Feather name={a.type === 'video' ? 'video' : 'link'} size={16} color={colors.muted} style={styles.chipIcon} />}
-              <Text numberOfLines={1} style={styles.chipText}>
-                {a.type === 'link' ? a.url.replace(/^https?:\/\//, '') : a.type}
-              </Text>
-              <Pressable onPress={() => setAttachments((prev) => prev.filter((_, j) => j !== i))} hitSlop={8}>
-                <Feather name="x" size={14} color={colors.muted} />
-              </Pressable>
-            </View>
-          ))}
-          {uploading > 0 && <ActivityIndicator color={colors.accent} />}
-        </View>
-      )}
-      <Button title={buttonTitle} onPress={submit} loading={busy} disabled={!canSubmit} small style={compact ? undefined : styles.btn} />
+      {compact && chips}
+      <View style={compact ? styles.row : styles.column}>
+        {compact && allowMedia && <Tool icon="image" label="Add picture or video" onPress={() => void pickMedia()} />}
+        <Input
+          ref={input}
+          value={text}
+          onChangeText={setText}
+          placeholder={placeholder}
+          multiline={multiline}
+          style={[compact ? styles.inputRow : styles.input, rich && styles.inputRich]}
+          onSubmitEditing={multiline ? undefined : submit}
+          returnKeyType={multiline ? 'default' : 'send'}
+          selection={rich ? selection : undefined}
+          onSelectionChange={rich ? (e) => setSelection(e.nativeEvent.selection) : undefined}
+        />
+        {rich && linkDraft !== null && (
+          <View style={styles.linkRow}>
+            <Input placeholder="https://…" autoCapitalize="none" autoCorrect={false} keyboardType="url" value={linkDraft} onChangeText={setLinkDraft} onSubmitEditing={addLink} style={{ flex: 1 }} />
+            <Button title="Add link" small onPress={addLink} />
+          </View>
+        )}
+        {!compact && chips}
+        <Button title={buttonTitle} onPress={submit} loading={busy} disabled={!canSubmit} small style={compact ? undefined : styles.btn} />
+      </View>
     </View>
   );
 }
@@ -180,7 +190,9 @@ function Tool({ icon, mci, label, active, onPress }: { icon?: FeatherName; mci?:
 
 const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   wrap: { padding: spacing.lg, backgroundColor: colors.card, borderBottomWidth: 1, borderBottomColor: colors.border, gap: spacing.sm },
-  row: { flexDirection: 'row', alignItems: 'center', borderBottomWidth: 0, borderTopWidth: 1, borderTopColor: colors.border, padding: spacing.sm },
+  wrapCompact: { borderBottomWidth: 0, borderTopWidth: 1, borderTopColor: colors.border, padding: spacing.sm },
+  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  column: { gap: spacing.sm },
   input: { minHeight: 70, textAlignVertical: 'top' },
   inputRich: { minHeight: 90 },
   inputRow: { flex: 1, maxHeight: 120 },

@@ -69,7 +69,7 @@ ships no secrets.
 | Comments | On the post screen. |
 | Friends | Request → accept. Only friends can message/call each other. Pushed live over WebSocket. |
 | Groups | Creator is owner + admin; others join as members. Admin can remove members, delete posts, delete the group. |
-| Messages | Direct messages, delivered in real time. |
+| Messages | Direct messages with pictures and videos, delivered in real time. |
 | Calls | Voice or video, 1:1, WebRTC with STUN (`stun.l.google.com`). Mute, camera on/off, flip camera. |
 | Screen share | Toggle during a call; sent as a second video stream. |
 | Theme | Light, dark, or follow the device setting (Me tab). |
@@ -103,7 +103,7 @@ POST   /api/friends/{id}/request   /api/friends/{id}/accept    DELETE /api/frien
 GET    /api/groups?mine=1|q=       POST /api/groups {name, description}
 GET|DELETE /api/groups/{id}        POST /api/groups/{id}/join | /leave
 GET    /api/groups/{id}/posts      DELETE /api/groups/{id}/members/{uid}
-GET    /api/conversations          GET|POST /api/messages/{userId}
+GET    /api/conversations          GET|POST /api/messages/{userId} {body, attachments}
 GET    /ws?token=   (events: hello, message, friend.request, friend.accepted,
                      post.created/updated/deleted, comment.created,
                      call.offer/answer/ice/streams/hangup/reject/busy/unavailable)

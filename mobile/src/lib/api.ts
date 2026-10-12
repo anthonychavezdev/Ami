@@ -109,5 +109,5 @@ export const api = {
   // messages
   conversations: () => get<Conversation[]>('/api/conversations'),
   messages: (userId: number, before?: number) => get<Message[]>(`/api/messages/${userId}${q({ before })}`),
-  sendMessage: (userId: number, body: string) => post<Message>(`/api/messages/${userId}`, { body }),
+  sendMessage: (userId: number, body: string, attachments: Attachment[] = []) => post<Message>(`/api/messages/${userId}`, { body, attachments }),
 };
