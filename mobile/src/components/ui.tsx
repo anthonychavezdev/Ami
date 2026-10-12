@@ -1,7 +1,9 @@
 import { Feather } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, TextInputProps, View, ViewStyle } from 'react-native';
 
+import { API_URL } from '@/lib/config';
 import { useOnline } from '@/lib/presence';
 import { useStyles, useTheme } from '@/lib/theme';
 import { radius, spacing, type ThemeColors } from '@/theme';
@@ -61,7 +63,7 @@ export function Input({ ref, ...props }: TextInputProps & { ref?: React.Ref<Text
 
 // Initials on a colored disc, with a presence dot (green online, gray offline)
 // at the bottom right like Teams. `status={false}` hides the dot.
-export function Avatar({ user, size = 40, status = true }: { user: Pick<User, 'display_name' | 'username'> & { id?: number; online?: boolean }; size?: number; status?: boolean }) {
+export function Avatar({ user, size = 40, status = true }: { user: Pick<User, 'display_name' | 'username'> & { id?: number; online?: boolean; avatar_url?: string }; size?: number; status?: boolean }) {
   const { colors } = useTheme();
   const online = useOnline(user.id, user.online);
   const initials = (user.display_name || user.username).trim().slice(0, 2).toUpperCase();
@@ -69,7 +71,11 @@ export function Avatar({ user, size = 40, status = true }: { user: Pick<User, 'd
   const dot = Math.max(10, Math.round(size * 0.3));
   return (
     <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: `hsl(${hue}, 55%, 45%)`, alignItems: 'center', justifyContent: 'center' }}>
-      <Text style={{ color: '#fff', fontWeight: '700', fontSize: size * 0.38 }}>{initials}</Text>
+      {user.avatar_url ? (
+        <Image source={{ uri: API_URL + user.avatar_url }} style={{ width: size, height: size, borderRadius: size / 2 }} contentFit="cover" accessibilityLabel="Profile picture" />
+      ) : (
+        <Text style={{ color: '#fff', fontWeight: '700', fontSize: size * 0.38 }}>{initials}</Text>
+      )}
       {status && !!user.id && (
         <View
           accessibilityLabel={online ? 'Online' : 'Offline'}

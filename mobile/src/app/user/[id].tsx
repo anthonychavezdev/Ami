@@ -70,7 +70,11 @@ export default function UserScreen() {
           <View style={styles.header}>
             <Avatar user={profile} size={72} />
             <Text style={styles.name}>{profile.display_name}</Text>
-            <Text style={styles.username}>@{profile.username}</Text>
+            <Text style={styles.username}>
+              @{profile.username}
+              {profile.pronouns ? ` · ${profile.pronouns}` : ''}
+            </Text>
+            {!!profile.bio && <Text style={styles.bio}>{profile.bio}</Text>}
             <Text style={styles.stats}>
               {profile.friend_count ?? 0} friends · {profile.post_count ?? 0} posts
             </Text>
@@ -118,6 +122,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   header: { alignItems: 'center', padding: spacing.xl, gap: spacing.xs },
   name: { fontSize: 22, fontWeight: '800', color: colors.text, marginTop: spacing.sm },
   username: { color: colors.muted },
+  bio: { color: colors.text, fontSize: 15, lineHeight: 21, textAlign: 'center', marginTop: spacing.sm, paddingHorizontal: spacing.lg },
   stats: { color: colors.muted, marginTop: spacing.xs },
   actions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: spacing.sm, marginTop: spacing.lg },
   section: { alignSelf: 'flex-start', fontWeight: '700', color: colors.text, fontSize: 16, marginTop: spacing.xl },

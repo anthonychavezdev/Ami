@@ -39,8 +39,12 @@ export default function ProfileScreen() {
     <View style={styles.container}>
       <Avatar user={user} size={88} />
       <Text style={styles.name}>{user.display_name}</Text>
-      <Text style={styles.username}>@{user.username}</Text>
+      <Text style={styles.username}>
+        @{user.username}
+        {user.pronouns ? ` · ${user.pronouns}` : ''}
+      </Text>
       <View style={styles.actions}>
+        <Button title="Edit profile" icon="edit-2" onPress={() => router.push('/edit-profile')} />
         <Button title="View my profile" icon="user" variant="secondary" onPress={() => router.push(`/user/${user.id}`)} />
         <Button title="Log out" icon="log-out" variant="danger" onPress={() => void logout()} />
       </View>

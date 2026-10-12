@@ -112,6 +112,12 @@ var demoPosts = []demoPost{
 	{"mateo", "", "¿Alguien para jugar al pádel esta tarde?", 20 * time.Minute, nil, nil, nil},
 }
 
+// Pronouns and bio for a few demo accounts.
+var demoProfiles = map[string][2]string{
+	"ana":  {"she/her", "Ingeniera de software en Madrid. Me gustan los paseos largos, el café y las fotos del atardecer."},
+	"luis": {"he/him", "Fútbol los domingos, código entre semana."},
+}
+
 var demoMessages = []struct {
 	from, to, body, image string // image: optional demo picture attached to the message
 	ago                   time.Duration
@@ -154,6 +160,11 @@ func (s *server) seedIfEmpty() error {
 			return err
 		}
 		users[u.username], _ = res.LastInsertId()
+		if p, ok := demoProfiles[u.username]; ok {
+			if _, err := tx.Exec(`UPDATE users SET pronouns = ?, bio = ? WHERE id = ?`, p[0], p[1], users[u.username]); err != nil {
+				return err
+			}
+		}
 	}
 	for _, f := range demoFriendships {
 		status := "pending"

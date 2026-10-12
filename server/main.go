@@ -117,6 +117,7 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/login", s.throttle(s.login))
 	mux.HandleFunc("POST /api/logout", s.auth(s.logout))
 	mux.HandleFunc("GET /api/me", s.auth(s.me))
+	mux.HandleFunc("PUT /api/me", s.auth(s.updateMe))
 	mux.HandleFunc("PUT /api/me/presence", s.auth(s.setPresence))
 
 	// users

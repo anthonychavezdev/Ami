@@ -9,6 +9,7 @@ import (
 
 type UserProfile struct {
 	User
+	Bio          string `json:"bio"`
 	FriendStatus string `json:"friend_status"` // self | none | friends | outgoing | incoming
 	FriendCount  int    `json:"friend_count"`
 	PostCount    int    `json:"post_count"`
@@ -55,6 +56,7 @@ func (s *server) getUser(w http.ResponseWriter, r *http.Request, me *User) {
 		return
 	}
 	p := UserProfile{User: u}
+	_ = s.db.QueryRow(`SELECT bio FROM users WHERE id = ?`, id).Scan(&p.Bio)
 	p.FriendStatus, _ = s.friendStatus(me.ID, id)
 	_ = s.db.QueryRow(`SELECT COUNT(*) FROM friendships WHERE status = 'accepted' AND (from_id = ?1 OR to_id = ?1)`, id).Scan(&p.FriendCount)
 	_ = s.db.QueryRow(`SELECT COUNT(*) FROM posts WHERE author_id = ? AND group_id IS NULL`, id).Scan(&p.PostCount)

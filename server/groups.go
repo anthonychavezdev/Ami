@@ -140,7 +140,7 @@ func (s *server) respondGroup(w http.ResponseWriter, code int, viewer, id int64)
 	members := []GroupMember{}
 	for rows.Next() {
 		var m GroupMember
-		if err := rows.Scan(&m.ID, &m.Username, &m.DisplayName, &m.CreatedAt, &m.Role); err != nil {
+		if err := rows.Scan(&m.ID, &m.Username, &m.DisplayName, &m.CreatedAt, &m.AvatarURL, &m.Pronouns, &m.Role); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}

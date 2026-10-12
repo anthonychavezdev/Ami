@@ -81,7 +81,8 @@
       ],
       "./plugins/withWebRTCScreenShare",
       "./plugins/withSceneLifecycle",
-      "expo-video"
+      "expo-video",
+      "expo-image"
     ]
   }
 }

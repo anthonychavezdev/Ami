@@ -4,16 +4,20 @@ export interface User {
   display_name: string;
   created_at: string;
   online?: boolean; // as of when the object was fetched; presence events keep it current
+  avatar_url?: string; // uploaded picture under /media; empty = initials
+  pronouns?: string;
 }
 
 // The signed-in user with private settings.
 export interface Me extends User {
   invisible: boolean; // appear offline to everyone
+  bio: string;
 }
 
 export type FriendStatus = 'self' | 'none' | 'friends' | 'outgoing' | 'incoming';
 
 export interface UserProfile extends User {
+  bio?: string;
   friend_status: FriendStatus;
   friend_count?: number;
   post_count?: number;
