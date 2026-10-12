@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	"log"
 	"net/http"
 	"regexp"
 	"strings"
@@ -15,7 +16,7 @@ import (
 )
 
 const (
-	pbkdf2Iterations = 210_000
+	pbkdf2Iterations = 600_000 // OWASP 2023 guidance for PBKDF2-HMAC-SHA256; stored per user, older hashes are upgraded on login
 	sessionTTL       = 30 * 24 * time.Hour
 )
 
@@ -36,8 +37,8 @@ func scanUser(sc interface{ Scan(...any) error }) (User, error) {
 	return u, err
 }
 
-func hashPassword(password string, salt []byte) []byte {
-	key, err := pbkdf2.Key(sha256.New, password, salt, pbkdf2Iterations, 32)
+func hashPassword(password string, salt []byte, iterations int) []byte {
+	key, err := pbkdf2.Key(sha256.New, password, salt, iterations, 32)
 	if err != nil {
 		panic(err) // only fails under FIPS constraints we never hit
 	}
@@ -130,8 +131,8 @@ func (s *server) register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	salt := randomBytes(16)
-	res, err := s.db.Exec(`INSERT INTO users(username, display_name, password_hash, salt, created_at) VALUES (?, ?, ?, ?, ?)`,
-		c.Username, c.DisplayName, hashPassword(c.Password, salt), salt, nowString())
+	res, err := s.db.Exec(`INSERT INTO users(username, display_name, password_hash, salt, password_iterations, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		c.Username, c.DisplayName, hashPassword(c.Password, salt, pbkdf2Iterations), salt, pbkdf2Iterations, nowString())
 	if err != nil {
 		if strings.Contains(err.Error(), "UNIQUE") {
 			writeError(w, http.StatusConflict, "username already taken")
@@ -151,14 +152,21 @@ func (s *server) login(w http.ResponseWriter, r *http.Request) {
 	}
 	var id int64
 	var hash, salt []byte
-	err := s.db.QueryRow(`SELECT id, password_hash, salt FROM users WHERE username = ?`, strings.TrimSpace(c.Username)).Scan(&id, &hash, &salt)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && subtle.ConstantTimeCompare(hash, hashPassword(c.Password, salt)) != 1) {
+	var iters int
+	err := s.db.QueryRow(`SELECT id, password_hash, salt, password_iterations FROM users WHERE username = ?`, strings.TrimSpace(c.Username)).Scan(&id, &hash, &salt, &iters)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && subtle.ConstantTimeCompare(hash, hashPassword(c.Password, salt, iters)) != 1) {
 		writeError(w, http.StatusUnauthorized, "invalid username or password")
 		return
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	if iters < pbkdf2Iterations { // transparently upgrade hashes made with fewer rounds
+		salt = randomBytes(16)
+		if _, err := s.db.Exec(`UPDATE users SET password_hash = ?, salt = ?, password_iterations = ? WHERE id = ?`, hashPassword(c.Password, salt, pbkdf2Iterations), salt, pbkdf2Iterations, id); err != nil {
+			log.Printf("upgrade password hash: %v", err)
+		}
 	}
 	s.issueSession(w, id)
 }

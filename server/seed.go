@@ -148,8 +148,8 @@ func (s *server) seedIfEmpty() error {
 	users := map[string]int64{}
 	for i, u := range demoUsers {
 		salt := randomBytes(16)
-		res, err := tx.Exec(`INSERT INTO users(username, display_name, password_hash, salt, created_at) VALUES (?, ?, ?, ?, ?)`,
-			u.username, u.name, hashPassword(demoPassword, salt), salt, ts(time.Duration(14-i)*24*hour))
+		res, err := tx.Exec(`INSERT INTO users(username, display_name, password_hash, salt, password_iterations, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+			u.username, u.name, hashPassword(demoPassword, salt, pbkdf2Iterations), salt, pbkdf2Iterations, ts(time.Duration(14-i)*24*hour))
 		if err != nil {
 			return err
 		}
