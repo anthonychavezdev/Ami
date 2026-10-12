@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS users (
 	password_hash BLOB NOT NULL,
 	salt          BLOB NOT NULL,
 	password_iterations INTEGER NOT NULL DEFAULT 210000,
+	invisible     INTEGER NOT NULL DEFAULT 0,
 	created_at    TEXT NOT NULL
 );
 
@@ -132,6 +133,10 @@ func openDB(path string) (*sql.DB, error) {
 		}
 	}
 	if err := addColumn(db, "users", "password_iterations", "INTEGER NOT NULL DEFAULT 210000"); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err := addColumn(db, "users", "invisible", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		db.Close()
 		return nil, err
 	}
