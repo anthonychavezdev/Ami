@@ -56,80 +56,58 @@ func (c chat) contains(m Message) bool {
 	return m.GroupID == nil && m.RecipientID != nil && (*m.RecipientID == c.peer || m.SenderID == c.peer)
 }
 
-// directChat reads the {id} of the direct-message routes.
-func directChat(r *http.Request) (chat, error) {
-	other, err := pathID(r, "id")
-	return chat{peer: other}, err
+// readEvent is the messages.read event for this chat with the user's new total.
+func (c chat) readEvent(unread int) messagesReadEvent {
+	e := messagesReadEvent{Type: "messages.read", Unread: unread}
+	if c.isGroup() {
+		e.GroupID = &c.group
+	} else {
+		e.PeerID = &c.peer
+	}
+	return e
 }
 
-// groupChat reads the {id} of the group chat routes and admits members only.
-func (s *server) groupChat(r *http.Request, me *User) (chat, error) {
-	id, err := pathID(r, "id")
-	if err != nil {
-		return chat{}, err
+// A chatHandler serves one chat action; the routes below say how the chat is
+// found: /api/messages/{id} is a direct chat with user {id}, and
+// /api/groups/{id}/messages is group {id}'s chat, for members only.
+type chatHandler func(w http.ResponseWriter, r *http.Request, me *User, c chat) error
+
+func (s *server) directChat(h chatHandler) authedHandler {
+	return func(w http.ResponseWriter, r *http.Request, me *User) error {
+		other, err := pathID(r, "id")
+		if err != nil {
+			return err
+		}
+		return h(w, r, me, chat{peer: other})
 	}
-	role, err := s.groupRole(id, me.ID)
-	if err != nil {
-		return chat{}, err
-	}
-	if role == "" {
-		return chat{}, forbidden("only members can use the group chat")
-	}
-	return chat{group: id}, nil
 }
 
-// Each chat action has a direct and a group route; the pairs below only
-// differ in how they find the chat.
-func (s *server) listMessages(w http.ResponseWriter, r *http.Request, me *User) error {
-	return s.withDirectChat(r, func(c chat) error { return s.listChat(w, r, me, c) })
-}
-func (s *server) listGroupMessages(w http.ResponseWriter, r *http.Request, me *User) error {
-	return s.withGroupChat(r, me, func(c chat) error { return s.listChat(w, r, me, c) })
-}
-func (s *server) sendMessage(w http.ResponseWriter, r *http.Request, me *User) error {
-	return s.withDirectChat(r, func(c chat) error { return s.sendChat(w, r, me, c) })
-}
-func (s *server) sendGroupMessage(w http.ResponseWriter, r *http.Request, me *User) error {
-	return s.withGroupChat(r, me, func(c chat) error { return s.sendChat(w, r, me, c) })
-}
-func (s *server) markRead(w http.ResponseWriter, r *http.Request, me *User) error {
-	return s.withDirectChat(r, func(c chat) error { return s.readChat(w, me, c) })
-}
-func (s *server) markGroupRead(w http.ResponseWriter, r *http.Request, me *User) error {
-	return s.withGroupChat(r, me, func(c chat) error { return s.readChat(w, me, c) })
-}
-func (s *server) updateMessage(w http.ResponseWriter, r *http.Request, me *User) error {
-	return s.withDirectChat(r, func(c chat) error { return s.updateChat(w, r, me, c) })
-}
-func (s *server) updateGroupMessage(w http.ResponseWriter, r *http.Request, me *User) error {
-	return s.withGroupChat(r, me, func(c chat) error { return s.updateChat(w, r, me, c) })
-}
-func (s *server) deleteMessage(w http.ResponseWriter, r *http.Request, me *User) error {
-	return s.withDirectChat(r, func(c chat) error { return s.deleteChat(w, r, me, c) })
-}
-func (s *server) deleteGroupMessage(w http.ResponseWriter, r *http.Request, me *User) error {
-	return s.withGroupChat(r, me, func(c chat) error { return s.deleteChat(w, r, me, c) })
-}
-
-func (s *server) withDirectChat(r *http.Request, fn func(chat) error) error {
-	c, err := directChat(r)
-	if err != nil {
-		return err
+func (s *server) groupChat(h chatHandler) authedHandler {
+	return func(w http.ResponseWriter, r *http.Request, me *User) error {
+		id, err := pathID(r, "id")
+		if err != nil {
+			return err
+		}
+		role, err := s.groupRole(id, me.ID)
+		if err != nil {
+			return err
+		}
+		if role == "" {
+			return forbidden("only members can use the group chat")
+		}
+		return h(w, r, me, chat{group: id})
 	}
-	return fn(c)
-}
-
-func (s *server) withGroupChat(r *http.Request, me *User, fn func(chat) error) error {
-	c, err := s.groupChat(r, me)
-	if err != nil {
-		return err
-	}
-	return fn(c)
 }
 
 // ---- reading messages
 
 const messageCols = "m.id, m.sender_id, m.recipient_id, m.group_id, m.body, m.attachments, m.created_at, m.edited_at"
+
+// fields are the scan targets for messageCols, in that order; the attachments
+// column lands in atts as JSON.
+func (m *Message) fields(atts *string) []any {
+	return []any{&m.ID, &m.SenderID, &m.RecipientID, &m.GroupID, &m.Body, atts, &m.CreatedAt, &m.EditedAt}
+}
 
 // scanMessage reads messageCols followed by the sender's userCols; the sender
 // is kept on group messages only (direct chats know who the other person is).
@@ -137,8 +115,7 @@ func scanMessage(sc scanner) (Message, error) {
 	var m Message
 	var u User
 	var atts string
-	if err := sc.Scan(&m.ID, &m.SenderID, &m.RecipientID, &m.GroupID, &m.Body, &atts, &m.CreatedAt, &m.EditedAt,
-		&u.ID, &u.Username, &u.DisplayName, &u.CreatedAt, &u.AvatarURL, &u.Pronouns, &u.AvatarCrop); err != nil {
+	if err := sc.Scan(fields(m.fields(&atts), u.fields())...); err != nil {
 		return m, err
 	}
 	m.Attachments = decodeAttachments(atts)
@@ -263,9 +240,10 @@ func (s *server) sendChat(w http.ResponseWriter, r *http.Request, me *User, c ch
 // unread total; the sender's other devices get a plain copy, and people with
 // no connection are pushed.
 func (s *server) deliverMessage(from *User, m Message) {
-	event := map[string]any{"type": "message", "message": m, "sender": from}
+	event := messageEvent{Type: "message", Message: m, Sender: from}
 	if m.GroupID != nil {
-		event["group"] = s.groupSummary(*m.GroupID)
+		g := s.groupSummary(*m.GroupID)
+		event.Group = &g
 	}
 	for _, uid := range s.chatAudience(m) {
 		if uid == from.ID {
@@ -273,20 +251,12 @@ func (s *server) deliverMessage(from *User, m Message) {
 			continue
 		}
 		unread, _ := s.unreadMessages(uid)
-		if !s.hub.sendTo(uid, withField(event, "unread", unread)) {
+		theirs := event
+		theirs.Unread = &unread
+		if !s.hub.sendTo(uid, theirs) {
 			go s.pushMessage(uid, from, m, unread)
 		}
 	}
-}
-
-// withField is a copy of an event with one more field.
-func withField(event map[string]any, key string, v any) map[string]any {
-	out := make(map[string]any, len(event)+1)
-	for k, val := range event {
-		out[k] = val
-	}
-	out[key] = v
-	return out
 }
 
 // updateChat edits the text of one of the caller's messages; everyone in the
@@ -315,7 +285,7 @@ func (s *server) updateChat(w http.ResponseWriter, r *http.Request, me *User, c 
 	if m, err = s.loadMessage(m.ID); err != nil {
 		return err
 	}
-	s.hub.sendToMany(s.chatAudience(m), map[string]any{"type": "message.updated", "message": m})
+	s.hub.sendToMany(s.chatAudience(m), messageUpdatedEvent{Type: "message.updated", Message: m})
 	return ok(w, m)
 }
 
@@ -338,7 +308,7 @@ func (s *server) deleteChat(w http.ResponseWriter, r *http.Request, me *User, c 
 	}
 	for _, uid := range s.chatAudience(m) {
 		unread, _ := s.unreadMessages(uid)
-		s.hub.sendTo(uid, map[string]any{"type": "message.deleted", "id": m.ID, "sender_id": m.SenderID, "recipient_id": m.RecipientID, "group_id": m.GroupID, "unread": unread})
+		s.hub.sendTo(uid, messageDeletedEvent{Type: "message.deleted", ID: m.ID, SenderID: m.SenderID, RecipientID: m.RecipientID, GroupID: m.GroupID, Unread: unread})
 	}
 	return noContent(w)
 }
@@ -393,7 +363,7 @@ func (s *server) groupUnread(userID, groupID int64) int {
 
 // readChat moves the chat's read marker to its latest message and tells the
 // user's other devices so their badges drop too.
-func (s *server) readChat(w http.ResponseWriter, me *User, c chat) error {
+func (s *server) readChat(w http.ResponseWriter, r *http.Request, me *User, c chat) error {
 	if err := s.moveReadMarker(me.ID, c); err != nil {
 		return err
 	}
@@ -401,14 +371,8 @@ func (s *server) readChat(w http.ResponseWriter, me *User, c chat) error {
 	if err != nil {
 		return err
 	}
-	event := map[string]any{"type": "messages.read", "unread": unread}
-	if c.isGroup() {
-		event["group_id"] = c.group
-	} else {
-		event["peer_id"] = c.peer
-	}
-	s.hub.sendTo(me.ID, event)
-	return ok(w, map[string]int{"unread": unread})
+	s.hub.sendTo(me.ID, c.readEvent(unread))
+	return ok(w, unreadCount{unread})
 }
 
 func (s *server) moveReadMarker(userID int64, c chat) error {
@@ -447,8 +411,7 @@ func (s *server) directConversations(userID int64) ([]Conversation, error) {
 		var m Message
 		var u User
 		var atts string
-		err := sc.Scan(&m.ID, &m.SenderID, &m.RecipientID, &m.GroupID, &m.Body, &atts, &m.CreatedAt, &m.EditedAt,
-			&u.ID, &u.Username, &u.DisplayName, &u.CreatedAt, &u.AvatarURL, &u.Pronouns, &u.AvatarCrop, &c.Unread)
+		err := sc.Scan(fields(m.fields(&atts), u.fields(), []any{&c.Unread})...)
 		m.Attachments = decodeAttachments(atts)
 		c.User, c.LastMessage = &u, &m
 		return c, err

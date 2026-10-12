@@ -123,19 +123,29 @@ func describeOrigins(origins map[string]bool) string {
 	return strings.Join(names, ", ")
 }
 
-// serve runs the HTTP server until it fails.
-func serve(cfg config, s *server) error {
+// handler is the whole HTTP surface: the API routes, the browser build when
+// one is configured, and the middleware around them.
+func (s *server) handler(webDir string) (http.Handler, error) {
 	mux := http.NewServeMux()
 	s.routes(mux)
-	if cfg.webDir != "" {
-		if _, err := os.Stat(filepath.Join(cfg.webDir, "index.html")); err != nil {
-			return fmt.Errorf("web dir: %v (build it with `build web`)", err)
+	if webDir != "" {
+		if _, err := os.Stat(filepath.Join(webDir, "index.html")); err != nil {
+			return nil, fmt.Errorf("web dir: %v (build it with `build web`)", err)
 		}
-		mux.Handle("/", webApp(cfg.webDir))
+		mux.Handle("/", webApp(webDir))
+	}
+	return s.secureHeaders(s.cors(logRequests(s.apiLimit(mux)))), nil
+}
+
+// serve runs the HTTP server until it fails.
+func serve(cfg config, s *server) error {
+	h, err := s.handler(cfg.webDir)
+	if err != nil {
+		return err
 	}
 	srv := &http.Server{
 		Addr:              cfg.addr,
-		Handler:           s.secureHeaders(s.cors(logRequests(s.apiLimit(mux)))),
+		Handler:           h,
 		MaxHeaderBytes:    64 << 10,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
@@ -152,7 +162,9 @@ func serve(cfg config, s *server) error {
 
 func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+		writeJSON(w, http.StatusOK, struct {
+			Status string `json:"status"`
+		}{"ok"})
 	})
 
 	// auth and profile
@@ -200,19 +212,19 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/groups/{id}/posts", s.auth(s.groupPosts))
 	mux.HandleFunc("POST /api/groups/{id}/members", s.auth(s.addGroupMembers))
 	mux.HandleFunc("DELETE /api/groups/{id}/members/{uid}", s.auth(s.removeGroupMember))
-	mux.HandleFunc("GET /api/groups/{id}/messages", s.auth(s.listGroupMessages))
-	mux.HandleFunc("POST /api/groups/{id}/messages", s.auth(s.sendGroupMessage))
-	mux.HandleFunc("POST /api/groups/{id}/messages/read", s.auth(s.markGroupRead))
-	mux.HandleFunc("PUT /api/groups/{id}/messages/{mid}", s.auth(s.updateGroupMessage))
-	mux.HandleFunc("DELETE /api/groups/{id}/messages/{mid}", s.auth(s.deleteGroupMessage))
+	mux.HandleFunc("GET /api/groups/{id}/messages", s.auth(s.groupChat(s.listChat)))
+	mux.HandleFunc("POST /api/groups/{id}/messages", s.auth(s.groupChat(s.sendChat)))
+	mux.HandleFunc("POST /api/groups/{id}/messages/read", s.auth(s.groupChat(s.readChat)))
+	mux.HandleFunc("PUT /api/groups/{id}/messages/{mid}", s.auth(s.groupChat(s.updateChat)))
+	mux.HandleFunc("DELETE /api/groups/{id}/messages/{mid}", s.auth(s.groupChat(s.deleteChat)))
 
 	// direct messages and notifications
 	mux.HandleFunc("GET /api/conversations", s.auth(s.listConversations))
-	mux.HandleFunc("GET /api/messages/{id}", s.auth(s.listMessages))
-	mux.HandleFunc("POST /api/messages/{id}", s.auth(s.sendMessage))
-	mux.HandleFunc("POST /api/messages/{id}/read", s.auth(s.markRead))
-	mux.HandleFunc("PUT /api/messages/{id}/{mid}", s.auth(s.updateMessage))
-	mux.HandleFunc("DELETE /api/messages/{id}/{mid}", s.auth(s.deleteMessage))
+	mux.HandleFunc("GET /api/messages/{id}", s.auth(s.directChat(s.listChat)))
+	mux.HandleFunc("POST /api/messages/{id}", s.auth(s.directChat(s.sendChat)))
+	mux.HandleFunc("POST /api/messages/{id}/read", s.auth(s.directChat(s.readChat)))
+	mux.HandleFunc("PUT /api/messages/{id}/{mid}", s.auth(s.directChat(s.updateChat)))
+	mux.HandleFunc("DELETE /api/messages/{id}/{mid}", s.auth(s.directChat(s.deleteChat)))
 	mux.HandleFunc("PUT /api/push-token", s.auth(s.setPushToken))
 	mux.HandleFunc("DELETE /api/push-token", s.auth(s.deletePushToken))
 
@@ -320,14 +332,4 @@ func (s *server) secureHeaders(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
-}
-
-// purgeSessions drops expired sessions once an hour (and once at start).
-func (s *server) purgeSessions() {
-	for {
-		if _, err := s.db.Exec(`DELETE FROM sessions WHERE expires_at < ?`, nowString()); err != nil {
-			log.Printf("purge expired sessions: %v", err)
-		}
-		time.Sleep(time.Hour)
-	}
 }
