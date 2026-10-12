@@ -100,7 +100,7 @@ export function PostCard({
           )}
           {mayDelete && (
             <Pressable onPress={remove} hitSlop={10} accessibilityLabel="Delete post">
-              <Feather name="x" size={18} color={colors.muted} />
+              <Feather name="trash-2" size={17} color={colors.muted} />
             </Pressable>
           )}
         </View>
