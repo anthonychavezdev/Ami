@@ -62,6 +62,7 @@ export interface Message {
   sender_id: number;
   recipient_id: number;
   body: string;
+  attachments: Attachment[];
   created_at: string;
 }
 

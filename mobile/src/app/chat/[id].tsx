@@ -3,6 +3,7 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { AttachmentList } from '@/components/Attachments';
 import { Composer } from '@/components/Composer';
 import { Empty, Loading } from '@/components/ui';
 import { api } from '@/lib/api';
@@ -83,10 +84,12 @@ export default function ChatScreen() {
         keyExtractor={(m) => String(m.id)}
         renderItem={({ item }) => {
           const mine = item.sender_id === me?.id;
+          const hasAttachments = item.attachments?.length > 0;
           return (
             <View style={[styles.bubbleRow, mine && { justifyContent: 'flex-end' }]}>
-              <View style={[styles.bubble, mine ? styles.mine : styles.theirs]}>
-                <Text style={[styles.text, mine && { color: '#fff' }]}>{item.body}</Text>
+              <View style={[styles.bubble, mine ? styles.mine : styles.theirs, hasAttachments && styles.wide]}>
+                {item.body ? <Text style={[styles.text, mine && { color: '#fff' }]}>{item.body}</Text> : null}
+                {hasAttachments && <AttachmentList items={item.attachments} style={{ marginTop: item.body ? spacing.sm : 0 }} />}
                 <Text style={[styles.time, mine && { color: 'rgba(255,255,255,0.7)' }]}>{clock(item.created_at)}</Text>
               </View>
             </View>
@@ -97,7 +100,7 @@ export default function ChatScreen() {
         ListEmptyComponent={<Text style={styles.empty}>Say hi to {other.display_name} 👋</Text>}
         contentContainerStyle={{ padding: spacing.lg, flexGrow: 1 }}
       />
-      <Composer placeholder="Message" buttonTitle="Send" multiline={false} compact onSubmit={async (body) => void (await api.sendMessage(otherId, body))} />
+      <Composer placeholder="Message" buttonTitle="Send" multiline={false} compact media onSubmit={async (body, attachments) => void (await api.sendMessage(otherId, body, attachments))} />
     </KeyboardAvoidingView>
   );
 }
@@ -105,6 +108,7 @@ export default function ChatScreen() {
 const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   bubbleRow: { flexDirection: 'row', marginBottom: spacing.sm },
   bubble: { maxWidth: '80%', paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.lg },
+  wide: { width: '80%' },
   mine: { backgroundColor: colors.accent, borderBottomRightRadius: 4 },
   theirs: { backgroundColor: colors.card, borderBottomLeftRadius: 4, borderWidth: 1, borderColor: colors.border },
   text: { fontSize: 16, color: colors.text },
