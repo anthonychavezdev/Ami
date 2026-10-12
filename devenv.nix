@@ -106,12 +106,13 @@ in
 
   enterShell = ''
     if [ -f "$DEVENV_ROOT/.env" ]; then set -a; . "$DEVENV_ROOT/.env"; set +a; fi # per-machine overrides (see env above)
-    # devenv's Android module puts the NDK's host toolchain libraries on
-    # LD_LIBRARY_PATH. On Linux the NDK's old libc++ there shadows the one the
-    # emulator bundles and the emulator dies at start ("libabseil_dll.so:
-    # undefined symbol: ...__hash_memory..."); the NDK's own tools find their
-    # libraries without it, so that entry is dropped.
-    export LD_LIBRARY_PATH="$(printf %s "$LD_LIBRARY_PATH" | tr ':' '\n' | grep -v '/toolchains/llvm/prebuilt/' | paste -sd: -)"
+    # devenv's Android module puts two SDK directories on LD_LIBRARY_PATH, the
+    # build-tools lib64 and the NDK's host toolchain lib, and both carry an old
+    # libc++. On Linux that one is loaded ahead of the libc++ the emulator was
+    # patched to use, and the emulator dies at start ("libabseil_dll.so:
+    # undefined symbol: ...__hash_memory..."). nixpkgs patches the SDK's own
+    # binaries to find their libraries, so the SDK entries are dropped.
+    export LD_LIBRARY_PATH="$(printf %s "$LD_LIBRARY_PATH" | tr ':' '\n' | grep -v '/android-sdk/' | paste -sd: -)"
     export PATH="$GOBIN:$npm_config_prefix/bin:$PATH"
     mkdir -p "$GOMODCACHE" "$GOCACHE" "$GOBIN" "$npm_config_cache" "$npm_config_prefix/bin"
   '';
