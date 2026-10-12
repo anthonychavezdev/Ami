@@ -7,6 +7,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 // hub tracks every live WebSocket connection per user and fans events out.
@@ -17,7 +19,7 @@ type hub struct {
 
 type client struct {
 	user *User
-	ws   *wsConn
+	ws   *websocket.Conn
 	send chan []byte
 	done chan struct{}
 }
@@ -89,18 +91,20 @@ func (h *hub) sendToMany(userIDs []int64, v any) {
 	}
 }
 
+// writeLoop is the connection's only writer (gorilla allows one at a time).
 func (c *client) writeLoop() {
-	ticker := time.NewTicker(30 * time.Second)
+	ticker := time.NewTicker(wsPingEvery)
 	defer ticker.Stop()
 	for {
 		select {
 		case msg := <-c.send:
-			if err := c.ws.WriteText(msg); err != nil {
+			_ = c.ws.SetWriteDeadline(time.Now().Add(wsWriteWait))
+			if err := c.ws.WriteMessage(websocket.TextMessage, msg); err != nil {
 				c.ws.Close()
 				return
 			}
 		case <-ticker.C:
-			if err := c.ws.Ping(); err != nil {
+			if err := c.ws.WriteControl(websocket.PingMessage, nil, time.Now().Add(wsWriteWait)); err != nil {
 				c.ws.Close()
 				return
 			}
@@ -127,12 +131,13 @@ func (s *server) handleWS(w http.ResponseWriter, r *http.Request) {
 	defer func() {
 		s.hub.remove(c)
 		close(c.done)
+		_ = ws.WriteControl(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, ""), time.Now().Add(time.Second))
 		ws.Close()
 	}()
 	unread, _ := s.unreadMessages(me.ID)
 	s.hub.sendTo(me.ID, map[string]any{"type": "hello", "user": me, "unread": unread})
 	for {
-		ws.SetReadDeadline(time.Now().Add(90 * time.Second))
+		_ = ws.SetReadDeadline(time.Now().Add(wsPongWait))
 		_, data, err := ws.ReadMessage()
 		if err != nil {
 			return
