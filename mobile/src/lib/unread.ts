@@ -39,6 +39,7 @@ export const unread = {
 
 socket.on('hello', (e) => set(e.unread ?? 0));
 socket.on('messages.read', (e) => set(e.unread ?? 0));
+socket.on('message.deleted', (e) => set(e.unread ?? 0));
 socket.on('message', (e) => {
   const m: Message = e.message;
   const sender: User = e.sender;
