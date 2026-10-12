@@ -70,12 +70,12 @@ in
   ];
 
   # Ports and addresses. The defaults live here; override them in a gitignored
-  # `.env` at the repo root (NAME=value per line, loaded when you enter the
-  # shell), in devenv.local.nix (`env.AMI_PORT = "9000";`) or for one command:
+  # `.env` at the repo root (NAME=value per line, loaded by enterShell below),
+  # in devenv.local.nix (`env.AMI_PORT = "9000";`) or for one command:
   # `AMI_PORT=9000 server`. Unless EXPO_PUBLIC_API_URL says otherwise, the app
   # calls the API on the machine it was loaded from (the host in the browser's
   # address bar, or the machine running Metro) at port AMI_PORT.
-  dotenv.enable = true;
+  dotenv.disableHint = true; # .env is sourced by enterShell, not by the dotenv module (which nags when the file is missing)
   env = {
     AMI_PORT = lib.mkOptionDefault "8080"; # the Go API, on every interface
     AMI_METRO_PORT = lib.mkOptionDefault "8081"; # Metro, which also serves the web app; native dev builds bake it in, so rebuild (android/ios) after changing it
@@ -103,6 +103,7 @@ in
   };
 
   enterShell = ''
+    if [ -f "$DEVENV_ROOT/.env" ]; then set -a; . "$DEVENV_ROOT/.env"; set +a; fi # per-machine overrides (see env above)
     export PATH="$GOBIN:$npm_config_prefix/bin:$PATH"
     mkdir -p "$GOMODCACHE" "$GOCACHE" "$GOBIN" "$npm_config_cache" "$npm_config_prefix/bin"
   '';
