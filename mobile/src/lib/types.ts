@@ -72,19 +72,37 @@ export interface Group {
   name: string;
   description: string;
   owner_id: number;
+  private: boolean; // invite only: hidden from Discover, the admin adds members
   created_at: string;
   member_count: number;
   my_role: 'admin' | 'member' | '';
+}
+
+export interface GroupDetail {
+  group: Group;
+  members: GroupMember[];
+  call: number[]; // ids of the members in the group call right now
+}
+
+// What a call knows about its group.
+export interface CallGroup {
+  id: number;
+  name: string;
 }
 
 export interface GroupMember extends User {
   role: 'admin' | 'member';
 }
 
+// Where a chat lives: with one friend, or in a group.
+export type ChatTarget = { kind: 'user' | 'group'; id: number };
+
 export interface Message {
   id: number;
   sender_id: number;
-  recipient_id: number;
+  recipient_id: number | null; // direct message: the other person
+  group_id: number | null; // group chat
+  sender?: User; // group chats name their author
   body: string;
   attachments: Attachment[];
   created_at: string;
@@ -92,7 +110,8 @@ export interface Message {
 }
 
 export interface Conversation {
-  user: User;
-  last_message: Message;
+  user?: User; // direct chat
+  group?: Group; // group chat
+  last_message: Message | null; // null: a group nobody has written in yet
   unread: number;
 }

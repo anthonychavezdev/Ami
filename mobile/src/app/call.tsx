@@ -1,22 +1,27 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useRef } from 'react';
-import { Platform, Pressable, StyleSheet, Text, View, findNodeHandle } from 'react-native';
+import React, { useEffect, useRef, useState } from 'react';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View, findNodeHandle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { Avatar } from '@/components/ui';
-import { useCall } from '@/lib/call';
+import { Avatar, GroupAvatar } from '@/components/ui';
+import { useAuth } from '@/lib/auth';
+import { type Participant, useCall } from '@/lib/call';
 import { type MediaStream, RemoteAudio, ScreenCapturePicker, StreamView, canFlipCamera } from '@/lib/webrtc';
 import { useStyles } from '@/lib/theme';
 import { toast } from '@/lib/toast';
+import type { User } from '@/lib/types';
 import { radius, spacing, type ThemeColors } from '@/theme';
+
+// What one tile of the call shows: a person's camera, or their avatar.
+type Tile = { key: string; user: User; stream: MediaStream | null; mirror?: boolean; label: string };
 
 export default function CallScreen() {
   const styles = useStyles(makeStyles);
   const { state, call } = useCall();
+  const { user: me } = useAuth();
   const router = useRouter();
   const pickerRef = useRef<any>(null);
-  const wasActive = useRef(false);
 
   // Register the iOS screen-capture picker so the manager can show it.
   useEffect(() => {
@@ -29,10 +34,7 @@ export default function CallScreen() {
   // Leave the screen (once) when the call ends; the reason shows as a banner.
   const left = useRef(false);
   useEffect(() => {
-    if (state.status !== 'idle') {
-      wasActive.current = true;
-      return;
-    }
+    if (state.status !== 'idle') return;
     if (left.current) return;
     left.current = true;
     const reason = state.error;
@@ -43,36 +45,82 @@ export default function CallScreen() {
     if (reason) setTimeout(() => toast.show(reason), 400);
   }, [state.status, state.error, call, router]);
 
-  const peer = state.peer;
-  if (!peer) return <View style={styles.root} />;
+  if (state.status === 'idle' || !me) return <View style={styles.root} />;
 
-  const remoteScreen = state.remoteStreams.find((s) => s.id === state.remoteScreenId) ?? null;
-  const remoteCamera = state.remoteStreams.find((s) => s.id !== state.remoteScreenId && s.getVideoTracks().length > 0) ?? null;
-  const main = remoteScreen ?? remoteCamera;
-  const pip = remoteScreen ? remoteCamera : null;
+  const { participants, group, peer } = state;
+  const cameraOf = (p: Participant) => p.streams.find((s) => s.id !== p.screenId && s.getVideoTracks().length > 0) ?? null;
   const localVideo = state.cameraOn && state.localStream?.getVideoTracks().length ? state.localStream : null;
+  const sharer = participants.find((p) => p.screenId && p.streams.some((s) => s.id === p.screenId));
+  // A shared screen takes the stage: someone else's first, otherwise our own.
+  const stage = sharer ? sharer.streams.find((s) => s.id === sharer.screenId)! : state.localScreen;
+  const title = group?.name ?? peer?.display_name ?? '';
+  const ringing = state.status === 'incoming';
 
   const subtitle = {
-    incoming: `Incoming ${state.video ? 'video' : 'voice'} call`,
+    incoming: group ? `${peer?.display_name ?? 'Someone'} is calling · ${state.video ? 'video' : 'voice'}` : `Incoming ${state.video ? 'video' : 'voice'} call`,
     outgoing: 'Calling…',
     connecting: 'Connecting…',
-    active: state.sharing ? 'You are sharing your screen' : state.video || state.cameraOn ? 'Video call' : 'Voice call',
+    active: state.sharing
+      ? 'You are sharing your screen'
+      : sharer
+        ? `${sharer.user.display_name} is sharing their screen`
+        : group
+          ? participants.length === 0
+            ? 'Waiting for others to join…'
+            : `${participants.length + 1} in the call`
+          : state.video || state.cameraOn
+            ? 'Video call'
+            : 'Voice call',
     idle: '',
   }[state.status];
 
+  const tiles: Tile[] = participants.map((p) => ({ key: String(p.user.id), user: p.user, stream: cameraOf(p), label: p.user.display_name }));
+  const localTile: Tile = { key: 'me', user: me, stream: localVideo, mirror: true, label: 'You' };
+
+  // Behind everything: one person full screen (one-to-one), or a big avatar.
+  // Between the header and the controls: the shared screen with a strip of
+  // people, or a grid of everyone (group calls).
+  let backdrop: React.ReactNode = null;
+  let middle: React.ReactNode = null;
+  if (ringing || participants.length === 0) {
+    backdrop = (
+      <View style={styles.center}>
+        {group && !ringing ? <GroupAvatar name={group.name} size={120} /> : peer ? <Avatar user={peer} size={120} status={false} /> : null}
+      </View>
+    );
+  } else if (stage) {
+    middle = (
+      <View style={{ flex: 1 }}>
+        <Video stream={stage} style={styles.stage} fit="contain" version={state.version} muted={stage === state.localScreen} />
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.stripScroll} contentContainerStyle={styles.strip}>
+          {[...tiles, localTile].map((t) => (
+            <TileView key={t.key} tile={t} width={110} height={140} version={state.version} />
+          ))}
+        </ScrollView>
+      </View>
+    );
+  } else if (participants.length === 1) {
+    const t = tiles[0];
+    backdrop = t.stream ? (
+      <Video stream={t.stream} style={StyleSheet.absoluteFill} fit="cover" version={state.version} />
+    ) : (
+      <View style={styles.center}>
+        <Avatar user={t.user} size={120} status={false} />
+      </View>
+    );
+  } else {
+    middle = <Grid tiles={[...tiles, localTile]} version={state.version} />;
+  }
+
+  const showLocalPip = !ringing && !stage && participants.length <= 1 && localVideo;
+
   return (
     <View style={styles.root}>
-      {main ? (
-        <Video stream={main} style={StyleSheet.absoluteFill} fit={remoteScreen ? 'contain' : 'cover'} version={state.version} />
-      ) : (
-        <View style={styles.center}>
-          <Avatar user={peer} size={120} />
-        </View>
-      )}
+      {backdrop}
 
       <SafeAreaView style={styles.overlay} pointerEvents="box-none">
         <View style={styles.top}>
-          <Text style={styles.name}>{peer.display_name}</Text>
+          <Text style={styles.name}>{title}</Text>
           <Text style={styles.subtitle}>{subtitle}</Text>
           {state.error && (
             <Pressable onPress={() => call.clearError()}>
@@ -80,13 +128,15 @@ export default function CallScreen() {
             </Pressable>
           )}
         </View>
+        <View style={{ flex: 1 }}>{middle}</View>
 
-        <View style={styles.pips} pointerEvents="none">
-          {pip && <Video stream={pip} style={styles.pip} fit="cover" version={state.version} />}
-          {localVideo && <Video stream={localVideo} style={styles.pip} fit="cover" mirror muted version={state.version} zOrder={2} />}
-        </View>
+        {showLocalPip && (
+          <View style={styles.pips} pointerEvents="none">
+            <Video stream={localVideo!} style={styles.pip} fit="cover" mirror muted version={state.version} zOrder={2} />
+          </View>
+        )}
 
-        {state.status === 'incoming' ? (
+        {ringing ? (
           <View style={styles.controls}>
             <Control label="Decline" icon="x" danger onPress={() => call.reject()} />
             <Control label="Accept" icon="check" success onPress={() => void call.accept()} />
@@ -97,13 +147,45 @@ export default function CallScreen() {
             <Control label={state.cameraOn ? 'Camera off' : 'Camera'} icon={state.cameraOn ? 'camera' : 'camera-off'} active={state.cameraOn} onPress={() => void call.toggleCamera()} />
             {canFlipCamera && <Control label="Flip" icon="refresh-cw" disabled={!state.cameraOn} onPress={() => void call.flipCamera()} />}
             <Control label={state.sharing ? 'Stop share' : 'Share screen'} icon="monitor" active={state.sharing} disabled={state.status !== 'active'} onPress={() => void call.toggleScreenShare()} />
-            <Control label="End" icon="phone-off" danger onPress={() => call.hangup()} />
+            <Control label={group ? 'Leave' : 'End'} icon="phone-off" danger onPress={() => call.hangup()} />
           </View>
         )}
       </SafeAreaView>
 
       {Platform.OS === 'ios' && <ScreenCapturePicker ref={pickerRef} style={{ width: 0, height: 0 }} />}
-      <RemoteAudio streams={state.remoteStreams} />
+      <RemoteAudio streams={participants.flatMap((p) => p.streams)} />
+    </View>
+  );
+}
+
+// Everyone in equal tiles: 2 columns up to four people, 3 beyond.
+function Grid({ tiles, version }: { tiles: Tile[]; version: number }) {
+  const [size, setSize] = useState({ width: 0, height: 0 });
+  const cols = tiles.length <= 1 ? 1 : tiles.length <= 4 ? 2 : 3;
+  const rows = Math.ceil(tiles.length / cols);
+  return (
+    <View style={styles.grid} onLayout={(e) => setSize(e.nativeEvent.layout)}>
+      {size.width > 0 && tiles.map((t) => <TileView key={t.key} tile={t} width={size.width / cols} height={size.height / rows} version={version} />)}
+    </View>
+  );
+}
+
+function TileView({ tile, width, height, version }: { tile: Tile; width: number; height: number; version: number }) {
+  const s = useStyles(makeStyles);
+  return (
+    <View style={{ width, height, padding: 3 }}>
+      <View style={s.tile} accessibilityLabel={`${tile.label} tile`}>
+        {tile.stream ? (
+          <Video stream={tile.stream} style={StyleSheet.absoluteFill} fit="cover" mirror={tile.mirror} muted={tile.mirror} version={version} />
+        ) : (
+          <View style={s.tileCenter}>
+            <Avatar user={tile.user} size={Math.max(40, Math.min(width, height) * 0.4)} status={false} />
+          </View>
+        )}
+        <Text style={s.tileLabel} numberOfLines={1}>
+          {tile.label}
+        </Text>
+      </View>
     </View>
   );
 }
@@ -157,6 +239,10 @@ function Control({
   );
 }
 
+const styles = StyleSheet.create({
+  grid: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', alignContent: 'center' },
+});
+
 const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.dark },
   center: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, alignItems: 'center', justifyContent: 'center' },
@@ -167,6 +253,12 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   error: { color: '#ffb4b4', marginTop: spacing.sm },
   pips: { position: 'absolute', right: spacing.lg, bottom: 140, gap: spacing.sm },
   pip: { width: 110, height: 160, borderRadius: radius.md, overflow: 'hidden', backgroundColor: '#222' },
+  stage: { flex: 1, backgroundColor: '#000' },
+  stripScroll: { flexGrow: 0 }, // a ScrollView grows like flex: 1 by default, which would steal half of the stage
+  strip: { paddingHorizontal: spacing.sm, paddingVertical: spacing.sm, alignItems: 'center' },
+  tile: { flex: 1, borderRadius: radius.md, overflow: 'hidden', backgroundColor: '#1c1f2a' },
+  tileCenter: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  tileLabel: { position: 'absolute', left: 8, bottom: 6, color: '#fff', fontSize: 12, fontWeight: '600', textShadowColor: 'rgba(0,0,0,0.8)', textShadowRadius: 4 },
   controls: { flexDirection: 'row', justifyContent: 'center', gap: spacing.lg, paddingHorizontal: spacing.lg, paddingBottom: spacing.xl },
   control: { alignItems: 'center', gap: 6, width: 64 },
   controlCircle: { width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(255,255,255,0.18)', alignItems: 'center', justifyContent: 'center' },

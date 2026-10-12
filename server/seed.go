@@ -47,10 +47,28 @@ var demoFriendships = []struct {
 var demoGroups = []struct {
 	name, description, owner string
 	members                  []string
+	private                  bool // an invite-only group chat
 }{
-	{"Fútbol los domingos", "Partido en el parque cada domingo a las 10.", "luis", []string{"ana", "diego", "mateo"}},
-	{"Recetas de la abuela", "Recetas caseras y fotos de lo que cocinamos.", "sofia", []string{"ana", "camila", "valentina"}},
-	{"Senderismo", "Rutas de fin de semana por la sierra.", "javier", []string{"camila", "mateo"}},
+	{"Fútbol los domingos", "Partido en el parque cada domingo a las 10.", "luis", []string{"ana", "diego", "mateo"}, false},
+	{"Recetas de la abuela", "Recetas caseras y fotos de lo que cocinamos.", "sofia", []string{"ana", "camila", "valentina"}, false},
+	{"Senderismo", "Rutas de fin de semana por la sierra.", "javier", []string{"camila", "mateo"}, false},
+	{"Cumple de Luis 🎂", "", "ana", []string{"sofia", "diego"}, true},
+}
+
+// Group chat messages, oldest first.
+var demoGroupMessages = []struct {
+	from, group, body string
+	ago               time.Duration
+}{
+	{"ana", "Cumple de Luis 🎂", "Luis no puede ver este grupo 🤫 ¿Le hacemos un regalo entre todos?", 28 * hour},
+	{"sofia", "Cumple de Luis 🎂", "¡Me apunto!", 27 * hour},
+	{"diego", "Cumple de Luis 🎂", "Yo también. ¿Una camiseta del equipo?", 26 * hour},
+	{"sofia", "Recetas de la abuela", "Esta semana toca tortilla. ¡Quiero fotos del resultado!", 9 * hour},
+	{"camila", "Recetas de la abuela", "La mía quedó un poco quemada 😅", 8 * hour},
+	{"luis", "Fútbol los domingos", "¿Quién trae el balón este domingo?", 3 * hour},
+	{"diego", "Fútbol los domingos", "Yo lo llevo ⚽", 170 * time.Minute},
+	{"ana", "Fútbol los domingos", "Yo llevo agua para todos", 160 * time.Minute},
+	{"mateo", "Fútbol los domingos", "Llego 10 minutos tarde, empezad sin mí", 40 * time.Minute},
 }
 
 type demoComment struct{ author, body string }
@@ -178,8 +196,8 @@ func (s *server) seedIfEmpty() error {
 	}
 	groups := map[string]int64{}
 	for _, g := range demoGroups {
-		res, err := tx.Exec(`INSERT INTO groups(name, description, owner_id, created_at) VALUES (?, ?, ?, ?)`,
-			g.name, g.description, users[g.owner], ts(6*24*hour))
+		res, err := tx.Exec(`INSERT INTO groups(name, description, owner_id, private, created_at) VALUES (?, ?, ?, ?, ?)`,
+			g.name, g.description, users[g.owner], g.private, ts(6*24*hour))
 		if err != nil {
 			return err
 		}
@@ -238,14 +256,30 @@ func (s *server) seedIfEmpty() error {
 			return err
 		}
 	}
-	// Everything is read except Luis's latest message to Ana, so her Messages tab shows a badge.
+	for _, m := range demoGroupMessages {
+		if _, err := tx.Exec(`INSERT INTO messages(sender_id, group_id, body, attachments, created_at) VALUES (?, ?, ?, '[]', ?)`,
+			users[m.from], groups[m.group], m.body, ts(m.ago)); err != nil {
+			return err
+		}
+	}
+	// Everything is read except Luis's latest message to Ana and Mateo's in the
+	// football group, so her Messages tab shows badges.
 	if _, err := tx.Exec(`INSERT INTO conversation_reads(user_id, peer_id, last_read_id)
-		SELECT recipient_id, sender_id, MAX(id) FROM messages GROUP BY recipient_id, sender_id`); err != nil {
+		SELECT recipient_id, sender_id, MAX(id) FROM messages WHERE group_id IS NULL GROUP BY recipient_id, sender_id`); err != nil {
 		return err
 	}
 	if _, err := tx.Exec(`UPDATE conversation_reads SET last_read_id =
 		(SELECT id FROM messages WHERE sender_id = ?2 AND recipient_id = ?1 ORDER BY id DESC LIMIT 1 OFFSET 1)
 		WHERE user_id = ?1 AND peer_id = ?2`, users["ana"], users["luis"]); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`INSERT INTO group_reads(user_id, group_id, last_read_id)
+		SELECT gm.user_id, gm.group_id, COALESCE((SELECT MAX(id) FROM messages WHERE group_id = gm.group_id), 0) FROM group_members gm`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE group_reads SET last_read_id =
+		(SELECT id FROM messages WHERE group_id = ?2 ORDER BY id DESC LIMIT 1 OFFSET 1)
+		WHERE user_id = ?1 AND group_id = ?2`, users["ana"], groups["Fútbol los domingos"]); err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {

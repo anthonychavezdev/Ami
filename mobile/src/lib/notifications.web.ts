@@ -13,7 +13,7 @@ export async function teardownNotifications() {
 
 export async function notify(title: string, body: string, data: Record<string, unknown>) {
   if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
-  const n = new Notification(title, { body, tag: `chat-${String(data.chat)}`, icon: '/favicon.ico' });
+  const n = new Notification(title, { body, tag: data.group_chat ? `group-${String(data.group_chat)}` : `chat-${String(data.chat)}`, icon: '/favicon.ico' });
   n.onclick = () => {
     window.focus();
     onTap?.(data);

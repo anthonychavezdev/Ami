@@ -12,6 +12,7 @@ type Group struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	OwnerID     int64  `json:"owner_id"`
+	Private     bool   `json:"private"` // invite only: hidden from discovery, the admin adds members
 	CreatedAt   string `json:"created_at"`
 	MemberCount int    `json:"member_count"`
 	MyRole      string `json:"my_role"` // admin | member | "" (not a member)
@@ -24,7 +25,7 @@ type GroupMember struct {
 
 // groupSelect expects the viewer's user id as its first bound parameter.
 const groupSelect = `
-SELECT g.id, g.name, g.description, g.owner_id, g.created_at,
+SELECT g.id, g.name, g.description, g.owner_id, g.private, g.created_at,
        (SELECT COUNT(*) FROM group_members m WHERE m.group_id = g.id),
        COALESCE((SELECT role FROM group_members m WHERE m.group_id = g.id AND m.user_id = ?), '')
 FROM groups g
@@ -32,7 +33,7 @@ FROM groups g
 
 func scanGroup(sc interface{ Scan(...any) error }) (Group, error) {
 	var g Group
-	err := sc.Scan(&g.ID, &g.Name, &g.Description, &g.OwnerID, &g.CreatedAt, &g.MemberCount, &g.MyRole)
+	err := sc.Scan(&g.ID, &g.Name, &g.Description, &g.OwnerID, &g.Private, &g.CreatedAt, &g.MemberCount, &g.MyRole)
 	return g, err
 }
 
@@ -73,7 +74,7 @@ func (s *server) listGroups(w http.ResponseWriter, r *http.Request, me *User) {
 		groups, err = s.queryGroups(me.ID, `WHERE g.id IN (SELECT group_id FROM group_members WHERE user_id = ?) ORDER BY g.name`, me.ID)
 	} else {
 		like := "%" + strings.TrimSpace(r.URL.Query().Get("q")) + "%"
-		groups, err = s.queryGroups(me.ID, `WHERE g.name LIKE ? ORDER BY g.name LIMIT 50`, like)
+		groups, err = s.queryGroups(me.ID, `WHERE g.private = 0 AND g.name LIKE ? ORDER BY g.name LIMIT 50`, like)
 	}
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -82,10 +83,48 @@ func (s *server) listGroups(w http.ResponseWriter, r *http.Request, me *User) {
 	writeJSON(w, http.StatusOK, groups)
 }
 
+// friendsToAdd checks a list of users the caller wants in a group: each must
+// be a friend (no adding strangers to chats). Duplicates and the caller are dropped.
+func (s *server) friendsToAdd(w http.ResponseWriter, me *User, ids []int64) ([]int64, bool) {
+	if len(ids) > 100 {
+		writeError(w, http.StatusBadRequest, "too many members at once")
+		return nil, false
+	}
+	seen := map[int64]bool{me.ID: true}
+	out := []int64{}
+	for _, id := range ids {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		if ok, err := s.areFriends(me.ID, id); err != nil || !ok {
+			writeError(w, http.StatusBadRequest, "you can only add friends")
+			return nil, false
+		}
+		out = append(out, id)
+	}
+	return out, true
+}
+
+// addMember puts a user in a group as a member, with the chat read up to now
+// (what was said before they came in does not count as unread).
+func addMember(tx *sql.Tx, groupID, userID int64, ts string) error {
+	if _, err := tx.Exec(`INSERT OR IGNORE INTO group_members(group_id, user_id, role, joined_at) VALUES (?, ?, 'member', ?)`, groupID, userID, ts); err != nil {
+		return err
+	}
+	_, err := tx.Exec(`INSERT OR REPLACE INTO group_reads(user_id, group_id, last_read_id)
+		VALUES (?1, ?2, COALESCE((SELECT MAX(id) FROM messages WHERE group_id = ?2), 0))`, userID, groupID)
+	return err
+}
+
+// createGroup makes a group with the caller as owner and admin. {private:
+// true} makes an invite-only group chat; {member_ids} adds friends right away.
 func (s *server) createGroup(w http.ResponseWriter, r *http.Request, me *User) {
 	var in struct {
-		Name        string `json:"name"`
-		Description string `json:"description"`
+		Name        string  `json:"name"`
+		Description string  `json:"description"`
+		Private     bool    `json:"private"`
+		MemberIDs   []int64 `json:"member_ids"`
 	}
 	if !readJSON(w, r, &in) {
 		return
@@ -96,6 +135,10 @@ func (s *server) createGroup(w http.ResponseWriter, r *http.Request, me *User) {
 		writeError(w, http.StatusBadRequest, "name must be 1-60 characters, description up to 500")
 		return
 	}
+	members, ok := s.friendsToAdd(w, me, in.MemberIDs)
+	if !ok {
+		return
+	}
 	tx, err := s.db.Begin()
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -103,7 +146,7 @@ func (s *server) createGroup(w http.ResponseWriter, r *http.Request, me *User) {
 	}
 	defer tx.Rollback()
 	ts := nowString()
-	res, err := tx.Exec(`INSERT INTO groups(name, description, owner_id, created_at) VALUES (?, ?, ?, ?)`, in.Name, in.Description, me.ID, ts)
+	res, err := tx.Exec(`INSERT INTO groups(name, description, owner_id, private, created_at) VALUES (?, ?, ?, ?, ?)`, in.Name, in.Description, me.ID, in.Private, ts)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -112,6 +155,12 @@ func (s *server) createGroup(w http.ResponseWriter, r *http.Request, me *User) {
 	if _, err := tx.Exec(`INSERT INTO group_members(group_id, user_id, role, joined_at) VALUES (?, ?, 'admin', ?)`, id, me.ID, ts); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
+	}
+	for _, uid := range members {
+		if err := addMember(tx, id, uid, ts); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
 	}
 	if err := tx.Commit(); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
@@ -146,7 +195,65 @@ func (s *server) respondGroup(w http.ResponseWriter, code int, viewer, id int64)
 		}
 		members = append(members, m)
 	}
-	writeJSON(w, code, map[string]any{"group": g, "members": members})
+	writeJSON(w, code, map[string]any{"group": g, "members": members, "call": s.calls.participants(groupRoomKey(id))})
+}
+
+// addGroupMembers lets the admin add friends: POST {user_ids: [...]}.
+func (s *server) addGroupMembers(w http.ResponseWriter, r *http.Request, me *User) {
+	id, ok := pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	var in struct {
+		UserIDs []int64 `json:"user_ids"`
+	}
+	if !readJSON(w, r, &in) {
+		return
+	}
+	role, err := s.groupRole(id, me.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if role != "admin" {
+		writeError(w, http.StatusForbidden, "admin only")
+		return
+	}
+	members, ok := s.friendsToAdd(w, me, in.UserIDs)
+	if !ok {
+		return
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	defer tx.Rollback()
+	ts := nowString()
+	for _, uid := range members {
+		if err := addMember(tx, id, uid, ts); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	g := s.groupSummary(id)
+	for _, uid := range members {
+		s.hub.sendTo(uid, map[string]any{"type": "group.added", "group": g, "by": me})
+	}
+	s.respondGroup(w, http.StatusOK, me.ID, id)
+}
+
+// dropMember finishes a departure: the chat's read marker goes, the user is
+// taken out of a running call, and their badge is recomputed.
+func (s *server) dropMember(groupID, userID int64) {
+	_, _ = s.db.Exec(`DELETE FROM group_reads WHERE user_id = ? AND group_id = ?`, userID, groupID)
+	s.leaveCall(userID, groupRoomKey(groupID))
+	unread, _ := s.unreadMessages(userID)
+	s.hub.sendTo(userID, map[string]any{"type": "messages.read", "group_id": groupID, "unread": unread})
 }
 
 func (s *server) getGroupHandler(w http.ResponseWriter, r *http.Request, me *User) {
@@ -162,14 +269,20 @@ func (s *server) deleteGroup(w http.ResponseWriter, r *http.Request, me *User) {
 	if !ok {
 		return
 	}
-	res, err := s.db.Exec(`DELETE FROM groups WHERE id = ? AND owner_id = ?`, id, me.ID)
-	if err != nil {
+	var owner int64
+	if err := s.db.QueryRow(`SELECT owner_id FROM groups WHERE id = ?`, id).Scan(&owner); err != nil || owner != me.ID {
+		writeError(w, http.StatusForbidden, "only the owner can delete the group")
+		return
+	}
+	members := s.groupMemberIDs(id)
+	s.endGroupCall(id)
+	if _, err := s.db.Exec(`DELETE FROM groups WHERE id = ?`, id); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if n, _ := res.RowsAffected(); n == 0 {
-		writeError(w, http.StatusForbidden, "only the owner can delete the group")
-		return
+	for _, uid := range members { // the group chat is gone with it: refresh badges
+		unread, _ := s.unreadMessages(uid)
+		s.hub.sendTo(uid, map[string]any{"type": "messages.read", "group_id": id, "unread": unread})
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -179,13 +292,26 @@ func (s *server) joinGroup(w http.ResponseWriter, r *http.Request, me *User) {
 	if !ok {
 		return
 	}
-	var exists int
-	if err := s.db.QueryRow(`SELECT 1 FROM groups WHERE id = ?`, id).Scan(&exists); err != nil {
+	var private bool
+	if err := s.db.QueryRow(`SELECT private FROM groups WHERE id = ?`, id).Scan(&private); err != nil {
 		writeError(w, http.StatusNotFound, "group not found")
 		return
 	}
-	if _, err := s.db.Exec(`INSERT OR IGNORE INTO group_members(group_id, user_id, role, joined_at) VALUES (?, ?, 'member', ?)`,
-		id, me.ID, nowString()); err != nil {
+	if private {
+		writeError(w, http.StatusForbidden, "this group is invite only")
+		return
+	}
+	tx, err := s.db.Begin()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	defer tx.Rollback()
+	if err := addMember(tx, id, me.ID, nowString()); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if err := tx.Commit(); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -210,6 +336,7 @@ func (s *server) leaveGroup(w http.ResponseWriter, r *http.Request, me *User) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.dropMember(id, me.ID)
 	s.respondGroup(w, http.StatusOK, me.ID, id)
 }
 
@@ -256,5 +383,6 @@ func (s *server) removeGroupMember(w http.ResponseWriter, r *http.Request, me *U
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.dropMember(id, uid)
 	s.respondGroup(w, http.StatusOK, me.ID, id)
 }

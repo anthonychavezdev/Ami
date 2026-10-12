@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS groups (
 	name        TEXT NOT NULL,
 	description TEXT NOT NULL DEFAULT '',
 	owner_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	private     INTEGER NOT NULL DEFAULT 0, -- invite only: hidden from discovery, members are added by the admin
 	created_at  TEXT NOT NULL
 );
 
@@ -86,17 +87,26 @@ CREATE TABLE IF NOT EXISTS friendships (
 );
 CREATE INDEX IF NOT EXISTS friendships_to ON friendships(to_id);
 
+-- A direct message has recipient_id, a group chat message has group_id.
 CREATE TABLE IF NOT EXISTS messages (
 	id           INTEGER PRIMARY KEY,
 	sender_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-	recipient_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	recipient_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+	group_id     INTEGER REFERENCES groups(id) ON DELETE CASCADE,
 	body         TEXT NOT NULL,
 	attachments  TEXT NOT NULL DEFAULT '[]',
-	edited_at   TEXT,
+	edited_at    TEXT,
 	created_at   TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS messages_sender ON messages(sender_id, recipient_id, id);
 CREATE INDEX IF NOT EXISTS messages_recipient ON messages(recipient_id, sender_id, id);
+
+CREATE TABLE IF NOT EXISTS group_reads (
+	user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	group_id     INTEGER NOT NULL REFERENCES groups(id) ON DELETE CASCADE,
+	last_read_id INTEGER NOT NULL,
+	PRIMARY KEY (user_id, group_id)
+);
 
 CREATE TABLE IF NOT EXISTS conversation_reads (
 	user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -156,8 +166,17 @@ func openDB(path string) (*sql.DB, error) {
 			return nil, err
 		}
 	}
-	// Only after the column exists on older databases.
-	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS comments_parent ON comments(parent_id)`); err != nil {
+	if err := addColumn(db, "groups", "private", "INTEGER NOT NULL DEFAULT 0"); err != nil {
+		db.Close()
+		return nil, err
+	}
+	if err := migrateMessages(db); err != nil {
+		db.Close()
+		return nil, err
+	}
+	// Only after the columns exist on older databases.
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS comments_parent ON comments(parent_id);
+		CREATE INDEX IF NOT EXISTS messages_group ON messages(group_id, id)`); err != nil {
 		db.Close()
 		return nil, err
 	}
@@ -170,6 +189,37 @@ func openDB(path string) (*sql.DB, error) {
 		}
 	}
 	return db, nil
+}
+
+// migrateMessages rebuilds a messages table from before group chats, where
+// recipient_id was NOT NULL and there was no group_id (SQLite cannot relax a
+// constraint in place). Nothing references messages, so the copy is safe.
+func migrateMessages(db *sql.DB) error {
+	var notNull int
+	if err := db.QueryRow(`SELECT "notnull" FROM pragma_table_info('messages') WHERE name = 'recipient_id'`).Scan(&notNull); err != nil {
+		return err
+	}
+	if notNull == 0 {
+		return nil
+	}
+	_, err := db.Exec(`
+		CREATE TABLE messages_v2 (
+			id           INTEGER PRIMARY KEY,
+			sender_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+			recipient_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+			group_id     INTEGER REFERENCES groups(id) ON DELETE CASCADE,
+			body         TEXT NOT NULL,
+			attachments  TEXT NOT NULL DEFAULT '[]',
+			edited_at    TEXT,
+			created_at   TEXT NOT NULL
+		);
+		INSERT INTO messages_v2(id, sender_id, recipient_id, group_id, body, attachments, edited_at, created_at)
+			SELECT id, sender_id, recipient_id, NULL, body, attachments, edited_at, created_at FROM messages;
+		DROP TABLE messages;
+		ALTER TABLE messages_v2 RENAME TO messages;
+		CREATE INDEX IF NOT EXISTS messages_sender ON messages(sender_id, recipient_id, id);
+		CREATE INDEX IF NOT EXISTS messages_recipient ON messages(recipient_id, sender_id, id)`)
+	return err
 }
 
 func addColumn(db *sql.DB, table, column, definition string) error {
