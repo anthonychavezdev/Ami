@@ -215,11 +215,12 @@ func (c *client) writeLoop() {
 
 // handleWS upgrades GET /ws?token=... and serves the connection until it drops.
 func (s *server) handleWS(w http.ResponseWriter, r *http.Request) {
-	me, err := s.userForToken(bearerToken(r))
+	su, err := s.userForToken(bearerToken(r))
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
+	me := su.User
 	s.hub.setHidden(me.ID, s.invisible(me.ID)) // before add, so an invisible user is never announced
 	ws, err := s.wsUpgrade(w, r)
 	if err != nil {

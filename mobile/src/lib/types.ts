@@ -22,6 +22,7 @@ export interface AvatarCrop {
 export interface Me extends User {
   invisible: boolean; // appear offline to everyone
   bio: string;
+  must_change_password: boolean; // signed in with a temporary password: the app only shows the change-password screen
 }
 
 export type FriendStatus = 'self' | 'none' | 'friends' | 'outgoing' | 'incoming';

@@ -79,6 +79,7 @@ export const api = {
   updateMe: (patch: Partial<Pick<Me, 'username' | 'display_name' | 'bio' | 'pronouns' | 'avatar_url' | 'avatar_crop'>>) =>
     put<Me>('/api/me', patch),
   setInvisible: (invisible: boolean) => put<{ invisible: boolean }>('/api/me/presence', { invisible }),
+  changePassword: (current: string, next: string) => put<Me>('/api/me/password', { current, new: next }),
 
   // users
   searchUsers: (query: string) => get<UserProfile[]>(`/api/users${q({ q: query })}`),

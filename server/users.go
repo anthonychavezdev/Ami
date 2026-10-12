@@ -39,13 +39,14 @@ func (s *server) userByID(id int64) (User, error) {
 // Me is the caller's own user with private settings and the full profile.
 type Me struct {
 	User
-	Invisible bool   `json:"invisible"` // appear offline to everyone
-	Bio       string `json:"bio"`
+	Invisible          bool   `json:"invisible"` // appear offline to everyone
+	Bio                string `json:"bio"`
+	MustChangePassword bool   `json:"must_change_password"` // signed in with a temporary password: set a new one first
 }
 
 func (s *server) meFor(u User) Me {
 	m := Me{User: u}
-	_ = s.db.QueryRow(`SELECT invisible, bio FROM users WHERE id = ?`, u.ID).Scan(&m.Invisible, &m.Bio)
+	_ = s.db.QueryRow(`SELECT invisible, bio, must_change_password FROM users WHERE id = ?`, u.ID).Scan(&m.Invisible, &m.Bio, &m.MustChangePassword)
 	return m
 }
 

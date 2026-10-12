@@ -42,6 +42,7 @@ type config struct {
 	addr, dbPath, mediaDir, origins, tlsCert, tlsKey, webDir string
 	dev, trustProxy                                          bool
 	apiRate                                                  int
+	resetPassword                                            string // a username: print a temporary password for it and exit
 }
 
 func parseFlags() config {
@@ -56,12 +57,19 @@ func parseFlags() config {
 	flag.StringVar(&c.tlsKey, "tls-key", "", "private key for -tls-cert")
 	flag.StringVar(&c.webDir, "web-dir", "", "serve the browser build from this directory (see `build web`)")
 	flag.IntVar(&c.apiRate, "api-rate", 600, "requests per minute allowed per client IP on /api (0 disables)")
+	flag.StringVar(&c.resetPassword, "reset-password", "", "give this user a temporary password (printed) that must be changed at their next login, sign out their devices, and exit")
 	flag.Parse()
 	return c
 }
 
 func main() {
 	cfg := parseFlags()
+	if cfg.resetPassword != "" {
+		if err := printTemporaryPassword(cfg); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
 	s, err := newServer(cfg)
 	if err != nil {
 		log.Fatal(err)
@@ -173,6 +181,7 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/logout", s.auth(s.logout))
 	mux.HandleFunc("GET /api/me", s.auth(s.me))
 	mux.HandleFunc("PUT /api/me", s.auth(s.updateMe))
+	mux.HandleFunc("PUT /api/me/password", s.auth(s.changePassword))
 	mux.HandleFunc("PUT /api/me/presence", s.auth(s.setPresence))
 
 	// users
