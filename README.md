@@ -15,11 +15,11 @@ groups, direct messages, and peer-to-peer voice/video calls with screen sharing.
 ## Run
 
 ```sh
-devenv shell          # Go, Node, npm, sqlite3, watchman, Android SDK + emulator, JDK 17
+devenv shell          # Go, Node, npm, sqlite3, watchman, Android SDK + emulator, JDK 17 (macOS: CocoaPods too)
 setup                 # go mod tidy + npm install (first time)
 server                # API on :8080   (or `devenv up`)
 android               # build the app, install it on the emulator (created on first run), start Metro
-ios                   # same, in the iOS Simulator (needs Xcode from the App Store)
+ios                   # same, in the iOS Simulator (macOS with Xcode from the App Store; Linux gets everything but iOS)
 mobile                # Metro only — once the app is installed, for day-to-day JS work
 web                   # the same app in a browser tab (http://localhost:8081)
 test                  # gofmt, go vet, go test; tsc, eslint, prettier --check
