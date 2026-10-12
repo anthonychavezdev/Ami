@@ -8,8 +8,10 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"crypto/tls"
 	"database/sql"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -17,8 +19,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -70,15 +74,24 @@ func main() {
 		}
 		return
 	}
-	s, err := newServer(cfg)
+	// Ctrl-C or SIGTERM (systemd, process-compose) ends ctx: in-flight
+	// requests finish, connections close, background loops stop.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	s, err := newServer(ctx, cfg)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer s.db.Close()
-	log.Fatal(serve(cfg, s))
+	if err := serve(ctx, cfg, s); err != nil {
+		log.Fatal(err)
+	}
+	log.Print("ami stopped")
 }
 
-func newServer(cfg config) (*server, error) {
+// newServer opens the database and starts the background work, which runs
+// until ctx ends.
+func newServer(ctx context.Context, cfg config) (*server, error) {
 	db, err := openDB(cfg.dbPath)
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
@@ -104,7 +117,7 @@ func newServer(cfg config) (*server, error) {
 	presenceHook = s.markPresence
 	s.hub.decorate = s.markPresence
 	s.upgrader = websocket.Upgrader{ReadBufferSize: 4096, WriteBufferSize: 4096, CheckOrigin: s.originAllowed}
-	go s.purgeSessions()
+	go s.purgeSessions(ctx)
 	return s, nil
 }
 
@@ -145,8 +158,12 @@ func (s *server) handler(webDir string) (http.Handler, error) {
 	return s.secureHeaders(s.cors(logRequests(s.apiLimit(mux)))), nil
 }
 
-// serve runs the HTTP server until it fails.
-func serve(cfg config, s *server) error {
+// shutdownGrace is how long in-flight requests get to finish on shutdown.
+const shutdownGrace = 10 * time.Second
+
+// serve runs the HTTP server until it fails or ctx ends; then it stops taking
+// connections, lets in-flight requests finish and closes the WebSockets.
+func serve(ctx context.Context, cfg config, s *server) error {
 	h, err := s.handler(cfg.webDir)
 	if err != nil {
 		return err
@@ -161,11 +178,29 @@ func serve(cfg config, s *server) error {
 		IdleTimeout:       2 * time.Minute,
 		TLSConfig:         &tls.Config{MinVersion: tls.VersionTLS12},
 	}
-	log.Printf("ami listening on %s (db %s)", cfg.addr, cfg.dbPath)
-	if cfg.tlsCert != "" || cfg.tlsKey != "" {
-		return srv.ListenAndServeTLS(cfg.tlsCert, cfg.tlsKey)
+	failed := make(chan error, 1)
+	go func() {
+		log.Printf("ami listening on %s (db %s)", cfg.addr, cfg.dbPath)
+		if cfg.tlsCert != "" || cfg.tlsKey != "" {
+			failed <- srv.ListenAndServeTLS(cfg.tlsCert, cfg.tlsKey)
+		} else {
+			failed <- srv.ListenAndServe()
+		}
+	}()
+	select {
+	case err := <-failed:
+		return err
+	case <-ctx.Done():
 	}
-	return srv.ListenAndServe()
+	log.Print("ami shutting down")
+	grace, cancel := context.WithTimeout(context.Background(), shutdownGrace)
+	defer cancel()
+	err = srv.Shutdown(grace)
+	s.hub.closeAll() // Shutdown does not know about hijacked connections
+	if errors.Is(err, context.DeadlineExceeded) {
+		return nil // requests still running after the grace period are cut off; that is the deal
+	}
+	return err
 }
 
 func (s *server) routes(mux *http.ServeMux) {

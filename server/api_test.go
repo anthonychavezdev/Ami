@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"strings"
 	"testing"
 	"time"
@@ -709,4 +710,19 @@ func TestPasswords(t *testing.T) {
 	ts.check("and opens the account again", ts.get("/api/feed", tom.token).status == 200)
 	ts.check("the temporary password works only once", ts.post("/api/login", J{"username": "tom", "password": temp}, "").status == 401)
 	ts.check("logout is allowed while flagged", ts.post("/api/logout", nil, ts.login("tom", "third-password").token).status == 204)
+}
+
+func TestServeStopsWhenContextEnds(t *testing.T) {
+	ts := newTestServer(t, false)
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- serve(ctx, config{addr: "127.0.0.1:0"}, ts.s) }()
+	time.Sleep(200 * time.Millisecond) // let it start listening
+	cancel()
+	select {
+	case err := <-done:
+		ts.check("serve returns cleanly after the context ends", err == nil, err)
+	case <-time.After(wsTimeout):
+		t.Error("serve did not stop")
+	}
 }
