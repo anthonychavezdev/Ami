@@ -20,6 +20,7 @@ type hub struct {
 	mu       sync.RWMutex
 	users    map[int64]map[*client]struct{}
 	leaving  map[int64]*time.Timer // users inside the presence grace period
+	hidden   map[int64]bool        // users who chose to appear offline
 	decorate func(v any) any       // fills presence into outgoing events (set by the server)
 }
 
@@ -31,7 +32,7 @@ type client struct {
 }
 
 func newHub() *hub {
-	return &hub{users: map[int64]map[*client]struct{}{}, leaving: map[int64]*time.Timer{}}
+	return &hub{users: map[int64]map[*client]struct{}{}, leaving: map[int64]*time.Timer{}, hidden: map[int64]bool{}}
 }
 
 func (h *hub) add(c *client) {
@@ -48,8 +49,9 @@ func (h *hub) add(c *client) {
 		delete(h.leaving, c.user.ID)
 		wasPresent = true
 	}
+	hidden := h.hidden[c.user.ID]
 	h.mu.Unlock()
-	if !wasPresent {
+	if !wasPresent && !hidden {
 		h.sendAll(map[string]any{"type": "presence", "user_id": c.user.ID, "online": true})
 	}
 }
@@ -70,9 +72,10 @@ func (h *hub) remove(c *client) {
 	h.leaving[id] = time.AfterFunc(presenceGrace, func() {
 		h.mu.Lock()
 		_, back := h.users[id]
+		hidden := h.hidden[id]
 		delete(h.leaving, id)
 		h.mu.Unlock()
-		if !back {
+		if !back && !hidden {
 			h.sendAll(map[string]any{"type": "presence", "user_id": id, "online": false})
 		}
 	})
@@ -85,11 +88,29 @@ func (h *hub) online(userID int64) bool {
 	return len(h.users[userID]) > 0
 }
 
-// present is what others see: connected, or gone for less than the grace period.
+// present is what others see: connected (or gone for less than the grace
+// period) and not appearing offline on purpose.
 func (h *hub) present(userID int64) bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	return len(h.users[userID]) > 0 || h.leaving[userID] != nil
+	return !h.hidden[userID] && (len(h.users[userID]) > 0 || h.leaving[userID] != nil)
+}
+
+// setHidden records whether a user appears offline; if they are connected the
+// change is announced like a disconnect or a reconnect.
+func (h *hub) setHidden(userID int64, hidden bool) {
+	h.mu.Lock()
+	was := h.hidden[userID]
+	if hidden {
+		h.hidden[userID] = true
+	} else {
+		delete(h.hidden, userID)
+	}
+	connected := len(h.users[userID]) > 0 || h.leaving[userID] != nil
+	h.mu.Unlock()
+	if was != hidden && connected {
+		h.sendAll(map[string]any{"type": "presence", "user_id": userID, "online": !hidden})
+	}
 }
 
 // onlineIDs lists every user currently shown as online.
@@ -98,10 +119,14 @@ func (h *hub) onlineIDs() []int64 {
 	defer h.mu.RUnlock()
 	ids := make([]int64, 0, len(h.users)+len(h.leaving))
 	for id := range h.users {
-		ids = append(ids, id)
+		if !h.hidden[id] {
+			ids = append(ids, id)
+		}
 	}
 	for id := range h.leaving {
-		ids = append(ids, id)
+		if !h.hidden[id] {
+			ids = append(ids, id)
+		}
 	}
 	return ids
 }
@@ -198,6 +223,7 @@ func (s *server) handleWS(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
+	s.hub.setHidden(me.ID, s.invisible(me.ID)) // before add, so an invisible user is never announced
 	ws, err := s.wsUpgrade(w, r)
 	if err != nil {
 		return

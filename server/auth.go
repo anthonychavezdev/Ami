@@ -30,6 +30,34 @@ type User struct {
 	Online      bool   `json:"online"` // has a live connection; filled in by markPresence on output
 }
 
+// Me is the caller's own user with private settings.
+type Me struct {
+	User
+	Invisible bool `json:"invisible"` // appear offline to everyone
+}
+
+func (s *server) invisible(userID int64) bool {
+	var v bool
+	_ = s.db.QueryRow(`SELECT invisible FROM users WHERE id = ?`, userID).Scan(&v)
+	return v
+}
+
+// setPresence lets a user appear offline (or visible again).
+func (s *server) setPresence(w http.ResponseWriter, r *http.Request, me *User) {
+	var in struct {
+		Invisible bool `json:"invisible"`
+	}
+	if !readJSON(w, r, &in) {
+		return
+	}
+	if _, err := s.db.Exec(`UPDATE users SET invisible = ? WHERE id = ?`, in.Invisible, me.ID); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.hub.setHidden(me.ID, in.Invisible)
+	writeJSON(w, http.StatusOK, map[string]bool{"invisible": in.Invisible})
+}
+
 const userCols = `u.id, u.username, u.display_name, u.created_at`
 
 func scanUser(sc interface{ Scan(...any) error }) (User, error) {
@@ -183,7 +211,7 @@ func (s *server) issueSession(w http.ResponseWriter, userID int64) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"token": token, "user": u})
+	writeJSON(w, http.StatusOK, map[string]any{"token": token, "user": Me{User: u, Invisible: s.invisible(userID)}})
 }
 
 func (s *server) logout(w http.ResponseWriter, r *http.Request, me *User) {
@@ -192,7 +220,7 @@ func (s *server) logout(w http.ResponseWriter, r *http.Request, me *User) {
 }
 
 func (s *server) me(w http.ResponseWriter, r *http.Request, me *User) {
-	writeJSON(w, http.StatusOK, me)
+	writeJSON(w, http.StatusOK, Me{User: *me, Invisible: s.invisible(me.ID)})
 }
 
 func (s *server) userByID(id int64) (User, error) {
