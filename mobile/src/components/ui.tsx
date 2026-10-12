@@ -1,8 +1,10 @@
 import { Feather } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import { useHeaderHeight } from 'expo-router/build/react-navigation/elements';
 import React from 'react';
 import {
   ActivityIndicator,
+  KeyboardAvoidingView,
   Pressable,
   StyleProp,
   StyleSheet,
@@ -13,6 +15,7 @@ import {
   View,
   ViewStyle,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { API_URL } from '@/lib/config';
 import { useOnline } from '@/lib/presence';
@@ -207,6 +210,22 @@ export function Fab({ label, onPress }: { label: string; onPress: () => void }) 
 export function SectionLabel({ children, style }: { children: React.ReactNode; style?: StyleProp<TextStyle> }) {
   const styles = useStyles(makeStyles);
   return <Text style={[styles.sectionLabel, style]}>{children}</Text>;
+}
+
+// A screen with a text box at the bottom (chat, comments, a form): the box
+// stays above the keyboard and, with the keyboard away, above the home
+// indicator. Padding on both platforms: Android draws edge to edge, so the
+// window no longer shrinks for the keyboard by itself. The offset is the
+// header's real height, which varies by phone.
+export function KeyboardScreen({ children }: { children: React.ReactNode }) {
+  const headerHeight = useHeaderHeight();
+  return (
+    <SafeAreaView edges={['bottom']} style={{ flex: 1 }}>
+      <KeyboardAvoidingView behavior="padding" keyboardVerticalOffset={headerHeight} style={{ flex: 1 }}>
+        {children}
+      </KeyboardAvoidingView>
+    </SafeAreaView>
+  );
 }
 
 export function Loading() {

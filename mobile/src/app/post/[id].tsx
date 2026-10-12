@@ -1,13 +1,13 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useRef, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
+import { FlatList, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { CommentRow, type CommentActions } from '@/components/CommentRow';
 import { Composer } from '@/components/Composer';
 import { useContextMenu } from '@/components/ContextMenu';
 import { EditBar } from '@/components/EditBar';
 import { PostCard } from '@/components/PostCard';
-import { Empty, ErrorBanner, Loading } from '@/components/ui';
+import { Empty, ErrorBanner, KeyboardScreen, Loading } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import { confirmAction } from '@/lib/confirm';
 import { toast } from '@/lib/toast';
@@ -61,7 +61,7 @@ export default function PostScreen() {
   if (!post) return <Empty text={error ?? 'Post not found'} />;
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }} keyboardVerticalOffset={90}>
+    <KeyboardScreen>
       <FlatList
         data={threaded}
         keyExtractor={(c) => String(c.id)}
@@ -92,7 +92,7 @@ export default function PostScreen() {
         onSubmit={submit}
       />
       {menu}
-    </KeyboardAvoidingView>
+    </KeyboardScreen>
   );
 }
 
