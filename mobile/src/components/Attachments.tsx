@@ -11,7 +11,7 @@ import { radius, spacing, type ThemeColors } from '@/theme';
 // Pictures and videos in a grid (one per row when alone), links as cards.
 // Sizes are computed from the measured width: Yoga does not resolve
 // aspectRatio for percentage widths inside a wrapping row.
-export function AttachmentList({ items }: { items: Attachment[] }) {
+export function AttachmentList({ items, style }: { items: Attachment[]; style?: StyleProp<ViewStyle> }) {
   const styles = useStyles(makeStyles);
   const [width, setWidth] = useState(0);
   const media = items.filter((a) => a.type !== 'link');
@@ -19,7 +19,7 @@ export function AttachmentList({ items }: { items: Attachment[] }) {
   const single = media.length === 1;
   const tile = single ? width : (width - spacing.xs) / 2;
   return (
-    <View style={styles.wrap} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
+    <View style={[styles.wrap, style]} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
       {media.length > 0 && width > 0 && (
         <View style={styles.grid}>
           {media.map((a, i) => {
