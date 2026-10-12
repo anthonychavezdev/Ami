@@ -1,7 +1,9 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 )
@@ -13,6 +15,7 @@ type Message struct {
 	Body        string       `json:"body"`
 	Attachments []Attachment `json:"attachments"`
 	CreatedAt   string       `json:"created_at"`
+	EditedAt    *string      `json:"edited_at"` // null until the sender edits it
 }
 
 type Conversation struct {
@@ -21,7 +24,7 @@ type Conversation struct {
 	Unread      int     `json:"unread"` // messages from User not read yet
 }
 
-const messageCols = "m.id, m.sender_id, m.recipient_id, m.body, m.attachments, m.created_at"
+const messageCols = "m.id, m.sender_id, m.recipient_id, m.body, m.attachments, m.created_at, m.edited_at"
 
 // decodeAttachments turns the stored JSON column into a (never nil) slice.
 func decodeAttachments(raw string) []Attachment {
@@ -51,7 +54,7 @@ func (s *server) listConversations(w http.ResponseWriter, r *http.Request, me *U
 	for rows.Next() {
 		var c Conversation
 		var atts string
-		if err := rows.Scan(&c.LastMessage.ID, &c.LastMessage.SenderID, &c.LastMessage.RecipientID, &c.LastMessage.Body, &atts, &c.LastMessage.CreatedAt,
+		if err := rows.Scan(&c.LastMessage.ID, &c.LastMessage.SenderID, &c.LastMessage.RecipientID, &c.LastMessage.Body, &atts, &c.LastMessage.CreatedAt, &c.LastMessage.EditedAt,
 			&c.User.ID, &c.User.Username, &c.User.DisplayName, &c.User.CreatedAt, &c.Unread); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
@@ -86,7 +89,7 @@ func (s *server) listMessages(w http.ResponseWriter, r *http.Request, me *User) 
 	for rows.Next() {
 		var m Message
 		var atts string
-		if err := rows.Scan(&m.ID, &m.SenderID, &m.RecipientID, &m.Body, &atts, &m.CreatedAt); err != nil {
+		if err := rows.Scan(&m.ID, &m.SenderID, &m.RecipientID, &m.Body, &atts, &m.CreatedAt, &m.EditedAt); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -175,4 +178,65 @@ func (s *server) markRead(w http.ResponseWriter, r *http.Request, me *User) {
 	}
 	s.hub.sendTo(me.ID, map[string]any{"type": "messages.read", "peer_id": other, "unread": unread})
 	writeJSON(w, http.StatusOK, map[string]int{"unread": unread})
+}
+
+func (s *server) loadMessage(id int64) (Message, error) {
+	var m Message
+	var atts string
+	err := s.db.QueryRow(`SELECT `+messageCols+` FROM messages m WHERE m.id = ?`, id).Scan(&m.ID, &m.SenderID, &m.RecipientID, &m.Body, &atts, &m.CreatedAt, &m.EditedAt)
+	m.Attachments = decodeAttachments(atts)
+	return m, err
+}
+
+// updateMessage edits the text of one of the caller's messages in the chat
+// with user {id}; both participants get a message.updated event.
+func (s *server) updateMessage(w http.ResponseWriter, r *http.Request, me *User) {
+	other, ok := pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	mid, ok := pathID(w, r, "mid")
+	if !ok {
+		return
+	}
+	var in struct {
+		Body string `json:"body"`
+	}
+	if !readJSON(w, r, &in) {
+		return
+	}
+	in.Body = strings.TrimSpace(in.Body)
+	if len(in.Body) > 4000 {
+		writeError(w, http.StatusBadRequest, "body must be at most 4000 characters")
+		return
+	}
+	m, err := s.loadMessage(mid)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && m.RecipientID != other && m.SenderID != other) {
+		writeError(w, http.StatusNotFound, "message not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if m.SenderID != me.ID {
+		writeError(w, http.StatusForbidden, "only the sender can edit a message")
+		return
+	}
+	if in.Body == "" && len(m.Attachments) == 0 {
+		writeError(w, http.StatusBadRequest, "a message needs text or an attachment")
+		return
+	}
+	if _, err := s.db.Exec(`UPDATE messages SET body = ?, edited_at = ? WHERE id = ?`, in.Body, nowString(), mid); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if m, err = s.loadMessage(mid); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	event := map[string]any{"type": "message.updated", "message": m}
+	s.hub.sendTo(me.ID, event)
+	s.hub.sendTo(other, event)
+	writeJSON(w, http.StatusOK, m)
 }
