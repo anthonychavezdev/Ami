@@ -5,8 +5,8 @@ groups, direct messages, and peer-to-peer voice/video calls with screen sharing.
 
 - `server/` — Go backend. Standard library only, plus one dependency:
   `modernc.org/sqlite` (pure-Go SQLite, no cgo). HTTP routing, auth
-  (PBKDF2 + session tokens), the WebSocket server (RFC 6455, hand-written) and
-  WebRTC signaling are all stdlib.
+  (PBKDF2 + session tokens) and WebRTC signaling are stdlib; the WebSocket
+  server uses gorilla/websocket.
 - `mobile/` — Expo / React Native app (TypeScript, Expo Router, `react-native-webrtc`); runs on Android, iOS and in the browser.
 - `devenv.nix` — toolchains and env vars. Everything installs inside this repo
   (`.go/`, `.npm/`, `mobile/node_modules/`, `.gradle/`, `.android/`, `.cocoapods/`).

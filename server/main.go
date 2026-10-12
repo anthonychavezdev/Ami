@@ -1,5 +1,5 @@
 // Command server is the Ami backend: a single binary, SQLite on disk,
-// JSON over HTTP, and a hand-rolled WebSocket endpoint for realtime events
+// JSON over HTTP, and a WebSocket endpoint (gorilla/websocket) for realtime events
 // and WebRTC signaling.
 //
 // Production is the default: no CORS, rate-limited auth endpoints, session
@@ -7,10 +7,12 @@
 package main
 
 import (
+	"bufio"
 	"crypto/tls"
 	"database/sql"
 	"flag"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -154,6 +156,11 @@ func (w *statusWriter) WriteHeader(code int) {
 
 // Unwrap lets http.ResponseController reach the underlying Hijacker.
 func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+// Hijack lets gorilla/websocket take over the connection for /ws.
+func (w *statusWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	return http.NewResponseController(w.ResponseWriter).Hijack()
+}
 
 func logRequests(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
