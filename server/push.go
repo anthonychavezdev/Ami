@@ -13,7 +13,7 @@ import (
 // Push notifications through Expo's push service, for devices that have no
 // WebSocket connection (app closed or suspended). Tokens come from the app;
 // they only exist when it was built with an EAS project id (see README).
-const expoPushURL = "https://exp.host/--/api/v2/push/send"
+var expoPushURL = "https://exp.host/--/api/v2/push/send" // a variable so tests can point it at a fake
 
 func validPushToken(t string) bool {
 	return len(t) <= 200 && strings.HasSuffix(t, "]") && (strings.HasPrefix(t, "ExponentPushToken[") || strings.HasPrefix(t, "ExpoPushToken["))
