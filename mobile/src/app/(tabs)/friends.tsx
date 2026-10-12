@@ -1,6 +1,7 @@
+import { Feather } from '@expo/vector-icons';
 import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
 import { UserRow } from '@/components/UserRow';
 import { Button, Empty, Input, Loading, Segmented } from '@/components/ui';
@@ -8,6 +9,7 @@ import { api } from '@/lib/api';
 import type { User, UserProfile } from '@/lib/types';
 import { socket } from '@/lib/ws';
 import { useStyles, useTheme } from '@/lib/theme';
+import { toast } from '@/lib/toast';
 import { spacing, type ThemeColors } from '@/theme';
 
 type Tab = 'friends' | 'requests' | 'find';
@@ -80,7 +82,7 @@ function Requests() {
       await fn();
       await load();
     } catch (e) {
-      Alert.alert('Error', e instanceof Error ? e.message : String(e));
+      toast.error(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -145,7 +147,7 @@ function Find() {
         const r = await fn();
         setStatus(u.id, r.friend_status as UserProfile['friend_status']);
       } catch (e) {
-        Alert.alert('Error', e instanceof Error ? e.message : String(e));
+        toast.error(e instanceof Error ? e.message : String(e));
       }
     };
     switch (u.friend_status) {
@@ -156,7 +158,12 @@ function Find() {
       case 'incoming':
         return <Button title="Accept" small onPress={() => run(() => api.acceptFriendRequest(u.id))} />;
       case 'friends':
-        return <Text style={{ color: colors.success, fontWeight: '600' }}>Friends ✓</Text>;
+        return (
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+            <Feather name="check" size={16} color={colors.success} />
+            <Text style={{ color: colors.success, fontWeight: '600' }}>Friends</Text>
+          </View>
+        );
       default:
         return null;
     }

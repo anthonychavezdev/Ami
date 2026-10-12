@@ -1,13 +1,15 @@
+import { Feather } from '@expo/vector-icons';
 import React, { useRef, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
-import { useStyles } from '@/lib/theme';
+import { useStyles, useTheme } from '@/lib/theme';
 import { DEFAULT_REACTION, REACTION_EMOJIS, radius, spacing, type ThemeColors } from '@/theme';
 
 // Tap: toggle the default reaction. Press and hold: pick any emoji from a
 // popover anchored above the button.
 export function ReactionButton({ current, onReact }: { current: string; onReact: (emoji: string | null) => void }) {
   const styles = useStyles(makeStyles);
+  const { colors } = useTheme();
   const ref = useRef<View>(null);
   const [anchor, setAnchor] = useState<{ x: number; y: number } | null>(null);
   const { width: screenWidth } = useWindowDimensions();
@@ -33,7 +35,7 @@ export function ReactionButton({ current, onReact }: { current: string; onReact:
         delayLongPress={250}
         style={({ pressed }) => [styles.btn, current ? styles.btnActive : null, pressed && { opacity: 0.7 }]}
       >
-        <Text style={styles.btnText}>{current || '👍'}</Text>
+        {current ? <Text style={styles.btnText}>{current}</Text> : <Feather name="thumbs-up" size={18} color={colors.muted} />}
         <Text style={[styles.label, current ? styles.labelActive : null]}>{current ? 'Reacted' : 'React'}</Text>
       </Pressable>
 

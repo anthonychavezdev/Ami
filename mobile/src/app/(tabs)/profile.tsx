@@ -26,8 +26,8 @@ export default function ProfileScreen() {
       <Text style={styles.name}>{user.display_name}</Text>
       <Text style={styles.username}>@{user.username}</Text>
       <View style={styles.actions}>
-        <Button title="View my profile" variant="secondary" onPress={() => router.push(`/user/${user.id}`)} />
-        <Button title="Log out" variant="danger" onPress={() => void logout()} />
+        <Button title="View my profile" icon="user" variant="secondary" onPress={() => router.push(`/user/${user.id}`)} />
+        <Button title="Log out" icon="log-out" variant="danger" onPress={() => void logout()} />
       </View>
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Appearance</Text>

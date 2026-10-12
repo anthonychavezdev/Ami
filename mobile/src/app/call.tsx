@@ -1,6 +1,7 @@
+import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useRef } from 'react';
-import { Alert, Platform, Pressable, StyleSheet, Text, View, findNodeHandle } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View, findNodeHandle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { type MediaStream, RTCView, ScreenCapturePickerView } from 'react-native-webrtc';
 
@@ -9,6 +10,7 @@ const Picker = ScreenCapturePickerView as React.ComponentType<any>;
 import { Avatar } from '@/components/ui';
 import { useCall } from '@/lib/call';
 import { useStyles } from '@/lib/theme';
+import { toast } from '@/lib/toast';
 import { radius, spacing, type ThemeColors } from '@/theme';
 
 export default function CallScreen() {
@@ -26,19 +28,21 @@ export default function CallScreen() {
     };
   }, [call]);
 
-  // Leave the screen when the call ends.
+  // Leave the screen (once) when the call ends; the reason shows as a banner.
+  const left = useRef(false);
   useEffect(() => {
     if (state.status !== 'idle') {
       wasActive.current = true;
       return;
     }
-    if (state.error) {
-      const msg = state.error;
-      call.clearError();
-      Alert.alert('Call ended', msg);
-    }
+    if (left.current) return;
+    left.current = true;
+    const reason = state.error;
+    if (reason) call.clearError();
     if (router.canGoBack()) router.back();
     else router.replace('/');
+    // After this modal has slid away, so the banner is not hidden behind it.
+    if (reason) setTimeout(() => toast.show(reason), 400);
   }, [state.status, state.error, call, router]);
 
   const peer = state.peer;
@@ -86,16 +90,16 @@ export default function CallScreen() {
 
         {state.status === 'incoming' ? (
           <View style={styles.controls}>
-            <Control label="Decline" glyph="✕" danger onPress={() => call.reject()} />
-            <Control label="Accept" glyph="✓" success onPress={() => void call.accept()} />
+            <Control label="Decline" icon="x" danger onPress={() => call.reject()} />
+            <Control label="Accept" icon="check" success onPress={() => void call.accept()} />
           </View>
         ) : (
           <View style={styles.controls}>
-            <Control label={state.muted ? 'Unmute' : 'Mute'} glyph={state.muted ? '🔇' : '🎙️'} active={state.muted} onPress={() => call.toggleMute()} />
-            <Control label={state.cameraOn ? 'Camera off' : 'Camera'} glyph="📷" active={state.cameraOn} onPress={() => void call.toggleCamera()} />
-            <Control label="Flip" glyph="🔄" disabled={!state.cameraOn} onPress={() => void call.flipCamera()} />
-            <Control label={state.sharing ? 'Stop share' : 'Share screen'} glyph="🖥️" active={state.sharing} disabled={state.status !== 'active'} onPress={() => void call.toggleScreenShare()} />
-            <Control label="End" glyph="📵" danger onPress={() => call.hangup()} />
+            <Control label={state.muted ? 'Unmute' : 'Mute'} icon={state.muted ? 'mic-off' : 'mic'} active={state.muted} onPress={() => call.toggleMute()} />
+            <Control label={state.cameraOn ? 'Camera off' : 'Camera'} icon={state.cameraOn ? 'camera' : 'camera-off'} active={state.cameraOn} onPress={() => void call.toggleCamera()} />
+            <Control label="Flip" icon="refresh-cw" disabled={!state.cameraOn} onPress={() => void call.flipCamera()} />
+            <Control label={state.sharing ? 'Stop share' : 'Share screen'} icon="monitor" active={state.sharing} disabled={state.status !== 'active'} onPress={() => void call.toggleScreenShare()} />
+            <Control label="End" icon="phone-off" danger onPress={() => call.hangup()} />
           </View>
         )}
       </SafeAreaView>
@@ -126,7 +130,7 @@ function Video({
 
 function Control({
   label,
-  glyph,
+  icon,
   onPress,
   active,
   danger,
@@ -134,7 +138,7 @@ function Control({
   disabled,
 }: {
   label: string;
-  glyph: string;
+  icon: React.ComponentProps<typeof Feather>['name'];
   onPress: () => void;
   active?: boolean;
   danger?: boolean;
@@ -145,7 +149,7 @@ function Control({
   return (
     <Pressable onPress={onPress} disabled={disabled} style={({ pressed }) => [styles.control, pressed && { opacity: 0.7 }, disabled && { opacity: 0.35 }]}>
       <View style={[styles.controlCircle, active && styles.controlActive, danger && styles.controlDanger, success && styles.controlSuccess]}>
-        <Text style={{ fontSize: 22, color: '#fff' }}>{glyph}</Text>
+        <Feather name={icon} size={22} color="#fff" />
       </View>
       <Text style={styles.controlLabel}>{label}</Text>
     </Pressable>

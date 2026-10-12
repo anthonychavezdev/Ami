@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, TextInputProps, View, ViewStyle } from 'react-native';
 
@@ -13,6 +14,7 @@ export function Button({
   loading,
   style,
   small,
+  icon,
 }: {
   title: string;
   onPress?: () => void;
@@ -21,6 +23,7 @@ export function Button({
   loading?: boolean;
   style?: ViewStyle;
   small?: boolean;
+  icon?: React.ComponentProps<typeof Feather>['name'];
 }) {
   const { colors } = useTheme();
   const styles = useStyles(makeStyles);
@@ -37,7 +40,14 @@ export function Button({
         style,
       ]}
     >
-      {loading ? <ActivityIndicator color={fg} /> : <Text style={[styles.btnText, small && styles.btnTextSmall, { color: fg }]}>{title}</Text>}
+      {loading ? (
+        <ActivityIndicator color={fg} />
+      ) : (
+        <View style={styles.btnContent}>
+          {icon && <Feather name={icon} size={small ? 15 : 18} color={fg} />}
+          <Text style={[styles.btnText, small && styles.btnTextSmall, { color: fg }]}>{title}</Text>
+        </View>
+      )}
     </Pressable>
   );
 }
@@ -112,6 +122,7 @@ export function useErrorMessage(e: unknown): string {
 const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   btn: { paddingVertical: 12, paddingHorizontal: 18, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
   btnSmall: { paddingVertical: 7, paddingHorizontal: 12, borderRadius: radius.pill },
+  btnContent: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   btnText: { fontWeight: '600', fontSize: 16 },
   btnTextSmall: { fontSize: 14 },
   input: {

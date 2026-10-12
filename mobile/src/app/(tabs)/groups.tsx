@@ -1,11 +1,13 @@
+import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Button, Empty, Input, Loading, Segmented } from '@/components/ui';
 import { api } from '@/lib/api';
 import type { Group } from '@/lib/types';
 import { useStyles, useTheme } from '@/lib/theme';
+import { toast } from '@/lib/toast';
 import { radius, spacing, type ThemeColors } from '@/theme';
 
 type Tab = 'mine' | 'discover';
@@ -27,7 +29,7 @@ export default function GroupsScreen() {
       />
       {tab === 'mine' ? <MyGroups key={reloadKey} /> : <Discover />}
       <Pressable style={styles.fab} onPress={() => setCreating(true)}>
-        <Text style={styles.fabText}>＋</Text>
+        <Feather name="plus" size={28} color="#fff" />
       </Pressable>
       <CreateGroupModal
         visible={creating}
@@ -49,7 +51,7 @@ function GroupRow({ group }: { group: Group }) {
   return (
     <Pressable onPress={() => router.push(`/group/${group.id}`)} style={({ pressed }) => [styles.row, pressed && { opacity: 0.7 }]}>
       <View style={styles.groupIcon}>
-        <Text style={{ fontSize: 22 }}>👥</Text>
+        <Feather name="users" size={22} color={colors.accent} />
       </View>
       <View style={{ flex: 1 }}>
         <Text style={styles.name}>{group.name}</Text>
@@ -59,7 +61,7 @@ function GroupRow({ group }: { group: Group }) {
           {group.description ? ` · ${group.description}` : ''}
         </Text>
       </View>
-      <Text style={{ color: colors.muted }}>›</Text>
+      <Feather name="chevron-right" size={20} color={colors.muted} />
     </Pressable>
   );
 }
@@ -77,7 +79,7 @@ function MyGroups() {
       data={groups}
       keyExtractor={(g) => String(g.id)}
       renderItem={({ item }) => <GroupRow group={item} />}
-      ListEmptyComponent={<Empty text="You haven't joined any groups. Discover some, or create your own with ＋." />}
+      ListEmptyComponent={<Empty text="You haven't joined any groups. Discover some, or create your own with the + button." />}
       contentContainerStyle={{ flexGrow: 1, paddingBottom: 90 }}
     />
   );
@@ -127,7 +129,7 @@ function CreateGroupModal({ visible, onClose, onCreated }: { visible: boolean; o
       onCreated();
       router.push(`/group/${r.group.id}`);
     } catch (e) {
-      Alert.alert('Could not create group', e instanceof Error ? e.message : String(e));
+      toast.error(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -153,7 +155,6 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   name: { fontWeight: '700', color: colors.text, fontSize: 15 },
   sub: { color: colors.muted, fontSize: 13 },
   fab: { position: 'absolute', right: spacing.xl, bottom: spacing.xl, width: 56, height: 56, borderRadius: 28, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', elevation: 6, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
-  fabText: { color: '#fff', fontSize: 28, lineHeight: 32 },
   modal: { flex: 1, padding: spacing.xl, gap: spacing.md, backgroundColor: colors.bg },
   modalTitle: { fontSize: 24, fontWeight: '800', color: colors.text },
   hint: { color: colors.muted, marginBottom: spacing.sm },

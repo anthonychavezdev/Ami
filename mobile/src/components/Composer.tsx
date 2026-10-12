@@ -1,10 +1,12 @@
+import { Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import React, { useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Button, Input } from './ui';
 import { api, mediaUrl } from '@/lib/api';
 import { useStyles, useTheme } from '@/lib/theme';
+import { toast } from '@/lib/toast';
 import type { Attachment } from '@/lib/types';
 import { radius, spacing, type ThemeColors } from '@/theme';
 
@@ -48,7 +50,7 @@ export function Composer({
       setAttachments([]);
       setLinkDraft(null);
     } catch (e) {
-      Alert.alert('Could not send', e instanceof Error ? e.message : String(e));
+      toast.error(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
@@ -90,7 +92,7 @@ export function Composer({
         });
         setAttachments((prev) => [...prev, att]);
       } catch (e) {
-        Alert.alert('Upload failed', e instanceof Error ? e.message : String(e));
+        toast.error(`Upload failed: ${e instanceof Error ? e.message : String(e)}`);
       } finally {
         setUploading((n) => n - 1);
       }
@@ -100,7 +102,7 @@ export function Composer({
   const addLink = () => {
     const url = (linkDraft ?? '').trim();
     if (!/^https?:\/\/\S+$/i.test(url)) {
-      Alert.alert('Invalid link', 'Links must start with http:// or https://');
+      toast.error('Links must start with http:// or https://');
       return;
     }
     setAttachments((prev) => [...prev, { type: 'link', url }]);
@@ -111,16 +113,16 @@ export function Composer({
     <View style={[styles.wrap, compact ? styles.row : null]}>
       {rich && (
         <View style={styles.toolbar}>
-          <Tool label="B" bold onPress={() => wrap('**', '**', 'bold')} />
-          <Tool label="I" italic onPress={() => wrap('_', '_', 'italic')} />
-          <Tool label="H" onPress={() => prefixLine('# ')} />
-          <Tool label="❝" onPress={() => prefixLine('> ')} />
-          <Tool label="<>" onPress={() => wrap('`', '`', 'code')} />
-          <Tool label="•" onPress={() => prefixLine('- ')} />
-          <Tool label="🔗" onPress={() => wrap('[', '](https://)', 'link text')} />
+          <Tool icon="bold" label="Bold" onPress={() => wrap('**', '**', 'bold')} />
+          <Tool icon="italic" label="Italic" onPress={() => wrap('_', '_', 'italic')} />
+          <Tool icon="hash" label="Heading" onPress={() => prefixLine('# ')} />
+          <Tool mci="format-quote-close" label="Quote" onPress={() => prefixLine('> ')} />
+          <Tool icon="code" label="Code" onPress={() => wrap('`', '`', 'code')} />
+          <Tool icon="list" label="List" onPress={() => prefixLine('- ')} />
+          <Tool icon="link" label="Link" onPress={() => wrap('[', '](https://)', 'link text')} />
           <View style={{ flex: 1 }} />
-          <Tool label="🖼" onPress={() => void pickMedia()} />
-          <Tool label="🌐" onPress={() => setLinkDraft((d) => (d === null ? '' : null))} />
+          <Tool icon="image" label="Add picture or video" onPress={() => void pickMedia()} />
+          <Tool icon="globe" label="Attach a link" active={linkDraft !== null} onPress={() => setLinkDraft((d) => (d === null ? '' : null))} />
         </View>
       )}
       <Input
@@ -145,12 +147,12 @@ export function Composer({
         <View style={styles.chips}>
           {attachments.map((a, i) => (
             <View key={`${a.url}-${i}`} style={styles.chip}>
-              {a.type === 'image' ? <Image source={{ uri: mediaUrl(a) }} style={styles.thumb} /> : <Text style={styles.chipIcon}>{a.type === 'video' ? '🎬' : '🔗'}</Text>}
+              {a.type === 'image' ? <Image source={{ uri: mediaUrl(a) }} style={styles.thumb} /> : <Feather name={a.type === 'video' ? 'video' : 'link'} size={16} color={colors.muted} style={styles.chipIcon} />}
               <Text numberOfLines={1} style={styles.chipText}>
                 {a.type === 'link' ? a.url.replace(/^https?:\/\//, '') : a.type}
               </Text>
               <Pressable onPress={() => setAttachments((prev) => prev.filter((_, j) => j !== i))} hitSlop={8}>
-                <Text style={styles.chipRemove}>✕</Text>
+                <Feather name="x" size={14} color={colors.muted} />
               </Pressable>
             </View>
           ))}
@@ -162,11 +164,16 @@ export function Composer({
   );
 }
 
-function Tool({ label, onPress, bold, italic }: { label: string; onPress: () => void; bold?: boolean; italic?: boolean }) {
+type FeatherName = React.ComponentProps<typeof Feather>['name'];
+type MciName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
+
+function Tool({ icon, mci, label, active, onPress }: { icon?: FeatherName; mci?: MciName; label: string; active?: boolean; onPress: () => void }) {
   const styles = useStyles(makeStyles);
+  const { colors } = useTheme();
+  const color = active ? colors.accent : colors.text;
   return (
-    <Pressable onPress={onPress} hitSlop={6} style={({ pressed }) => [styles.tool, pressed && { opacity: 0.6 }]}>
-      <Text style={[styles.toolText, bold && { fontWeight: '800' }, italic && { fontStyle: 'italic' }]}>{label}</Text>
+    <Pressable onPress={onPress} hitSlop={6} accessibilityLabel={label} style={({ pressed }) => [styles.tool, active && styles.toolActive, pressed && { opacity: 0.6 }]}>
+      {mci ? <MaterialCommunityIcons name={mci} size={20} color={color} /> : <Feather name={icon ?? 'bold'} size={18} color={color} />}
     </Pressable>
   );
 }
@@ -180,12 +187,11 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   btn: { alignSelf: 'flex-end' },
   toolbar: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 2 },
   tool: { minWidth: 32, height: 32, paddingHorizontal: 6, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg },
-  toolText: { color: colors.text, fontSize: 15, fontWeight: '600' },
+  toolActive: { backgroundColor: colors.accentSoft },
   linkRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
   chips: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: 220, paddingVertical: 4, paddingLeft: 4, paddingRight: 10, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bg },
   thumb: { width: 28, height: 28, borderRadius: 14 },
-  chipIcon: { fontSize: 18, paddingLeft: 4 },
+  chipIcon: { paddingLeft: 6 },
   chipText: { color: colors.text, fontSize: 13, flexShrink: 1 },
-  chipRemove: { color: colors.muted, fontWeight: '700', paddingLeft: 2 },
 });

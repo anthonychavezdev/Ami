@@ -8,7 +8,8 @@ import { UserRow } from '@/components/UserRow';
 import { Button, Empty, ErrorBanner, Loading, Segmented } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
-import type { Group, GroupMember } from '@/lib/types';
+import { toast } from '@/lib/toast';
+import type { Group, GroupMember, Post } from '@/lib/types';
 import { usePosts } from '@/lib/usePosts';
 import { useStyles, useTheme } from '@/lib/theme';
 import { spacing, type ThemeColors } from '@/theme';
@@ -28,7 +29,8 @@ export default function GroupScreen() {
   const [tab, setTab] = useState<Tab>('posts');
 
   const fetchPage = useCallback((before?: number) => api.groupPosts(groupId, before), [groupId]);
-  const { posts, loading, refreshing, refresh, loadMore, update, remove, prepend } = usePosts(fetchPage);
+  const accept = useCallback((p: Post) => p.group_id === groupId, [groupId]);
+  const { posts, loading, refreshing, refresh, loadMore, update, remove, prepend } = usePosts(fetchPage, accept);
 
   const apply = (r: { group: Group; members: GroupMember[] }) => {
     setGroup(r.group);
@@ -49,7 +51,7 @@ export default function GroupScreen() {
     try {
       apply(await fn());
     } catch (e) {
-      Alert.alert('Error', e instanceof Error ? e.message : String(e));
+      toast.error(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -64,7 +66,7 @@ export default function GroupScreen() {
             await api.deleteGroup(groupId);
             router.back();
           } catch (e) {
-            Alert.alert('Error', e instanceof Error ? e.message : String(e));
+            toast.error(e instanceof Error ? e.message : String(e));
           }
         },
       },

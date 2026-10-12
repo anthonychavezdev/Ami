@@ -7,7 +7,9 @@ import { PostCard } from '@/components/PostCard';
 import { Avatar, Empty, ErrorBanner, Loading } from '@/components/ui';
 import { api } from '@/lib/api';
 import { timeAgo } from '@/lib/time';
+import { toast } from '@/lib/toast';
 import type { Comment, Post } from '@/lib/types';
+import { socket } from '@/lib/ws';
 import { useStyles } from '@/lib/theme';
 import { spacing, type ThemeColors } from '@/theme';
 
@@ -36,6 +38,26 @@ export default function PostScreen() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Live: new comments, reaction/count changes, and deletion of this post.
+  useEffect(() => {
+    const offs = [
+      socket.on('comment.created', (e) => {
+        const c: Comment = e.comment;
+        if (c.post_id === postId) setComments((prev) => (prev.some((x) => x.id === c.id) ? prev : [...prev, c]));
+      }),
+      socket.on('post.updated', (e) => {
+        if (e.post.id === postId) setPost(e.post);
+      }),
+      socket.on('post.deleted', (e) => {
+        if (e.id === postId) {
+          toast.show('This post was deleted');
+          router.back();
+        }
+      }),
+    ];
+    return () => offs.forEach((off) => off());
+  }, [postId, router]);
 
   if (loading) return <Loading />;
   if (!post) return <Empty text={error ?? 'Post not found'} />;
@@ -73,7 +95,7 @@ export default function PostScreen() {
         compact
         onSubmit={async (body) => {
           const c = await api.addComment(postId, body);
-          setComments((prev) => [...prev, c]);
+          setComments((prev) => (prev.some((x) => x.id === c.id) ? prev : [...prev, c]));
           setPost((p) => (p ? { ...p, comment_count: p.comment_count + 1 } : p));
         }}
       />
