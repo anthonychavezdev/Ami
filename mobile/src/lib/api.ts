@@ -1,6 +1,6 @@
 import { API_URL } from './config';
 import { fileBlob } from './upload';
-import type { Attachment, Comment, Conversation, Group, GroupMember, Me, Message, Post, User, UserProfile } from './types';
+import type { Attachment, ChatTarget, Comment, Conversation, Group, GroupDetail, Me, Message, Post, User, UserProfile } from './types';
 
 let authToken: string | null = null;
 export function setAuthToken(token: string | null) {
@@ -54,6 +54,9 @@ const post = <T>(path: string, body?: unknown) => request<T>('POST', path, body 
 const put = <T>(path: string, body?: unknown) => request<T>('PUT', path, body ?? {});
 const del = <T>(path: string) => request<T>('DELETE', path);
 
+// Direct messages live under /api/messages/{user}, group chats under /api/groups/{id}/messages.
+const chatApi = (chat: ChatTarget) => (chat.kind === 'group' ? `/api/groups/${chat.id}/messages` : `/api/messages/${chat.id}`);
+
 const q = (params: Record<string, string | number | undefined>) => {
   const s = Object.entries(params)
     .filter(([, v]) => v !== undefined && v !== '')
@@ -101,21 +104,23 @@ export const api = {
   // groups
   myGroups: () => get<Group[]>('/api/groups?mine=1'),
   discoverGroups: (query: string) => get<Group[]>(`/api/groups${q({ q: query })}`),
-  createGroup: (name: string, description: string) => post<{ group: Group; members: GroupMember[] }>('/api/groups', { name, description }),
-  group: (id: number) => get<{ group: Group; members: GroupMember[] }>(`/api/groups/${id}`),
-  joinGroup: (id: number) => post<{ group: Group; members: GroupMember[] }>(`/api/groups/${id}/join`),
-  leaveGroup: (id: number) => post<{ group: Group; members: GroupMember[] }>(`/api/groups/${id}/leave`),
+  createGroup: (name: string, description: string, options: { private?: boolean; member_ids?: number[] } = {}) =>
+    post<GroupDetail>('/api/groups', { name, description, ...options }),
+  group: (id: number) => get<GroupDetail>(`/api/groups/${id}`),
+  joinGroup: (id: number) => post<GroupDetail>(`/api/groups/${id}/join`),
+  leaveGroup: (id: number) => post<GroupDetail>(`/api/groups/${id}/leave`),
   deleteGroup: (id: number) => del<void>(`/api/groups/${id}`),
   groupPosts: (id: number, before?: number) => get<Post[]>(`/api/groups/${id}/posts${q({ before })}`),
-  removeGroupMember: (id: number, uid: number) => del<{ group: Group; members: GroupMember[] }>(`/api/groups/${id}/members/${uid}`),
+  addGroupMembers: (id: number, user_ids: number[]) => post<GroupDetail>(`/api/groups/${id}/members`, { user_ids }),
+  removeGroupMember: (id: number, uid: number) => del<GroupDetail>(`/api/groups/${id}/members/${uid}`),
 
-  // messages
+  // messages (direct and group chats)
   conversations: () => get<Conversation[]>('/api/conversations'),
-  messages: (userId: number, before?: number) => get<Message[]>(`/api/messages/${userId}${q({ before })}`),
-  sendMessage: (userId: number, body: string, attachments: Attachment[] = []) => post<Message>(`/api/messages/${userId}`, { body, attachments }),
-  updateMessage: (userId: number, messageId: number, body: string) => put<Message>(`/api/messages/${userId}/${messageId}`, { body }),
-  deleteMessage: (userId: number, messageId: number) => del<void>(`/api/messages/${userId}/${messageId}`),
-  markRead: (userId: number) => post<{ unread: number }>(`/api/messages/${userId}/read`),
+  messages: (chat: ChatTarget, before?: number) => get<Message[]>(`${chatApi(chat)}${q({ before })}`),
+  sendMessage: (chat: ChatTarget, body: string, attachments: Attachment[] = []) => post<Message>(chatApi(chat), { body, attachments }),
+  updateMessage: (chat: ChatTarget, messageId: number, body: string) => put<Message>(`${chatApi(chat)}/${messageId}`, { body }),
+  deleteMessage: (chat: ChatTarget, messageId: number) => del<void>(`${chatApi(chat)}/${messageId}`),
+  markRead: (chat: ChatTarget) => post<{ unread: number }>(`${chatApi(chat)}/read`),
   setPushToken: (token: string) => put<void>('/api/push-token', { token }),
   deletePushToken: (token: string) => request<void>('DELETE', '/api/push-token', { token }),
 };

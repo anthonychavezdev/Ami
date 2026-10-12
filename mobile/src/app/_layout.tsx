@@ -32,7 +32,8 @@ function RootNavigator() {
   useEffect(() => {
     if (!user) return;
     return onNotificationTap((data) => {
-      if (data.chat) router.push(`/chat/${data.chat}`);
+      if (data.group_chat) router.push(`/chat/group/${data.group_chat}`);
+      else if (data.chat) router.push(`/chat/${data.chat}`);
     });
   }, [user, router]);
 
@@ -64,6 +65,8 @@ function RootNavigator() {
           <Stack.Screen name="edit-profile" options={{ title: 'Edit profile' }} dangerouslySingular />
           <Stack.Screen name="group/[id]" options={{ title: 'Group' }} dangerouslySingular />
           <Stack.Screen name="chat/[id]" options={{ title: 'Chat' }} dangerouslySingular />
+          <Stack.Screen name="chat/group/[id]" options={{ title: 'Group chat' }} dangerouslySingular />
+          <Stack.Screen name="new-group-chat" options={{ title: 'New group chat' }} dangerouslySingular />
           <Stack.Screen name="call" options={{ headerShown: false, presentation: 'fullScreenModal', gestureEnabled: false }} dangerouslySingular />
         </Stack.Protected>
         <Stack.Protected guard={!user}>

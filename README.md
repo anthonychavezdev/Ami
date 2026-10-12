@@ -117,10 +117,10 @@ project id the app simply never registers a push token.
 | Comments | On the post screen. |
 | Profile | Picture (GIFs animate), display name, pronouns, bio, and a username change that must be valid and free. |
 | Friends | Request → accept. Only friends can message/call each other. Pushed live over WebSocket. Every avatar carries a presence dot: green while the user has the app open, gray otherwise. "Appear offline" on the Me tab hides yours. |
-| Groups | Creator is owner + admin; others join as members. Admin can remove members, delete posts, delete the group. |
-| Messages | Direct messages with pictures and videos, delivered in real time. Hold one of your messages to edit or delete it. Unread badge on the Messages tab and OS notifications (browser, Android, iOS). |
-| Calls | Voice or video, 1:1, WebRTC with STUN (`stun.l.google.com`). Mute, camera on/off, flip camera. |
-| Screen share | Toggle during a call; sent as a second video stream. |
+| Groups | Creator is owner + admin; others join as members. Admin can add friends, remove members, delete posts, delete the group. Every group has a chat and a call. Invite-only groups are hidden from Discover and only the admin adds people; that is what the + button on the Messages tab creates. |
+| Messages | Direct messages and group chats, with pictures and videos, delivered in real time. Group messages show who wrote them; the group admin can delete any of them. Hold one of your messages to edit or delete it. Unread badges on the Messages tab (per chat and in total) and OS notifications (browser, Android, iOS) that name the group. |
+| Calls | Voice or video, one-to-one or in a group (up to 8 people). WebRTC with STUN (`stun.l.google.com`), full mesh: everyone sends to everyone, the server only relays signaling. A group call rings every member; the group chat shows *Call in progress · Join* while it is on. Mute, camera on/off, flip camera. |
+| Screen share | Toggle during any call, group calls included; sent as a second video stream to every participant and shown on a stage above the people. |
 | Theme | Light, dark, or follow the device setting (Me tab). |
 
 ### Screen sharing caveats
@@ -153,15 +153,18 @@ PUT|DELETE /api/posts/{id}/reaction {emoji}
 POST   /api/media (multipart "file") -> {type, url, width, height}   GET /media/{name}
 GET    /api/friends   /api/friends/requests
 POST   /api/friends/{id}/request   /api/friends/{id}/accept    DELETE /api/friends/{id}
-GET    /api/groups?mine=1|q=       POST /api/groups {name, description}
+GET    /api/groups?mine=1|q=       POST /api/groups {name, description, private?, member_ids?}
 GET|DELETE /api/groups/{id}        POST /api/groups/{id}/join | /leave
-GET    /api/groups/{id}/posts      DELETE /api/groups/{id}/members/{uid}
-GET    /api/conversations          GET|POST /api/messages/{userId} {body, attachments}
+GET    /api/groups/{id}/posts      POST /api/groups/{id}/members {user_ids}   DELETE /api/groups/{id}/members/{uid}
+GET|POST /api/groups/{id}/messages {body, attachments}   POST /api/groups/{id}/messages/read   PUT|DELETE /api/groups/{id}/messages/{mid}
+GET    /api/conversations   (direct chats + group chats)
+GET|POST /api/messages/{userId} {body, attachments}
 POST   /api/messages/{userId}/read   PUT|DELETE /api/messages/{userId}/{messageId}   (sender; PUT {body})
 PUT|DELETE /api/push-token {token}
-GET    /ws?token=   (events: hello, presence, message, message.updated, message.deleted, messages.read, friend.request, friend.accepted,
-                     post.created/updated/deleted, comment.created/updated/deleted,
-                     call.offer/answer/ice/streams/hangup/reject/busy/unavailable)
+GET    /ws?token=   (events: hello, presence, message, message.updated, message.deleted, messages.read, group.added,
+                     friend.request, friend.accepted, post.created/updated/deleted, comment.created/updated/deleted,
+                     call.ring/joined/peer_joined/peer_left/declined/ended/unavailable and the relayed
+                     call.offer/answer/ice/streams; the client messages are documented in server/calls.go)
 ```
 
 Server flags: `-addr :8080 -db ami.db -media-dir media`.

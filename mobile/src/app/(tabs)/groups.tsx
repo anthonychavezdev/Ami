@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Modal, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { Button, Empty, Input, Loading, Segmented } from '@/components/ui';
 import { api } from '@/lib/api';
@@ -117,15 +117,18 @@ function CreateGroupModal({ visible, onClose, onCreated }: { visible: boolean; o
   const styles = useStyles(makeStyles);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [inviteOnly, setInviteOnly] = useState(false);
   const [busy, setBusy] = useState(false);
   const router = useRouter();
+  const { colors } = useTheme();
 
   const create = async () => {
     setBusy(true);
     try {
-      const r = await api.createGroup(name.trim(), description.trim());
+      const r = await api.createGroup(name.trim(), description.trim(), { private: inviteOnly });
       setName('');
       setDescription('');
+      setInviteOnly(false);
       onCreated();
       router.push(`/group/${r.group.id}`);
     } catch (e) {
@@ -139,9 +142,13 @@ function CreateGroupModal({ visible, onClose, onCreated }: { visible: boolean; o
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.modal}>
         <Text style={styles.modalTitle}>New group</Text>
-        <Text style={styles.hint}>You'll be the owner and admin. Anyone can find and join it.</Text>
+        <Text style={styles.hint}>You'll be the owner and admin. {inviteOnly ? 'Only people you add can find it.' : 'Anyone can find and join it.'}</Text>
         <Input placeholder="Group name" value={name} onChangeText={setName} maxLength={60} />
         <Input placeholder="Description (optional)" value={description} onChangeText={setDescription} multiline style={{ minHeight: 80, textAlignVertical: 'top' }} maxLength={500} />
+        <View style={styles.switchRow}>
+          <Text style={styles.switchLabel}>Invite only</Text>
+          <Switch value={inviteOnly} onValueChange={setInviteOnly} trackColor={{ true: colors.accent }} accessibilityLabel="Invite only" />
+        </View>
         <Button title="Create group" onPress={create} loading={busy} disabled={!name.trim()} />
         <Button title="Cancel" variant="ghost" onPress={onClose} />
       </View>
@@ -158,4 +165,6 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   modal: { flex: 1, padding: spacing.xl, gap: spacing.md, backgroundColor: colors.bg },
   modalTitle: { fontSize: 24, fontWeight: '800', color: colors.text },
   hint: { color: colors.muted, marginBottom: spacing.sm },
+  switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing.xs },
+  switchLabel: { color: colors.text, fontSize: 16 },
 });

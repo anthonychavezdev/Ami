@@ -9,6 +9,7 @@ import { Button, Empty, ErrorBanner, Loading, Segmented } from '@/components/ui'
 import { api } from '@/lib/api';
 import { confirmAction } from '@/lib/confirm';
 import { useAuth } from '@/lib/auth';
+import { useCall } from '@/lib/call';
 import { toast } from '@/lib/toast';
 import type { Group, GroupMember, Post } from '@/lib/types';
 import { usePosts } from '@/lib/usePosts';
@@ -23,6 +24,7 @@ export default function GroupScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const groupId = Number(id);
   const { user: me } = useAuth();
+  const { call } = useCall();
   const router = useRouter();
   const [group, setGroup] = useState<Group | null>(null);
   const [members, setMembers] = useState<GroupMember[]>([]);
@@ -66,6 +68,13 @@ export default function GroupScreen() {
       }
     });
 
+  // Start (or join) the group's call.
+  const startCall = (video: boolean) => {
+    if (!group) return;
+    void call.joinGroupCall({ id: group.id, name: group.name }, video);
+    router.push('/call');
+  };
+
   if (!group) return error ? <Empty text={error} /> : <Loading />;
   const isAdmin = group.my_role === 'admin';
   const isMember = group.my_role !== '';
@@ -77,10 +86,15 @@ export default function GroupScreen() {
         {!!group.description && <Text style={styles.desc}>{group.description}</Text>}
         <Text style={styles.meta}>
           {group.member_count} {group.member_count === 1 ? 'member' : 'members'}
+          {group.private ? ' · invite only' : ''}
           {isAdmin ? ' · you are the admin' : isMember ? ' · member' : ''}
         </Text>
         <View style={styles.actions}>
-          {!isMember && <Button title="Join group" onPress={() => run(() => api.joinGroup(groupId))} />}
+          {!isMember && !group.private && <Button title="Join group" onPress={() => run(() => api.joinGroup(groupId))} />}
+          {isMember && <Button title="Chat" icon="message-circle" variant="secondary" onPress={() => router.push(`/chat/group/${groupId}`)} />}
+          {isMember && <Button title="Call" icon="phone" variant="secondary" onPress={() => startCall(false)} />}
+          {isMember && <Button title="Video" icon="video" variant="secondary" onPress={() => startCall(true)} />}
+          {isAdmin && <Button title="Add members" icon="user-plus" variant="secondary" onPress={() => router.push(`/new-group-chat?group=${groupId}`)} />}
           {isMember && !isAdmin && <Button title="Leave" variant="secondary" onPress={() => run(() => api.leaveGroup(groupId))} />}
           {isAdmin && <Button title="Delete group" variant="danger" onPress={deleteGroup} />}
         </View>
@@ -156,5 +170,5 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   name: { fontSize: 24, fontWeight: '800', color: colors.text },
   desc: { color: colors.text, fontSize: 15, lineHeight: 21 },
   meta: { color: colors.muted },
-  actions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
 });
