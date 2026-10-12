@@ -64,8 +64,24 @@ type pushMessage struct {
 }
 
 // pushMessage notifies every registered device of user `to` about a new
-// message. Best effort: failures are logged, dead tokens are forgotten.
+// message; a group message is titled with the group and names its author.
 func (s *server) pushMessage(to int64, from *User, m Message, unread int) {
+	body := m.Body
+	if body == "" && len(m.Attachments) > 0 {
+		body = map[string]string{"image": "📷 Picture", "video": "🎬 Video", "link": "🔗 Link"}[m.Attachments[0].Type]
+	}
+	title, data := from.DisplayName, map[string]any{"chat": from.ID}
+	if m.GroupID != nil {
+		title, _ = s.groupSummary(*m.GroupID)["name"].(string)
+		body = from.DisplayName + ": " + body
+		data = map[string]any{"group_chat": *m.GroupID}
+	}
+	s.push(to, title, body, data, unread)
+}
+
+// push sends one notification to every registered device of a user. Best
+// effort: failures are logged, dead tokens are forgotten.
+func (s *server) push(to int64, title, body string, data map[string]any, badge int) {
 	rows, err := s.db.Query(`SELECT token FROM push_tokens WHERE user_id = ?`, to)
 	if err != nil {
 		return
@@ -81,13 +97,9 @@ func (s *server) pushMessage(to int64, from *User, m Message, unread int) {
 	if len(tokens) == 0 {
 		return
 	}
-	body := m.Body
-	if body == "" && len(m.Attachments) > 0 {
-		body = map[string]string{"image": "📷 Picture", "video": "🎬 Video", "link": "🔗 Link"}[m.Attachments[0].Type]
-	}
 	msgs := make([]pushMessage, 0, len(tokens))
 	for _, t := range tokens {
-		msgs = append(msgs, pushMessage{To: t, Title: from.DisplayName, Body: body, Data: map[string]any{"chat": from.ID}, Sound: "default", Badge: unread, ChannelID: "messages"})
+		msgs = append(msgs, pushMessage{To: t, Title: title, Body: body, Data: data, Sound: "default", Badge: badge, ChannelID: "messages"})
 	}
 	payload, _ := json.Marshal(msgs)
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

@@ -32,6 +32,7 @@ type server struct {
 	upgrader      websocket.Upgrader
 	mediaDir      string
 	trustProxy    bool
+	calls         *callRooms // who is in which call
 }
 
 func main() {
@@ -56,7 +57,7 @@ func main() {
 	if err := os.MkdirAll(*mediaDir, 0o755); err != nil {
 		log.Fatalf("media dir: %v", err)
 	}
-	s := &server{db: db, hub: newHub(), limiter: newLimiter(10, time.Minute), uploadLimiter: newLimiter(30, time.Minute), mediaDir: *mediaDir, trustProxy: *trustProxy}
+	s := &server{db: db, hub: newHub(), limiter: newLimiter(10, time.Minute), uploadLimiter: newLimiter(30, time.Minute), mediaDir: *mediaDir, trustProxy: *trustProxy, calls: newCallRooms()}
 	if *dev {
 		if err := s.seedIfEmpty(); err != nil {
 			log.Fatalf("seed demo data: %v", err)
@@ -156,6 +157,14 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/groups/{id}/leave", s.auth(s.leaveGroup))
 	mux.HandleFunc("GET /api/groups/{id}/posts", s.auth(s.groupPosts))
 	mux.HandleFunc("DELETE /api/groups/{id}/members/{uid}", s.auth(s.removeGroupMember))
+	mux.HandleFunc("POST /api/groups/{id}/members", s.auth(s.addGroupMembers))
+
+	// group chats
+	mux.HandleFunc("GET /api/groups/{id}/messages", s.auth(s.listGroupMessages))
+	mux.HandleFunc("POST /api/groups/{id}/messages", s.auth(s.sendGroupMessage))
+	mux.HandleFunc("POST /api/groups/{id}/messages/read", s.auth(s.markGroupRead))
+	mux.HandleFunc("PUT /api/groups/{id}/messages/{mid}", s.auth(s.updateGroupMessage))
+	mux.HandleFunc("DELETE /api/groups/{id}/messages/{mid}", s.auth(s.deleteGroupMessage))
 
 	// direct messages
 	mux.HandleFunc("GET /api/conversations", s.auth(s.listConversations))

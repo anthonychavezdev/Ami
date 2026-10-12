@@ -96,6 +96,16 @@ export function Avatar({ user, size = 40, status = true }: { user: Pick<User, 'd
   );
 }
 
+// A group's icon: a disc coloured from its name.
+export function GroupAvatar({ name, size = 40 }: { name: string; size?: number }) {
+  const hue = [...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 0);
+  return (
+    <View accessibilityLabel="Group" style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: `hsl(${hue}, 45%, 45%)`, alignItems: 'center', justifyContent: 'center' }}>
+      <Feather name="users" size={Math.round(size * 0.5)} color="#fff" />
+    </View>
+  );
+}
+
 export function Loading() {
   const { colors } = useTheme();
   const styles = useStyles(makeStyles);
