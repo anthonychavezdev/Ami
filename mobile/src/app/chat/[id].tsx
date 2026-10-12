@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AttachmentList } from '@/components/Attachments';
@@ -26,6 +26,22 @@ export default function ChatScreen() {
   const [other, setOther] = useState<User | null>(null);
   const [messages, setMessages] = useState<Message[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const list = useRef<FlatList<Message>>(null);
+  const loaded = messages !== null;
+
+  // react-native-web flips inverted lists with a CSS transform, which also
+  // flips the mouse wheel; undo that.
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !loaded) return;
+    const node = list.current?.getScrollableNode?.() as HTMLElement | undefined;
+    if (!node) return;
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      node.scrollTop -= e.deltaY;
+    };
+    node.addEventListener('wheel', onWheel, { passive: false });
+    return () => node.removeEventListener('wheel', onWheel);
+  }, [loaded]);
 
   useEffect(() => {
     Promise.all([api.user(otherId), api.messages(otherId)])
@@ -79,6 +95,7 @@ export default function ChatScreen() {
         }}
       />
       <FlatList
+        ref={list}
         data={messages}
         inverted
         keyExtractor={(m) => String(m.id)}

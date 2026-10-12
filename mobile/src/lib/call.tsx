@@ -1,13 +1,6 @@
 import React, { createContext, useContext, useEffect, useSyncExternalStore } from 'react';
 import { NativeModules, Platform } from 'react-native';
-import {
-  MediaStream,
-  MediaStreamTrack,
-  RTCIceCandidate,
-  RTCPeerConnection,
-  RTCSessionDescription,
-  mediaDevices,
-} from 'react-native-webrtc';
+import { MediaStream, MediaStreamTrack, RTCIceCandidate, RTCPeerConnection, RTCSessionDescription, mediaDevices, switchCamera } from './webrtc';
 
 import { ICE_SERVERS } from './config';
 import type { User } from './types';
@@ -179,7 +172,7 @@ class CallManager {
     try {
       await track.applyConstraints({ facingMode: this.facing });
     } catch {
-      track._switchCamera();
+      switchCamera(track);
     }
     this.bump();
   }

@@ -1,10 +1,11 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
 import { PostCard } from '@/components/PostCard';
 import { Avatar, Button, Empty, ErrorBanner, Loading } from '@/components/ui';
 import { api } from '@/lib/api';
+import { confirmAction } from '@/lib/confirm';
 import { useAuth } from '@/lib/auth';
 import { useCall } from '@/lib/call';
 import { toast } from '@/lib/toast';
@@ -92,10 +93,7 @@ export default function UserScreen() {
                       title="Unfriend"
                       variant="ghost"
                       onPress={() =>
-                        Alert.alert('Remove friend?', profile.display_name, [
-                          { text: 'Cancel', style: 'cancel' },
-                          { text: 'Remove', style: 'destructive', onPress: () => friendAction(() => api.removeFriend(profile.id)) },
-                        ])
+                        confirmAction('Remove friend?', profile.display_name, 'Remove', () => friendAction(() => api.removeFriend(profile.id)))
                       }
                     />
                   </>

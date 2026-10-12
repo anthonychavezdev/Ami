@@ -1,8 +1,8 @@
-import * as SecureStore from 'expo-secure-store';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 import { api, setAuthToken } from './api';
 import type { User } from './types';
+import { storage } from './storage';
 import { socket } from './ws';
 
 const TOKEN_KEY = 'ami.token';
@@ -23,7 +23,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const establish = useCallback(async (token: string, u: User) => {
     setAuthToken(token);
-    await SecureStore.setItemAsync(TOKEN_KEY, token);
+    await storage.set(TOKEN_KEY, token);
     socket.connect(token);
     setUser(u);
   }, []);
@@ -31,7 +31,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     (async () => {
       try {
-        const token = await SecureStore.getItemAsync(TOKEN_KEY);
+        const token = await storage.get(TOKEN_KEY);
         if (token) {
           setAuthToken(token);
           const u = await api.me();
@@ -40,7 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       } catch {
         setAuthToken(null);
-        await SecureStore.deleteItemAsync(TOKEN_KEY).catch(() => {});
+        await storage.remove(TOKEN_KEY).catch(() => {});
       } finally {
         setReady(true);
       }
@@ -63,7 +63,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await api.logout().catch(() => {});
         socket.disconnect();
         setAuthToken(null);
-        await SecureStore.deleteItemAsync(TOKEN_KEY).catch(() => {});
+        await storage.remove(TOKEN_KEY).catch(() => {});
         setUser(null);
       },
     }),

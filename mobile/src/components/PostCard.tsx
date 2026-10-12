@@ -1,12 +1,13 @@
 import { Feather } from '@expo/vector-icons';
 import { Link, useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AttachmentList } from './Attachments';
 import { ReactionButton } from './ReactionButton';
 import { Avatar } from './ui';
 import { ApiError, api } from '@/lib/api';
+import { confirmAction } from '@/lib/confirm';
 import { useAuth } from '@/lib/auth';
 import { PostMarkdown } from '@/lib/markdown';
 import { timeAgo } from '@/lib/time';
@@ -52,21 +53,14 @@ export function PostCard({
   };
 
   const remove = () =>
-    Alert.alert('Delete post?', undefined, [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await api.deletePost(post.id);
-            onDelete?.(post.id);
-          } catch (e) {
-            toast.error(e instanceof Error ? e.message : String(e));
-          }
-        },
-      },
-    ]);
+    confirmAction('Delete post?', undefined, 'Delete', async () => {
+      try {
+        await api.deletePost(post.id);
+        onDelete?.(post.id);
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : String(e));
+      }
+    });
 
   const reactions = Object.entries(post.reactions).sort((a, b) => b[1] - a[1]);
   const total = reactions.reduce((n, [, c]) => n + c, 0);
