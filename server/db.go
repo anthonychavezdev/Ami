@@ -86,6 +86,20 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 CREATE INDEX IF NOT EXISTS messages_sender ON messages(sender_id, recipient_id, id);
 CREATE INDEX IF NOT EXISTS messages_recipient ON messages(recipient_id, sender_id, id);
+
+CREATE TABLE IF NOT EXISTS conversation_reads (
+	user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	peer_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	last_read_id INTEGER NOT NULL,
+	PRIMARY KEY (user_id, peer_id)
+);
+
+CREATE TABLE IF NOT EXISTS push_tokens (
+	token      TEXT PRIMARY KEY,
+	user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS push_tokens_user ON push_tokens(user_id);
 `
 
 func openDB(path string) (*sql.DB, error) {
@@ -96,6 +110,8 @@ func openDB(path string) (*sql.DB, error) {
 	}
 	// SQLite serializes writers anyway; a single connection avoids SQLITE_BUSY entirely.
 	db.SetMaxOpenConns(1)
+	var hadReads int
+	_ = db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'conversation_reads'`).Scan(&hadReads)
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
 		return nil, err
@@ -103,6 +119,14 @@ func openDB(path string) (*sql.DB, error) {
 	// Columns added after the first release; CREATE TABLE IF NOT EXISTS won't add them.
 	for _, table := range []string{"posts", "messages"} {
 		if err := addColumn(db, table, "attachments", "TEXT NOT NULL DEFAULT '[]'"); err != nil {
+			db.Close()
+			return nil, err
+		}
+	}
+	if hadReads == 0 {
+		// Chats from before unread tracking start out read.
+		if _, err := db.Exec(`INSERT OR IGNORE INTO conversation_reads(user_id, peer_id, last_read_id)
+			SELECT recipient_id, sender_id, MAX(id) FROM messages GROUP BY recipient_id, sender_id`); err != nil {
 			db.Close()
 			return nil, err
 		}
