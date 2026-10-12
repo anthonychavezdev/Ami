@@ -36,6 +36,7 @@ function RootNavigator() {
           headerTintColor: colors.accent,
           headerTitleStyle: { color: colors.text },
           headerStyle: { backgroundColor: colors.card },
+          headerBackButtonDisplayMode: 'minimal', // otherwise iOS shows the route group name, "(tabs)"
           contentStyle: { backgroundColor: colors.bg },
         }}
       >
