@@ -24,7 +24,11 @@ in
   # Toolchains. Nothing is installed globally: Go, Node and the Android SDK come
   # from the Nix store, and every cache/dependency directory below lives inside
   # this repo.
-  languages.go.enable = true;
+  languages.go = {
+    enable = true;
+    lsp.enable = true;
+  };
+
   languages.javascript = {
     enable = true;
     npm.enable = true;
