@@ -35,62 +35,91 @@ var mediaExt = map[string]string{
 	"video/mp4": ".mp4", "video/quicktime": ".mov", "video/webm": ".webm",
 }
 
+// uploadName is the file behind an upload URL (/media/<name>), if it is one.
+func uploadName(url string) (string, bool) {
+	name := strings.TrimPrefix(url, "/media/")
+	return name, name != url && name != "" && !strings.ContainsAny(name, `/\`)
+}
+
+func (s *server) uploadExists(name string) bool {
+	_, err := os.Stat(filepath.Join(s.mediaDir, name))
+	return err == nil
+}
+
 // uploadMedia stores one picture or video under a random name and returns the
 // attachment to put on a post.
-func (s *server) uploadMedia(w http.ResponseWriter, r *http.Request, me *User) {
+func (s *server) uploadMedia(w http.ResponseWriter, r *http.Request, me *User) error {
 	if !s.uploadLimiter.allow(strconv.FormatInt(me.ID, 10)) {
 		w.Header().Set("Retry-After", "60")
-		writeError(w, http.StatusTooManyRequests, "too many uploads, try again in a minute")
-		return
+		return fail(http.StatusTooManyRequests, "too many uploads, try again in a minute")
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes)
 	file, header, err := r.FormFile("file")
 	if err != nil {
-		writeError(w, http.StatusBadRequest, `multipart form with a "file" field required (max 64 MB)`)
-		return
+		return badRequest(`multipart form with a "file" field required (max 64 MB)`)
 	}
 	defer file.Close()
 	head := make([]byte, 512)
 	n, _ := io.ReadFull(file, head)
 	head = head[:n]
 	mime := sniffMedia(head, header.Header.Get("Content-Type"))
-	ext, ok := mediaExt[mime]
-	if !ok {
-		writeError(w, http.StatusUnsupportedMediaType, "only JPEG, PNG, GIF and WebP pictures or MP4, MOV and WebM videos are accepted")
-		return
+	ext, known := mediaExt[mime]
+	if !known {
+		return fail(http.StatusUnsupportedMediaType, "only JPEG, PNG, GIF and WebP pictures or MP4, MOV and WebM videos are accepted")
 	}
 	name := hex.EncodeToString(randomBytes(16)) + ext
+	if err := s.storeUpload(name, head, file); err != nil {
+		return err
+	}
+	return created(w, s.attachmentFor(mime, name))
+}
+
+// storeUpload writes the sniffed head and the rest of the body to a new file.
+func (s *server) storeUpload(name string, head []byte, rest io.Reader) error {
 	path := filepath.Join(s.mediaDir, name)
 	out, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
-	_, err = out.Write(head)
-	if err == nil {
-		_, err = io.Copy(out, file)
+	if _, err = out.Write(head); err == nil {
+		_, err = io.Copy(out, rest)
 	}
 	out.Close()
-	if err != nil {
-		os.Remove(path)
-		var tooBig *http.MaxBytesError
-		if errors.As(err, &tooBig) {
-			writeError(w, http.StatusRequestEntityTooLarge, "file too large (max 64 MB)")
-			return
-		}
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+	if err == nil {
+		return nil
 	}
+	os.Remove(path)
+	var tooBig *http.MaxBytesError
+	if errors.As(err, &tooBig) {
+		return fail(http.StatusRequestEntityTooLarge, "file too large (max 64 MB)")
+	}
+	return err
+}
+
+// attachmentFor describes a stored upload; pictures carry their size.
+func (s *server) attachmentFor(mime, name string) Attachment {
 	att := Attachment{Type: "image", URL: "/media/" + name}
 	if strings.HasPrefix(mime, "video/") {
 		att.Type = "video"
-	} else if f, err := os.Open(path); err == nil {
-		if cfg, _, err := image.DecodeConfig(f); err == nil {
-			att.Width, att.Height = cfg.Width, cfg.Height
-		}
-		f.Close()
+		return att
 	}
-	writeJSON(w, http.StatusCreated, att)
+	att.Width, att.Height = s.pictureSize(name)
+	return att
+}
+
+// pictureSize decodes just the header of an uploaded picture; 0x0 when it
+// cannot be decoded (WebP has no decoder in the standard library).
+func (s *server) pictureSize(name string) (int, int) {
+	f, err := os.Open(filepath.Join(s.mediaDir, name))
+	if err != nil {
+		return 0, 0
+	}
+	defer f.Close()
+	cfg, _, err := image.DecodeConfig(f)
+	if err != nil {
+		return 0, 0
+	}
+	return cfg.Width, cfg.Height
 }
 
 // sniffMedia trusts the content over the declared type, except for MOV/MP4
@@ -126,35 +155,44 @@ func (s *server) serveMedia(w http.ResponseWriter, r *http.Request) {
 	http.ServeFile(w, r, filepath.Join(s.mediaDir, name))
 }
 
-// validateAttachments checks a post's attachments: uploads must exist in the
-// media directory and links must be http(s) URLs.
-func (s *server) validateAttachments(atts []Attachment) error {
+// cleanAttachments checks a post's attachments (uploads must exist in the
+// media directory, links must be http(s) URLs) and returns them normalised.
+func (s *server) cleanAttachments(atts []Attachment) ([]Attachment, error) {
 	if len(atts) > maxAttachments {
-		return errors.New("too many attachments (max 10)")
+		return nil, badRequest("too many attachments (max 10)")
 	}
-	for i := range atts {
-		a := &atts[i]
-		if len(a.URL) > 2048 {
-			return errors.New("attachment URL too long")
+	out := make([]Attachment, 0, len(atts))
+	for _, a := range atts {
+		clean, err := s.cleanAttachment(a)
+		if err != nil {
+			return nil, badRequest(err.Error())
 		}
-		switch a.Type {
-		case "image", "video":
-			name := strings.TrimPrefix(a.URL, "/media/")
-			if name == a.URL || name == "" || strings.ContainsAny(name, `/\`) {
-				return errors.New("pictures and videos must be uploaded via /api/media")
-			}
-			if _, err := os.Stat(filepath.Join(s.mediaDir, name)); err != nil {
-				return errors.New("unknown media file " + name)
-			}
-		case "link":
-			u, err := url.Parse(a.URL)
-			if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-				return errors.New("links must be http(s) URLs")
-			}
-			a.Width, a.Height = 0, 0
-		default:
-			return errors.New("attachment type must be image, video or link")
-		}
+		out = append(out, clean)
 	}
-	return nil
+	return out, nil
+}
+
+func (s *server) cleanAttachment(a Attachment) (Attachment, error) {
+	if len(a.URL) > 2048 {
+		return a, errors.New("attachment URL too long")
+	}
+	switch a.Type {
+	case "image", "video":
+		name, ok := uploadName(a.URL)
+		if !ok {
+			return a, errors.New("pictures and videos must be uploaded via /api/media")
+		}
+		if !s.uploadExists(name) {
+			return a, errors.New("unknown media file " + name)
+		}
+		return a, nil
+	case "link":
+		u, err := url.Parse(a.URL)
+		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			return a, errors.New("links must be http(s) URLs")
+		}
+		return Attachment{Type: "link", URL: a.URL}, nil
+	default:
+		return a, errors.New("attachment type must be image, video or link")
+	}
 }

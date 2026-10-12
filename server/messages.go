@@ -2,7 +2,6 @@ package main
 
 import (
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"sort"
@@ -31,6 +30,8 @@ type Conversation struct {
 	Unread      int      `json:"unread"`
 }
 
+// ---- which chat
+
 // chat is where a message lives: a direct chat with user peer, or group group.
 type chat struct {
 	peer  int64
@@ -55,18 +56,84 @@ func (c chat) contains(m Message) bool {
 	return m.GroupID == nil && m.RecipientID != nil && (*m.RecipientID == c.peer || m.SenderID == c.peer)
 }
 
-const messageCols = "m.id, m.sender_id, m.recipient_id, m.group_id, m.body, m.attachments, m.created_at, m.edited_at"
-
-// decodeAttachments turns the stored JSON column into a (never nil) slice.
-func decodeAttachments(raw string) []Attachment {
-	out := []Attachment{}
-	_ = json.Unmarshal([]byte(raw), &out)
-	return out
+// directChat reads the {id} of the direct-message routes.
+func directChat(r *http.Request) (chat, error) {
+	other, err := pathID(r, "id")
+	return chat{peer: other}, err
 }
+
+// groupChat reads the {id} of the group chat routes and admits members only.
+func (s *server) groupChat(r *http.Request, me *User) (chat, error) {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return chat{}, err
+	}
+	role, err := s.groupRole(id, me.ID)
+	if err != nil {
+		return chat{}, err
+	}
+	if role == "" {
+		return chat{}, forbidden("only members can use the group chat")
+	}
+	return chat{group: id}, nil
+}
+
+// Each chat action has a direct and a group route; the pairs below only
+// differ in how they find the chat.
+func (s *server) listMessages(w http.ResponseWriter, r *http.Request, me *User) error {
+	return s.withDirectChat(r, func(c chat) error { return s.listChat(w, r, me, c) })
+}
+func (s *server) listGroupMessages(w http.ResponseWriter, r *http.Request, me *User) error {
+	return s.withGroupChat(r, me, func(c chat) error { return s.listChat(w, r, me, c) })
+}
+func (s *server) sendMessage(w http.ResponseWriter, r *http.Request, me *User) error {
+	return s.withDirectChat(r, func(c chat) error { return s.sendChat(w, r, me, c) })
+}
+func (s *server) sendGroupMessage(w http.ResponseWriter, r *http.Request, me *User) error {
+	return s.withGroupChat(r, me, func(c chat) error { return s.sendChat(w, r, me, c) })
+}
+func (s *server) markRead(w http.ResponseWriter, r *http.Request, me *User) error {
+	return s.withDirectChat(r, func(c chat) error { return s.readChat(w, me, c) })
+}
+func (s *server) markGroupRead(w http.ResponseWriter, r *http.Request, me *User) error {
+	return s.withGroupChat(r, me, func(c chat) error { return s.readChat(w, me, c) })
+}
+func (s *server) updateMessage(w http.ResponseWriter, r *http.Request, me *User) error {
+	return s.withDirectChat(r, func(c chat) error { return s.updateChat(w, r, me, c) })
+}
+func (s *server) updateGroupMessage(w http.ResponseWriter, r *http.Request, me *User) error {
+	return s.withGroupChat(r, me, func(c chat) error { return s.updateChat(w, r, me, c) })
+}
+func (s *server) deleteMessage(w http.ResponseWriter, r *http.Request, me *User) error {
+	return s.withDirectChat(r, func(c chat) error { return s.deleteChat(w, r, me, c) })
+}
+func (s *server) deleteGroupMessage(w http.ResponseWriter, r *http.Request, me *User) error {
+	return s.withGroupChat(r, me, func(c chat) error { return s.deleteChat(w, r, me, c) })
+}
+
+func (s *server) withDirectChat(r *http.Request, fn func(chat) error) error {
+	c, err := directChat(r)
+	if err != nil {
+		return err
+	}
+	return fn(c)
+}
+
+func (s *server) withGroupChat(r *http.Request, me *User, fn func(chat) error) error {
+	c, err := s.groupChat(r, me)
+	if err != nil {
+		return err
+	}
+	return fn(c)
+}
+
+// ---- reading messages
+
+const messageCols = "m.id, m.sender_id, m.recipient_id, m.group_id, m.body, m.attachments, m.created_at, m.edited_at"
 
 // scanMessage reads messageCols followed by the sender's userCols; the sender
 // is kept on group messages only (direct chats know who the other person is).
-func scanMessage(sc interface{ Scan(...any) error }) (Message, error) {
+func scanMessage(sc scanner) (Message, error) {
 	var m Message
 	var u User
 	var atts string
@@ -85,160 +152,72 @@ func (s *server) loadMessage(id int64) (Message, error) {
 	return scanMessage(s.db.QueryRow(`SELECT `+messageCols+`, `+userCols+` FROM messages m JOIN users u ON u.id = m.sender_id WHERE m.id = ?`, id))
 }
 
-// chatAudience is everyone who sees a message: the group's members, or both
-// parties of a direct chat.
-func (s *server) chatAudience(m Message) []int64 {
-	if m.GroupID == nil {
-		if m.RecipientID == nil {
-			return []int64{m.SenderID}
-		}
-		return []int64{m.SenderID, *m.RecipientID}
-	}
-	return s.groupMemberIDs(*m.GroupID)
-}
-
-func (s *server) groupMemberIDs(groupID int64) []int64 {
-	rows, err := s.db.Query(`SELECT user_id FROM group_members WHERE group_id = ?`, groupID)
-	if err != nil {
-		return nil
-	}
-	defer rows.Close()
-	var ids []int64
-	for rows.Next() {
-		var id int64
-		if rows.Scan(&id) == nil {
-			ids = append(ids, id)
-		}
-	}
-	return ids
-}
-
-// directChat reads the {id} of the direct-message routes.
-func (s *server) directChat(w http.ResponseWriter, r *http.Request) (chat, bool) {
-	other, ok := pathID(w, r, "id")
-	return chat{peer: other}, ok
-}
-
-// groupChat reads the {id} of the group chat routes and admits members only.
-func (s *server) groupChat(w http.ResponseWriter, r *http.Request, me *User) (chat, bool) {
-	id, ok := pathID(w, r, "id")
-	if !ok {
-		return chat{}, false
-	}
-	role, err := s.groupRole(id, me.ID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return chat{}, false
-	}
-	if role == "" {
-		writeError(w, http.StatusForbidden, "only members can use the group chat")
-		return chat{}, false
-	}
-	return chat{group: id}, true
-}
-
-func (s *server) listMessages(w http.ResponseWriter, r *http.Request, me *User) {
-	if c, ok := s.directChat(w, r); ok {
-		s.listChat(w, r, me, c)
-	}
-}
-
-func (s *server) listGroupMessages(w http.ResponseWriter, r *http.Request, me *User) {
-	if c, ok := s.groupChat(w, r, me); ok {
-		s.listChat(w, r, me, c)
-	}
-}
-
-func (s *server) sendMessage(w http.ResponseWriter, r *http.Request, me *User) {
-	if c, ok := s.directChat(w, r); ok {
-		s.sendChat(w, r, me, c)
-	}
-}
-
-func (s *server) sendGroupMessage(w http.ResponseWriter, r *http.Request, me *User) {
-	if c, ok := s.groupChat(w, r, me); ok {
-		s.sendChat(w, r, me, c)
-	}
-}
-
-func (s *server) markRead(w http.ResponseWriter, r *http.Request, me *User) {
-	if c, ok := s.directChat(w, r); ok {
-		s.readChat(w, me, c)
-	}
-}
-
-func (s *server) markGroupRead(w http.ResponseWriter, r *http.Request, me *User) {
-	if c, ok := s.groupChat(w, r, me); ok {
-		s.readChat(w, me, c)
-	}
-}
-
-func (s *server) updateMessage(w http.ResponseWriter, r *http.Request, me *User) {
-	if c, ok := s.directChat(w, r); ok {
-		s.updateChat(w, r, me, c)
-	}
-}
-
-func (s *server) updateGroupMessage(w http.ResponseWriter, r *http.Request, me *User) {
-	if c, ok := s.groupChat(w, r, me); ok {
-		s.updateChat(w, r, me, c)
-	}
-}
-
-func (s *server) deleteMessage(w http.ResponseWriter, r *http.Request, me *User) {
-	if c, ok := s.directChat(w, r); ok {
-		s.deleteChat(w, r, me, c)
-	}
-}
-
-func (s *server) deleteGroupMessage(w http.ResponseWriter, r *http.Request, me *User) {
-	if c, ok := s.groupChat(w, r, me); ok {
-		s.deleteChat(w, r, me, c)
-	}
-}
-
 // listChat returns the newest messages of a chat, oldest first within the page.
-func (s *server) listChat(w http.ResponseWriter, r *http.Request, me *User, c chat) {
+func (s *server) listChat(w http.ResponseWriter, r *http.Request, me *User, c chat) error {
 	before, limit := pagination(r)
 	if limit == 30 {
 		limit = 50
 	}
 	where, target := c.filter()
-	rows, err := s.db.Query(`SELECT `+messageCols+`, `+userCols+` FROM (
+	messages, err := queryAll(s.db, scanMessage, `SELECT `+messageCols+`, `+userCols+` FROM (
 			SELECT * FROM messages m WHERE `+where+` AND m.id < ?3 ORDER BY m.id DESC LIMIT ?4) m
 		JOIN users u ON u.id = m.sender_id ORDER BY m.id ASC`, me.ID, target, before, limit)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
-	defer rows.Close()
-	out := []Message{}
-	for rows.Next() {
-		m, err := scanMessage(rows)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		out = append(out, m)
-	}
-	writeJSON(w, http.StatusOK, out)
+	return ok(w, messages)
 }
 
-// validMessage checks the text and attachments of a new or edited message.
-func (s *server) validMessage(w http.ResponseWriter, body string, atts []Attachment) bool {
-	if body == "" && len(atts) == 0 {
-		writeError(w, http.StatusBadRequest, "a message needs text or an attachment")
-		return false
+// chatMessage loads message {mid} if it belongs to the chat.
+func (s *server) chatMessage(r *http.Request, c chat) (Message, error) {
+	mid, err := pathID(r, "mid")
+	if err != nil {
+		return Message{}, err
+	}
+	m, err := s.loadMessage(mid)
+	if err = orNotFound(err, "message not found"); err != nil {
+		return m, err
+	}
+	if !c.contains(m) {
+		return m, notFound("message not found")
+	}
+	return m, nil
+}
+
+// chatAudience is everyone who sees a message: the group's members, or both
+// parties of a direct chat.
+func (s *server) chatAudience(m Message) []int64 {
+	switch {
+	case m.GroupID != nil:
+		return s.groupMemberIDs(*m.GroupID)
+	case m.RecipientID != nil:
+		return []int64{m.SenderID, *m.RecipientID}
+	default:
+		return []int64{m.SenderID}
+	}
+}
+
+// ---- writing messages
+
+type messageInput struct {
+	Body        string       `json:"body"`
+	Attachments []Attachment `json:"attachments"`
+}
+
+// cleanMessage trims the text and checks it and the attachments.
+func (s *server) cleanMessage(body string, atts []Attachment) (string, []Attachment, error) {
+	body = strings.TrimSpace(body)
+	clean, err := s.cleanAttachments(atts)
+	if err != nil {
+		return body, nil, err
+	}
+	if body == "" && len(clean) == 0 {
+		return body, clean, badRequest("a message needs text or an attachment")
 	}
 	if len(body) > 4000 {
-		writeError(w, http.StatusBadRequest, "body must be at most 4000 characters")
-		return false
+		return body, clean, badRequest("body must be at most 4000 characters")
 	}
-	if err := s.validateAttachments(atts); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return false
-	}
-	return true
+	return body, clean, nil
 }
 
 // nullID stores 0 as NULL.
@@ -252,61 +231,144 @@ func nullID(id int64) any {
 // sendChat stores a message (text, pictures/videos uploaded via /api/media, or
 // both) and pushes it to everyone in the chat over the WebSocket; people with
 // no connection get an OS notification.
-func (s *server) sendChat(w http.ResponseWriter, r *http.Request, me *User, c chat) {
-	var in struct {
-		Body        string       `json:"body"`
-		Attachments []Attachment `json:"attachments"`
+func (s *server) sendChat(w http.ResponseWriter, r *http.Request, me *User, c chat) error {
+	var in messageInput
+	if err := readJSON(w, r, &in); err != nil {
+		return err
 	}
-	if !readJSON(w, r, &in) {
-		return
-	}
-	in.Body = strings.TrimSpace(in.Body)
-	if in.Attachments == nil {
-		in.Attachments = []Attachment{}
-	}
-	if !s.validMessage(w, in.Body, in.Attachments) {
-		return
+	body, atts, err := s.cleanMessage(in.Body, in.Attachments)
+	if err != nil {
+		return err
 	}
 	if !c.isGroup() {
 		if friends, err := s.areFriends(me.ID, c.peer); err != nil || !friends {
-			writeError(w, http.StatusForbidden, "you can only message friends")
-			return
+			return forbidden("you can only message friends")
 		}
 	}
-	attachments, _ := json.Marshal(in.Attachments)
 	res, err := s.db.Exec(`INSERT INTO messages(sender_id, recipient_id, group_id, body, attachments, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		me.ID, nullID(c.peer), nullID(c.group), in.Body, string(attachments), nowString())
+		me.ID, nullID(c.peer), nullID(c.group), body, jsonString(atts), nowString())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
 	id, _ := res.LastInsertId()
 	m, err := s.loadMessage(id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
-	event := map[string]any{"type": "message", "message": m, "sender": me}
+	s.deliverMessage(me, m)
+	return created(w, m)
+}
+
+// deliverMessage sends a new message to everyone in its chat with their own
+// unread total; the sender's other devices get a plain copy, and people with
+// no connection are pushed.
+func (s *server) deliverMessage(from *User, m Message) {
+	event := map[string]any{"type": "message", "message": m, "sender": from}
 	if m.GroupID != nil {
 		event["group"] = s.groupSummary(*m.GroupID)
 	}
 	for _, uid := range s.chatAudience(m) {
-		if uid == me.ID {
-			s.hub.sendTo(uid, event) // the sender's other devices
+		if uid == from.ID {
+			s.hub.sendTo(uid, event)
 			continue
 		}
 		unread, _ := s.unreadMessages(uid)
-		ev := make(map[string]any, len(event)+1)
-		for k, v := range event {
-			ev[k] = v
-		}
-		ev["unread"] = unread
-		if !s.hub.sendTo(uid, ev) {
-			go s.pushMessage(uid, me, m, unread) // nothing connected: notify through the OS
+		if !s.hub.sendTo(uid, withField(event, "unread", unread)) {
+			go s.pushMessage(uid, from, m, unread)
 		}
 	}
-	writeJSON(w, http.StatusCreated, m)
 }
+
+// withField is a copy of an event with one more field.
+func withField(event map[string]any, key string, v any) map[string]any {
+	out := make(map[string]any, len(event)+1)
+	for k, val := range event {
+		out[k] = val
+	}
+	out[key] = v
+	return out
+}
+
+// updateChat edits the text of one of the caller's messages; everyone in the
+// chat gets a message.updated event.
+func (s *server) updateChat(w http.ResponseWriter, r *http.Request, me *User, c chat) error {
+	var in struct {
+		Body string `json:"body"`
+	}
+	if err := readJSON(w, r, &in); err != nil {
+		return err
+	}
+	m, err := s.chatMessage(r, c)
+	if err != nil {
+		return err
+	}
+	if m.SenderID != me.ID {
+		return forbidden("only the sender can edit a message")
+	}
+	body, _, err := s.cleanMessage(in.Body, m.Attachments)
+	if err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`UPDATE messages SET body = ?, edited_at = ? WHERE id = ?`, body, nowString(), m.ID); err != nil {
+		return err
+	}
+	if m, err = s.loadMessage(m.ID); err != nil {
+		return err
+	}
+	s.hub.sendToMany(s.chatAudience(m), map[string]any{"type": "message.updated", "message": m})
+	return ok(w, m)
+}
+
+// deleteChat removes a message for everyone in the chat: the sender's own, or,
+// in a group, any message when the caller is the admin. Badges are refreshed
+// by the message.deleted event.
+func (s *server) deleteChat(w http.ResponseWriter, r *http.Request, me *User, c chat) error {
+	m, err := s.chatMessage(r, c)
+	if err != nil {
+		return err
+	}
+	if !s.mayDeleteMessage(me.ID, m, c) {
+		return forbidden("only the sender can delete a message")
+	}
+	if _, err := s.db.Exec(`DELETE FROM messages WHERE id = ?`, m.ID); err != nil {
+		return err
+	}
+	if err := s.pullBackReadMarkers(m, c); err != nil {
+		return err
+	}
+	for _, uid := range s.chatAudience(m) {
+		unread, _ := s.unreadMessages(uid)
+		s.hub.sendTo(uid, map[string]any{"type": "message.deleted", "id": m.ID, "sender_id": m.SenderID, "recipient_id": m.RecipientID, "group_id": m.GroupID, "unread": unread})
+	}
+	return noContent(w)
+}
+
+func (s *server) mayDeleteMessage(userID int64, m Message, c chat) bool {
+	if m.SenderID == userID {
+		return true
+	}
+	if !c.isGroup() {
+		return false
+	}
+	role, _ := s.groupRole(c.group, userID)
+	return role == "admin"
+}
+
+// pullBackReadMarkers: SQLite hands the highest id out again after a delete,
+// so a read marker sitting at or past the deleted message is pulled back to
+// what remains; a new message reusing the id then still counts as unread.
+func (s *server) pullBackReadMarkers(m Message, c chat) error {
+	if c.isGroup() {
+		_, err := s.db.Exec(`UPDATE group_reads SET last_read_id = (SELECT COALESCE(MAX(id), 0) FROM messages WHERE group_id = ?1)
+			WHERE group_id = ?1 AND last_read_id >= ?2`, c.group, m.ID)
+		return err
+	}
+	_, err := s.db.Exec(`UPDATE conversation_reads SET last_read_id = (SELECT COALESCE(MAX(id), 0) FROM messages WHERE group_id IS NULL AND sender_id = ?1 AND recipient_id = ?2)
+		WHERE user_id = ?2 AND peer_id = ?1 AND last_read_id >= ?3`, m.SenderID, *m.RecipientID, m.ID)
+	return err
+}
+
+// ---- unread counts
 
 // unreadMessages counts messages to a user past each chat's read marker:
 // direct messages from each friend, and group messages from other people.
@@ -331,134 +393,67 @@ func (s *server) groupUnread(userID, groupID int64) int {
 
 // readChat moves the chat's read marker to its latest message and tells the
 // user's other devices so their badges drop too.
-func (s *server) readChat(w http.ResponseWriter, me *User, c chat) {
-	var err error
-	event := map[string]any{"type": "messages.read"}
-	if c.isGroup() {
-		_, err = s.db.Exec(`INSERT INTO group_reads(user_id, group_id, last_read_id)
-			VALUES (?1, ?2, COALESCE((SELECT MAX(id) FROM messages WHERE group_id = ?2), 0))
-			ON CONFLICT(user_id, group_id) DO UPDATE SET last_read_id = excluded.last_read_id`, me.ID, c.group)
-		event["group_id"] = c.group
-	} else {
-		_, err = s.db.Exec(`INSERT INTO conversation_reads(user_id, peer_id, last_read_id)
-			VALUES (?1, ?2, COALESCE((SELECT MAX(id) FROM messages WHERE group_id IS NULL AND sender_id = ?2 AND recipient_id = ?1), 0))
-			ON CONFLICT(user_id, peer_id) DO UPDATE SET last_read_id = excluded.last_read_id`, me.ID, c.peer)
-		event["peer_id"] = c.peer
-	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+func (s *server) readChat(w http.ResponseWriter, me *User, c chat) error {
+	if err := s.moveReadMarker(me.ID, c); err != nil {
+		return err
 	}
 	unread, err := s.unreadMessages(me.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
-	event["unread"] = unread
-	s.hub.sendTo(me.ID, event)
-	writeJSON(w, http.StatusOK, map[string]int{"unread": unread})
-}
-
-// chatMessage loads message {mid} if it belongs to the chat.
-func (s *server) chatMessage(w http.ResponseWriter, r *http.Request, c chat) (Message, bool) {
-	mid, ok := pathID(w, r, "mid")
-	if !ok {
-		return Message{}, false
-	}
-	m, err := s.loadMessage(mid)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && !c.contains(m)) {
-		writeError(w, http.StatusNotFound, "message not found")
-		return m, false
-	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return m, false
-	}
-	return m, true
-}
-
-// updateChat edits the text of one of the caller's messages; everyone in the
-// chat gets a message.updated event.
-func (s *server) updateChat(w http.ResponseWriter, r *http.Request, me *User, c chat) {
-	var in struct {
-		Body string `json:"body"`
-	}
-	if !readJSON(w, r, &in) {
-		return
-	}
-	in.Body = strings.TrimSpace(in.Body)
-	m, ok := s.chatMessage(w, r, c)
-	if !ok {
-		return
-	}
-	if m.SenderID != me.ID {
-		writeError(w, http.StatusForbidden, "only the sender can edit a message")
-		return
-	}
-	if !s.validMessage(w, in.Body, m.Attachments) {
-		return
-	}
-	if _, err := s.db.Exec(`UPDATE messages SET body = ?, edited_at = ? WHERE id = ?`, in.Body, nowString(), m.ID); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	m, err := s.loadMessage(m.ID)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	s.hub.sendToMany(s.chatAudience(m), map[string]any{"type": "message.updated", "message": m})
-	writeJSON(w, http.StatusOK, m)
-}
-
-// deleteChat removes a message for everyone in the chat: the sender's own, or,
-// in a group, any message when the caller is the admin. Badges are refreshed
-// by the message.deleted event.
-func (s *server) deleteChat(w http.ResponseWriter, r *http.Request, me *User, c chat) {
-	m, ok := s.chatMessage(w, r, c)
-	if !ok {
-		return
-	}
-	if m.SenderID != me.ID {
-		role := ""
-		if c.isGroup() {
-			role, _ = s.groupRole(c.group, me.ID)
-		}
-		if role != "admin" {
-			writeError(w, http.StatusForbidden, "only the sender can delete a message")
-			return
-		}
-	}
-	if _, err := s.db.Exec(`DELETE FROM messages WHERE id = ?`, m.ID); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	// SQLite hands the highest id out again after a delete, so a read marker
-	// sitting at or past this message is pulled back to what remains; a new
-	// message reusing the id then still counts as unread.
-	var err error
+	event := map[string]any{"type": "messages.read", "unread": unread}
 	if c.isGroup() {
-		_, err = s.db.Exec(`UPDATE group_reads SET last_read_id = (SELECT COALESCE(MAX(id), 0) FROM messages WHERE group_id = ?1)
-			WHERE group_id = ?1 AND last_read_id >= ?2`, c.group, m.ID)
+		event["group_id"] = c.group
 	} else {
-		_, err = s.db.Exec(`UPDATE conversation_reads SET last_read_id = (SELECT COALESCE(MAX(id), 0) FROM messages WHERE group_id IS NULL AND sender_id = ?1 AND recipient_id = ?2)
-			WHERE user_id = ?2 AND peer_id = ?1 AND last_read_id >= ?3`, m.SenderID, *m.RecipientID, m.ID)
+		event["peer_id"] = c.peer
 	}
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	for _, uid := range s.chatAudience(m) {
-		unread, _ := s.unreadMessages(uid)
-		s.hub.sendTo(uid, map[string]any{"type": "message.deleted", "id": m.ID, "sender_id": m.SenderID, "recipient_id": m.RecipientID, "group_id": m.GroupID, "unread": unread})
-	}
-	w.WriteHeader(http.StatusNoContent)
+	s.hub.sendTo(me.ID, event)
+	return ok(w, map[string]int{"unread": unread})
 }
 
-// listConversations returns the Messages tab: every direct chat with messages
-// and every group the user belongs to, most recent activity first.
-func (s *server) listConversations(w http.ResponseWriter, r *http.Request, me *User) {
-	rows, err := s.db.Query(`
+func (s *server) moveReadMarker(userID int64, c chat) error {
+	if c.isGroup() {
+		_, err := s.db.Exec(`INSERT INTO group_reads(user_id, group_id, last_read_id)
+			VALUES (?1, ?2, COALESCE((SELECT MAX(id) FROM messages WHERE group_id = ?2), 0))
+			ON CONFLICT(user_id, group_id) DO UPDATE SET last_read_id = excluded.last_read_id`, userID, c.group)
+		return err
+	}
+	_, err := s.db.Exec(`INSERT INTO conversation_reads(user_id, peer_id, last_read_id)
+		VALUES (?1, ?2, COALESCE((SELECT MAX(id) FROM messages WHERE group_id IS NULL AND sender_id = ?2 AND recipient_id = ?1), 0))
+		ON CONFLICT(user_id, peer_id) DO UPDATE SET last_read_id = excluded.last_read_id`, userID, c.peer)
+	return err
+}
+
+// ---- the Messages tab
+
+// listConversations returns every direct chat with messages and every group
+// the user belongs to, most recent activity first.
+func (s *server) listConversations(w http.ResponseWriter, r *http.Request, me *User) error {
+	direct, err := s.directConversations(me.ID)
+	if err != nil {
+		return err
+	}
+	groups, err := s.groupConversations(me.ID)
+	if err != nil {
+		return err
+	}
+	return ok(w, sortConversations(append(direct, groups...)))
+}
+
+// directConversations: the newest message with each friend, with the unread count.
+func (s *server) directConversations(userID int64) ([]Conversation, error) {
+	scan := func(sc scanner) (Conversation, error) {
+		var c Conversation
+		var m Message
+		var u User
+		var atts string
+		err := sc.Scan(&m.ID, &m.SenderID, &m.RecipientID, &m.GroupID, &m.Body, &atts, &m.CreatedAt, &m.EditedAt,
+			&u.ID, &u.Username, &u.DisplayName, &u.CreatedAt, &u.AvatarURL, &u.Pronouns, &u.AvatarCrop, &c.Unread)
+		m.Attachments = decodeAttachments(atts)
+		c.User, c.LastMessage = &u, &m
+		return c, err
+	}
+	return queryAll(s.db, scan, `
 		SELECT `+messageCols+`, `+userCols+`,
 			(SELECT COUNT(*) FROM messages x WHERE x.group_id IS NULL AND x.sender_id = u.id AND x.recipient_id = ?1
 				AND x.id > COALESCE((SELECT last_read_id FROM conversation_reads r WHERE r.user_id = ?1 AND r.peer_id = u.id), 0))
@@ -466,56 +461,45 @@ func (s *server) listConversations(w http.ResponseWriter, r *http.Request, me *U
 		JOIN users u ON u.id = CASE WHEN m.sender_id = ?1 THEN m.recipient_id ELSE m.sender_id END
 		WHERE m.id IN (
 			SELECT MAX(id) FROM messages WHERE group_id IS NULL AND (sender_id = ?1 OR recipient_id = ?1)
-			GROUP BY CASE WHEN sender_id = ?1 THEN recipient_id ELSE sender_id END)`, me.ID)
+			GROUP BY CASE WHEN sender_id = ?1 THEN recipient_id ELSE sender_id END)`, userID)
+}
+
+// groupConversations: every group the user is in, with its newest message if any.
+func (s *server) groupConversations(userID int64) ([]Conversation, error) {
+	groups, err := s.queryGroups(userID, `WHERE g.id IN (SELECT group_id FROM group_members WHERE user_id = ?1)`)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return nil, err
 	}
-	out := []Conversation{}
-	for rows.Next() {
-		var c Conversation
-		var m Message
-		var u User
-		var atts string
-		if err := rows.Scan(&m.ID, &m.SenderID, &m.RecipientID, &m.GroupID, &m.Body, &atts, &m.CreatedAt, &m.EditedAt,
-			&u.ID, &u.Username, &u.DisplayName, &u.CreatedAt, &u.AvatarURL, &u.Pronouns, &u.AvatarCrop, &c.Unread); err != nil {
-			rows.Close()
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		m.Attachments = decodeAttachments(atts)
-		c.User, c.LastMessage = &u, &m
-		out = append(out, c)
-	}
-	rows.Close()
-	groups, err := s.queryGroups(me.ID, `WHERE g.id IN (SELECT group_id FROM group_members WHERE user_id = ?1)`)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
+	out := make([]Conversation, 0, len(groups))
 	for i := range groups {
 		g := &groups[i]
-		c := Conversation{Group: g, Unread: s.groupUnread(me.ID, g.ID)}
+		c := Conversation{Group: g, Unread: s.groupUnread(userID, g.ID)}
 		m, err := scanMessage(s.db.QueryRow(`SELECT `+messageCols+`, `+userCols+` FROM messages m JOIN users u ON u.id = m.sender_id
 			WHERE m.group_id = ? ORDER BY m.id DESC LIMIT 1`, g.ID))
-		if err == nil {
+		switch {
+		case err == nil:
 			c.LastMessage = &m
-		} else if !errors.Is(err, sql.ErrNoRows) {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
+		case !errors.Is(err, sql.ErrNoRows):
+			return nil, err
 		}
 		out = append(out, c)
 	}
-	sort.SliceStable(out, func(i, j int) bool {
-		a, b := out[i].LastMessage, out[j].LastMessage
+	return out, nil
+}
+
+// sortConversations: most recent message first; groups nobody has written in
+// go last, by name.
+func sortConversations(list []Conversation) []Conversation {
+	sort.SliceStable(list, func(i, j int) bool {
+		a, b := list[i].LastMessage, list[j].LastMessage
 		switch {
 		case a != nil && b != nil:
 			return a.CreatedAt > b.CreatedAt
 		case a != nil || b != nil:
-			return a != nil // chats with messages first
+			return a != nil
 		default:
-			return out[i].Group.Name < out[j].Group.Name
+			return list[i].Group.Name < list[j].Group.Name
 		}
 	})
-	writeJSON(w, http.StatusOK, out)
+	return list
 }
