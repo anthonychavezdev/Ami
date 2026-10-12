@@ -2,6 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import React from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, TextInputProps, View, ViewStyle } from 'react-native';
 
+import { useOnline } from '@/lib/presence';
 import { useStyles, useTheme } from '@/lib/theme';
 import { radius, spacing, type ThemeColors } from '@/theme';
 import type { User } from '@/lib/types';
@@ -58,12 +59,23 @@ export function Input({ ref, ...props }: TextInputProps & { ref?: React.Ref<Text
   return <TextInput ref={ref} placeholderTextColor={colors.muted} keyboardAppearance={scheme} {...props} style={[styles.input, props.style]} />;
 }
 
-export function Avatar({ user, size = 40 }: { user: Pick<User, 'display_name' | 'username'>; size?: number }) {
+// Initials on a colored disc, with a presence dot (green online, gray offline)
+// at the bottom right like Teams. `status={false}` hides the dot.
+export function Avatar({ user, size = 40, status = true }: { user: Pick<User, 'display_name' | 'username'> & { id?: number; online?: boolean }; size?: number; status?: boolean }) {
+  const { colors } = useTheme();
+  const online = useOnline(user.id, user.online);
   const initials = (user.display_name || user.username).trim().slice(0, 2).toUpperCase();
   const hue = [...user.username].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 0);
+  const dot = Math.max(10, Math.round(size * 0.3));
   return (
     <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: `hsl(${hue}, 55%, 45%)`, alignItems: 'center', justifyContent: 'center' }}>
       <Text style={{ color: '#fff', fontWeight: '700', fontSize: size * 0.38 }}>{initials}</Text>
+      {status && !!user.id && (
+        <View
+          accessibilityLabel={online ? 'Online' : 'Offline'}
+          style={{ position: 'absolute', right: -1, bottom: -1, width: dot, height: dot, borderRadius: dot / 2, backgroundColor: online ? '#22c55e' : colors.muted, borderWidth: 2, borderColor: colors.card }}
+        />
+      )}
     </View>
   );
 }
