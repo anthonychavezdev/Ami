@@ -102,7 +102,7 @@ project id the app simply never registers a push token.
 | Comments | On the post screen. |
 | Friends | Request → accept. Only friends can message/call each other. Pushed live over WebSocket. |
 | Groups | Creator is owner + admin; others join as members. Admin can remove members, delete posts, delete the group. |
-| Messages | Direct messages with pictures and videos, delivered in real time. Hold one of your messages to edit or delete it. Unread badge on the Messages tab and OS notifications (browser, Android, iOS). |
+| Messages | Direct messages with pictures and videos, delivered in real time. Hold one of your messages to edit or delete it; in the browser, hover it for the ⋯ button or right-click it. Unread badge on the Messages tab and OS notifications (browser, Android, iOS). |
 | Calls | Voice or video, 1:1, WebRTC with STUN (`stun.l.google.com`). Mute, camera on/off, flip camera. |
 | Screen share | Toggle during a call; sent as a second video stream. |
 | Theme | Light, dark, or follow the device setting (Me tab). |
