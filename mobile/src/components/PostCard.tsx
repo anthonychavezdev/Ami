@@ -1,10 +1,11 @@
 import { Feather } from '@expo/vector-icons';
 import { Link, useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AttachmentList } from './Attachments';
 import { Composer } from './Composer';
+import { contextMenuProps, pressPoint, useContextMenu, type MenuItem } from './ContextMenu';
 import { ReactionButton } from './ReactionButton';
 import { Avatar } from './ui';
 import { ApiError, api } from '@/lib/api';
@@ -70,9 +71,16 @@ export function PostCard({
   const mayDelete = canDelete || post.author.id === user?.id;
   const mine = post.author.id === user?.id;
   const [editing, setEditing] = useState(false);
+  const [hovered, setHovered] = useState(false); // web: shows the ⋯ button
+  const { open, menu } = useContextMenu();
+  const menuItems: MenuItem[] = [
+    ...(mine ? [{ label: 'Edit', icon: 'edit-2', onPress: () => setEditing(true) } as MenuItem] : []),
+    ...(mayDelete ? [{ label: 'Delete', icon: 'trash-2', danger: true, onPress: remove } as MenuItem] : []),
+  ];
+  const openMenu = (x: number, y: number) => open(menuItems, x, y);
 
   return (
-    <View style={styles.card}>
+    <View style={styles.card} onPointerEnter={() => setHovered(true)} onPointerLeave={() => setHovered(false)} {...(menuItems.length ? contextMenuProps(openMenu) : {})}>
       <View style={styles.header}>
         <Link href={`/user/${post.author.id}`} asChild>
           <Pressable style={styles.author}>
@@ -93,15 +101,27 @@ export function PostCard({
           </Pressable>
         </Link>
         <View style={styles.headerActions}>
-          {mine && !editing && (
-            <Pressable onPress={() => setEditing(true)} hitSlop={10} accessibilityLabel="Edit post">
-              <Feather name="edit-2" size={17} color={colors.muted} />
-            </Pressable>
-          )}
-          {mayDelete && (
-            <Pressable onPress={remove} hitSlop={10} accessibilityLabel="Delete post">
-              <Feather name="trash-2" size={17} color={colors.muted} />
-            </Pressable>
+          {Platform.OS === 'web' ? (
+            menuItems.length > 0 &&
+            !editing &&
+            hovered && (
+              <Pressable onPress={(e) => openMenu(pressPoint(e).x, pressPoint(e).y)} hitSlop={10} accessibilityLabel="Post options">
+                <Feather name="more-horizontal" size={20} color={colors.muted} />
+              </Pressable>
+            )
+          ) : (
+            <>
+              {mine && !editing && (
+                <Pressable onPress={() => setEditing(true)} hitSlop={10} accessibilityLabel="Edit post">
+                  <Feather name="edit-2" size={17} color={colors.muted} />
+                </Pressable>
+              )}
+              {mayDelete && (
+                <Pressable onPress={remove} hitSlop={10} accessibilityLabel="Delete post">
+                  <Feather name="trash-2" size={17} color={colors.muted} />
+                </Pressable>
+              )}
+            </>
           )}
         </View>
       </View>
@@ -150,6 +170,7 @@ export function PostCard({
           <Text style={styles.commentText}>{post.comment_count > 0 ? `${post.comment_count} ` : ''}Comment</Text>
         </Pressable>
       </View>
+      {menu}
     </View>
   );
 }
