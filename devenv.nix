@@ -66,8 +66,9 @@ in
   packages = [
     pkgs.sqlite   # `sqlite3 server/ami.db` to poke at the database
     pkgs.watchman # faster Metro file watching
-    pkgs.cocoapods # iOS native builds (Xcode itself must come from the App Store)
-    pkgs.python3 # the end-to-end scripts in mobile/e2e (standard library only)
+    pkgs.python3  # the end-to-end scripts in mobile/e2e (standard library only)
+  ] ++ lib.optionals pkgs.stdenv.isDarwin [
+    pkgs.cocoapods # iOS native builds (Xcode itself must come from the App Store); macOS only, like everything iOS below
   ];
 
   # Ports and addresses. The defaults live here; override them in a gitignored
@@ -147,6 +148,7 @@ in
   '';
   # Same for the iOS Simulator. Nix cannot provide Xcode, so check for it first.
   scripts.ios.exec = ''
+    if [ "$(uname)" != Darwin ]; then echo "iOS builds need macOS with Xcode." >&2; exit 1; fi
     if ! env -u DEVELOPER_DIR /usr/bin/xcode-select -p 2>/dev/null | grep -q "/Xcode.app/"; then
       echo "Xcode is required for the iOS Simulator. Install it from the App Store, then run:" >&2
       echo "  sudo xcode-select -s /Applications/Xcode.app && sudo xcodebuild -runFirstLaunch" >&2
@@ -193,7 +195,8 @@ in
         --out "$DEVENV_ROOT/dist/ami-release.apk" android/app/build/outputs/apk/release/app-release.apk
       "$apksigner" verify "$DEVENV_ROOT/dist/ami-release.apk"
     fi
-    if [ "$target" = all ] || [ "$target" = ios ]; then
+    if [ "$target" = ios ] && [ "$(uname)" != Darwin ]; then echo "iOS builds need macOS with Xcode." >&2; exit 1; fi
+    if { [ "$target" = all ] && [ "$(uname)" = Darwin ]; } || [ "$target" = ios ]; then # `build` on Linux makes everything but the iOS archive
       : "''${AMI_APPLE_TEAM:?your Apple Developer team id (Xcode > Settings > Accounts), with Xcode signed in to that account}"
       method="''${AMI_IOS_METHOD:-app-store-connect}" # or release-testing (ad hoc), debugging
       echo "» ios -> dist/Ami.ipa ($method, API: $EXPO_PUBLIC_API_URL)"
