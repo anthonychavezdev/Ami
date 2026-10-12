@@ -63,13 +63,12 @@ type callRooms struct {
 
 func newCallRooms() *callRooms { return &callRooms{rooms: map[string]*callRoom{}} }
 
+// ---- room keys
+
 func groupRoomKey(groupID int64) string { return "g:" + strconv.FormatInt(groupID, 10) }
 
 func directRoomKey(a, b int64) string {
-	if a > b {
-		a, b = b, a
-	}
-	return "u:" + strconv.FormatInt(a, 10) + ":" + strconv.FormatInt(b, 10)
+	return "u:" + strconv.FormatInt(min(a, b), 10) + ":" + strconv.FormatInt(max(a, b), 10)
 }
 
 // parseRoomKey reads a room key back into a group id or a pair of users.
@@ -101,180 +100,181 @@ func (c *callRooms) participants(key string) []int64 {
 	return ids
 }
 
+// ---- messages from clients
+
+func (s *server) handleCallMessage(c *client, typ string, msg map[string]any) {
+	key, _ := msg["room"].(string)
+	switch typ {
+	case "call.join", "call.leave", "call.decline":
+		log.Printf("call: %s from user %d room %q", typ, c.user.ID, key)
+	}
+	var err error
+	switch typ {
+	case "call.join":
+		err = s.joinCall(c, msg)
+	case "call.leave":
+		s.leaveCall(c.user.ID, key)
+	case "call.decline":
+		reason, _ := msg["reason"].(string)
+		s.declineCall(c.user, key, reason)
+	case "call.offer", "call.answer", "call.ice", "call.streams":
+		err = s.relayCall(c, key, typ, msg)
+	default:
+		err = fail(0, "unknown call message")
+	}
+	if err != nil {
+		log.Printf("call: %s from user %d refused: %v", typ, c.user.ID, err)
+		s.hub.sendToClient(c, map[string]any{"type": "error", "error": err.Error()})
+	}
+}
+
+// relayCall forwards signaling to one other participant of the same room.
+func (s *server) relayCall(c *client, key, typ string, msg map[string]any) error {
+	toF, _ := msg["to"].(float64)
+	to := int64(toF)
+	s.calls.mu.Lock()
+	r := s.calls.rooms[key]
+	inRoom := r != nil && r.members[c.user.ID] != nil && r.members[to] != nil && to != c.user.ID
+	s.calls.mu.Unlock()
+	if !inRoom {
+		return fail(0, "not in that call")
+	}
+	delete(msg, "to")
+	msg["from"] = c.user.ID
+	if typ == "call.offer" {
+		msg["from_user"] = c.user
+	}
+	s.hub.sendTo(to, msg)
+	return nil
+}
+
 // callRoomFor resolves a call.join payload to a room, checking the caller may be in it.
-func (s *server) callRoomFor(me *User, msg map[string]any) (key string, groupID int64, peers [2]int64, reason string) {
+func (s *server) callRoomFor(me *User, msg map[string]any) (key string, groupID int64, peers [2]int64, err error) {
 	if k, _ := msg["room"].(string); k != "" {
 		g, p, ok := parseRoomKey(k)
 		if !ok {
-			return "", 0, peers, "unknown call"
+			return "", 0, peers, fail(0, "unknown call")
 		}
 		groupID, peers = g, p
 	} else if g, _ := msg["group_id"].(float64); g > 0 {
 		groupID = int64(g)
 	} else if u, _ := msg["user_id"].(float64); u > 0 {
-		peers = [2]int64{me.ID, int64(u)}
+		peers = [2]int64{min(me.ID, int64(u)), max(me.ID, int64(u))}
 	} else {
-		return "", 0, peers, "say who to call"
+		return "", 0, peers, fail(0, "say who to call")
 	}
 	if groupID != 0 {
 		if role, err := s.groupRole(groupID, me.ID); err != nil || role == "" {
-			return "", 0, peers, "only members can join a group call"
+			return "", 0, peers, fail(0, "only members can join a group call")
 		}
-		return groupRoomKey(groupID), groupID, peers, ""
+		return groupRoomKey(groupID), groupID, peers, nil
 	}
-	other := peers[0]
-	if other == me.ID {
-		other = peers[1]
-	}
+	other := peers[0] + peers[1] - me.ID
 	if other == me.ID || (peers[0] != me.ID && peers[1] != me.ID) {
-		return "", 0, peers, "you cannot call yourself"
+		return "", 0, peers, fail(0, "you cannot call yourself")
 	}
-	if ok, err := s.areFriends(me.ID, other); err != nil || !ok {
-		return "", 0, peers, "you can only call friends"
+	if friends, err := s.areFriends(me.ID, other); err != nil || !friends {
+		return "", 0, peers, fail(0, "you can only call friends")
 	}
-	if peers[0] > peers[1] {
-		peers[0], peers[1] = peers[1], peers[0]
-	}
-	return directRoomKey(peers[0], peers[1]), 0, peers, ""
+	return directRoomKey(peers[0], peers[1]), 0, peers, nil
 }
 
 // callAudience is everyone told about a room: the group's members, or both
 // parties of a one-to-one call.
-func (s *server) callAudience(r *callRoom) []int64 {
-	if r.groupID == 0 {
-		return []int64{r.peers[0], r.peers[1]}
+func (s *server) callAudience(groupID int64, peers [2]int64) []int64 {
+	if groupID == 0 {
+		return []int64{peers[0], peers[1]}
 	}
-	return s.groupMemberIDs(r.groupID)
+	return s.groupMemberIDs(groupID)
 }
 
-// groupSummary is what call and message events say about a group.
-func (s *server) groupSummary(id int64) map[string]any {
-	var name string
-	_ = s.db.QueryRow(`SELECT name FROM groups WHERE id = ?`, id).Scan(&name)
-	return map[string]any{"id": id, "name": name}
+// withGroup adds the group to a call event when there is one.
+func withGroup(event map[string]any, group map[string]any) map[string]any {
+	if group != nil {
+		event["group"] = group
+	}
+	return event
 }
 
-func without(ids []int64, id int64) []int64 {
-	out := make([]int64, 0, len(ids))
-	for _, x := range ids {
-		if x != id {
-			out = append(out, x)
-		}
-	}
-	return out
+// seat is the outcome of taking a place in a room.
+type seat struct {
+	created  bool    // the room did not exist before
+	reassert bool    // the user was already in it (a reconnecting device)
+	video    bool    // how the call was placed
+	others   []*User // who was there already, lowest id first
 }
 
-func (s *server) handleCallMessage(c *client, typ string, msg map[string]any) {
-	me := c.user
-	fail := func(text string) {
-		log.Printf("call: %s from user %d refused: %s", typ, me.ID, text)
-		s.hub.sendToClient(c, map[string]any{"type": "error", "error": text})
-	}
-	key, _ := msg["room"].(string)
-	switch typ {
-	case "call.join", "call.leave", "call.decline":
-		log.Printf("call: %s from user %d room %q", typ, me.ID, key)
-	}
-	switch typ {
-	case "call.join":
-		if reason := s.joinCall(c, msg); reason != "" {
-			fail(reason)
-		}
-	case "call.leave":
-		s.leaveCall(me.ID, key)
-	case "call.decline":
-		reason, _ := msg["reason"].(string)
-		s.declineCall(me, key, reason)
-	case "call.offer", "call.answer", "call.ice", "call.streams":
-		toF, _ := msg["to"].(float64)
-		to := int64(toF)
-		s.calls.mu.Lock()
-		r := s.calls.rooms[key]
-		ok := r != nil && r.members[me.ID] != nil && r.members[to] != nil && to != me.ID
-		s.calls.mu.Unlock()
-		if !ok {
-			fail("not in that call")
-			return
-		}
-		delete(msg, "to")
-		msg["from"] = me.ID
-		if typ == "call.offer" {
-			msg["from_user"] = me
-		}
-		s.hub.sendTo(to, msg)
-	default:
-		fail("unknown call message")
-	}
-}
-
-// joinCall puts the caller in a room, creating it (and ringing everyone who
-// may join) when it is new. Returns a reason when the caller may not join.
-func (s *server) joinCall(c *client, msg map[string]any) string {
-	me := c.user
-	key, groupID, peers, reason := s.callRoomFor(me, msg)
-	if reason != "" {
-		return reason
-	}
-	s.leaveOtherCalls(me.ID, key) // one call at a time
-	video, _ := msg["video"].(bool)
+// takeSeat puts a connection's user in the room, creating it when new.
+func (s *server) takeSeat(c *client, key string, groupID int64, peers [2]int64, video bool) (seat, error) {
 	s.calls.mu.Lock()
+	defer s.calls.mu.Unlock()
 	r := s.calls.rooms[key]
-	created := r == nil
-	if created {
+	st := seat{created: r == nil, others: []*User{}}
+	if st.created {
 		r = &callRoom{key: key, groupID: groupID, peers: peers, video: video, members: map[int64]*callMember{}}
 		s.calls.rooms[key] = r
 	}
-	if r.members[me.ID] == nil && len(r.members) >= maxCallParticipants {
-		s.calls.mu.Unlock()
-		return "the call is full"
+	st.reassert = r.members[c.user.ID] != nil
+	if !st.reassert && len(r.members) >= maxCallParticipants {
+		return st, fail(0, "the call is full")
 	}
-	others := make([]*User, 0, len(r.members))
 	for id, m := range r.members {
-		if id != me.ID {
-			others = append(others, m.user)
+		if id != c.user.ID {
+			st.others = append(st.others, m.user)
 		}
 	}
-	sort.Slice(others, func(i, j int) bool { return others[i].ID < others[j].ID })
-	reassert := r.members[me.ID] != nil
-	r.members[me.ID] = &callMember{user: me, conn: c}
-	video = r.video
-	s.calls.mu.Unlock()
+	sort.Slice(st.others, func(i, j int) bool { return st.others[i].ID < st.others[j].ID })
+	r.members[c.user.ID] = &callMember{user: c.user, conn: c}
+	st.video = r.video
+	return st, nil
+}
 
+// joinCall puts the caller in a room and tells the others; a new room rings
+// everyone who may join.
+func (s *server) joinCall(c *client, msg map[string]any) error {
+	me := c.user
+	key, groupID, peers, err := s.callRoomFor(me, msg)
+	if err != nil {
+		return err
+	}
+	s.leaveOtherCalls(me.ID, key) // one call at a time
+	video, _ := msg["video"].(bool)
+	st, err := s.takeSeat(c, key, groupID, peers, video)
+	if err != nil {
+		return err
+	}
 	var group map[string]any
 	if groupID != 0 {
 		group = s.groupSummary(groupID)
 	}
-	joined := map[string]any{"type": "call.joined", "room": key, "video": video, "participants": others}
-	if group != nil {
-		joined["group"] = group
+	s.hub.sendToClient(c, withGroup(map[string]any{"type": "call.joined", "room": key, "video": st.video, "participants": st.others}, group))
+	if st.reassert {
+		return nil // a reconnecting device: nothing changed for the others
 	}
-	s.hub.sendToClient(c, joined)
-	if reassert {
-		return "" // a reconnecting device: nothing changed for the others
-	}
-	audience := s.callAudience(r)
-	if !created {
+	audience := s.callAudience(groupID, peers)
+	if !st.created {
 		s.hub.sendToMany(audience, map[string]any{"type": "call.peer_joined", "room": key, "user": me})
-		return ""
+		return nil
 	}
-	audience = without(audience, me.ID)
-	ring := map[string]any{"type": "call.ring", "room": key, "video": video, "from_user": me}
-	if group != nil {
-		ring["group"] = group
-	}
+	s.ringCall(me, key, st.video, group, without(audience, me.ID), groupID == 0)
+	return nil
+}
+
+// ringCall tells everyone who may join that a call started. A one-to-one
+// call that reaches nobody ends at once, and the caller hears why.
+func (s *server) ringCall(me *User, key string, video bool, group map[string]any, targets []int64, oneToOne bool) {
+	ring := withGroup(map[string]any{"type": "call.ring", "room": key, "video": video, "from_user": me}, group)
 	reached := false
-	for _, uid := range audience {
-		if s.hub.sendTo(uid, ring) {
-			reached = true
-		}
+	for _, uid := range targets {
+		reached = s.hub.sendTo(uid, ring) || reached
 	}
-	if groupID == 0 && !reached {
-		// Nobody to pick up: tell the caller and forget the room.
-		s.hub.sendTo(me.ID, map[string]any{"type": "call.unavailable", "room": key, "user_id": audience[0]})
+	if oneToOne && !reached {
+		s.hub.sendTo(me.ID, map[string]any{"type": "call.unavailable", "room": key, "user_id": targets[0]})
 		s.leaveCall(me.ID, key)
 	}
-	return ""
 }
+
+// ---- leaving
 
 // leaveCall takes a user out of a room; when the room empties everyone hears
 // call.ended, which stops ringing phones and clears "call in progress" banners.
@@ -291,24 +291,30 @@ func (s *server) leaveCall(userID int64, key string) {
 		delete(s.calls.rooms, key)
 	}
 	s.calls.mu.Unlock()
-	audience := s.callAudience(r)
+	audience := s.callAudience(r.groupID, r.peers)
 	s.hub.sendToMany(audience, map[string]any{"type": "call.peer_left", "room": key, "user_id": userID})
 	if empty {
 		s.hub.sendToMany(audience, map[string]any{"type": "call.ended", "room": key})
 	}
 }
 
-// leaveOtherCalls drops the user from every room except `keep`.
-func (s *server) leaveOtherCalls(userID int64, keep string) {
-	s.calls.mu.Lock()
+// roomsOf lists the rooms a user holds a seat in; with conn set, only seats
+// taken from that connection.
+func (c *callRooms) roomsOf(userID int64, conn *client) []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	var keys []string
-	for k, r := range s.calls.rooms {
-		if k != keep && r.members[userID] != nil {
+	for k, r := range c.rooms {
+		if m := r.members[userID]; m != nil && (conn == nil || m.conn == conn) {
 			keys = append(keys, k)
 		}
 	}
-	s.calls.mu.Unlock()
-	for _, k := range keys {
+	return keys
+}
+
+// leaveOtherCalls drops the user from every room except `keep`.
+func (s *server) leaveOtherCalls(userID int64, keep string) {
+	for _, k := range without(s.calls.roomsOf(userID, nil), keep) {
 		s.leaveCall(userID, k)
 	}
 }
@@ -316,15 +322,7 @@ func (s *server) leaveOtherCalls(userID int64, keep string) {
 // leaveCallsOf frees the seats a dropped connection still holds (the user did
 // not re-assert them from another connection).
 func (s *server) leaveCallsOf(c *client) {
-	s.calls.mu.Lock()
-	var keys []string
-	for k, r := range s.calls.rooms {
-		if m := r.members[c.user.ID]; m != nil && m.conn == c {
-			keys = append(keys, k)
-		}
-	}
-	s.calls.mu.Unlock()
-	for _, k := range keys {
+	for _, k := range s.calls.roomsOf(c.user.ID, c) {
 		s.leaveCall(c.user.ID, k)
 	}
 }
@@ -348,17 +346,17 @@ func (s *server) declineCall(me *User, key, reason string) {
 		}
 	}
 	s.calls.mu.Unlock()
-	if r == nil || members == nil {
-		return
-	}
-	allowed := false
-	for _, id := range s.callAudience(r) {
-		if id == me.ID {
-			allowed = true
-		}
-	}
-	if !allowed {
+	if r == nil || members == nil || !slicesContains(s.callAudience(r.groupID, r.peers), me.ID) {
 		return
 	}
 	s.hub.sendToMany(members, map[string]any{"type": "call.declined", "room": key, "user_id": me.ID, "reason": reason})
+}
+
+func slicesContains(ids []int64, id int64) bool {
+	for _, x := range ids {
+		if x == id {
+			return true
+		}
+	}
+	return false
 }

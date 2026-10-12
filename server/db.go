@@ -123,6 +123,31 @@ CREATE TABLE IF NOT EXISTS push_tokens (
 CREATE INDEX IF NOT EXISTS push_tokens_user ON push_tokens(user_id);
 `
 
+// Columns added after the first release; CREATE TABLE IF NOT EXISTS won't add
+// them to a database that already exists.
+var addedColumns = []struct{ table, column, definition string }{
+	{"posts", "attachments", "TEXT NOT NULL DEFAULT '[]'"},
+	{"posts", "edited_at", "TEXT"},
+	{"messages", "attachments", "TEXT NOT NULL DEFAULT '[]'"},
+	{"messages", "edited_at", "TEXT"},
+	{"users", "password_iterations", "INTEGER NOT NULL DEFAULT 210000"},
+	{"users", "invisible", "INTEGER NOT NULL DEFAULT 0"},
+	{"users", "avatar_url", "TEXT NOT NULL DEFAULT ''"},
+	{"users", "bio", "TEXT NOT NULL DEFAULT ''"},
+	{"users", "pronouns", "TEXT NOT NULL DEFAULT ''"},
+	{"users", "avatar_crop", "TEXT NOT NULL DEFAULT ''"},
+	{"comments", "parent_id", "INTEGER"},
+	{"comments", "edited_at", "TEXT"},
+	{"comments", "deleted_at", "TEXT"},
+	{"groups", "private", "INTEGER NOT NULL DEFAULT 0"},
+}
+
+// Indexes on added columns, created only once those columns exist.
+const lateIndexes = `
+CREATE INDEX IF NOT EXISTS comments_parent ON comments(parent_id);
+CREATE INDEX IF NOT EXISTS messages_group ON messages(group_id, id);
+`
+
 func openDB(path string) (*sql.DB, error) {
 	dsn := "file:" + path + "?_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)&_pragma=busy_timeout(5000)"
 	db, err := sql.Open("sqlite", dsn)
@@ -131,64 +156,68 @@ func openDB(path string) (*sql.DB, error) {
 	}
 	// SQLite serializes writers anyway; a single connection avoids SQLITE_BUSY entirely.
 	db.SetMaxOpenConns(1)
-	var hadReads int
-	_ = db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = 'conversation_reads'`).Scan(&hadReads)
-	if _, err := db.Exec(schema); err != nil {
+	if err := migrate(db); err != nil {
 		db.Close()
 		return nil, err
-	}
-	// Columns added after the first release; CREATE TABLE IF NOT EXISTS won't add them.
-	for _, table := range []string{"posts", "messages"} {
-		for _, col := range [][2]string{{"attachments", "TEXT NOT NULL DEFAULT '[]'"}, {"edited_at", "TEXT"}} {
-			if err := addColumn(db, table, col[0], col[1]); err != nil {
-				db.Close()
-				return nil, err
-			}
-		}
-	}
-	if err := addColumn(db, "users", "password_iterations", "INTEGER NOT NULL DEFAULT 210000"); err != nil {
-		db.Close()
-		return nil, err
-	}
-	if err := addColumn(db, "users", "invisible", "INTEGER NOT NULL DEFAULT 0"); err != nil {
-		db.Close()
-		return nil, err
-	}
-	for _, col := range []string{"avatar_url", "bio", "pronouns", "avatar_crop"} {
-		if err := addColumn(db, "users", col, "TEXT NOT NULL DEFAULT ''"); err != nil {
-			db.Close()
-			return nil, err
-		}
-	}
-	for _, col := range [][2]string{{"parent_id", "INTEGER"}, {"edited_at", "TEXT"}, {"deleted_at", "TEXT"}} {
-		if err := addColumn(db, "comments", col[0], col[1]); err != nil {
-			db.Close()
-			return nil, err
-		}
-	}
-	if err := addColumn(db, "groups", "private", "INTEGER NOT NULL DEFAULT 0"); err != nil {
-		db.Close()
-		return nil, err
-	}
-	if err := migrateMessages(db); err != nil {
-		db.Close()
-		return nil, err
-	}
-	// Only after the columns exist on older databases.
-	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS comments_parent ON comments(parent_id);
-		CREATE INDEX IF NOT EXISTS messages_group ON messages(group_id, id)`); err != nil {
-		db.Close()
-		return nil, err
-	}
-	if hadReads == 0 {
-		// Chats from before unread tracking start out read.
-		if _, err := db.Exec(`INSERT OR IGNORE INTO conversation_reads(user_id, peer_id, last_read_id)
-			SELECT recipient_id, sender_id, MAX(id) FROM messages GROUP BY recipient_id, sender_id`); err != nil {
-			db.Close()
-			return nil, err
-		}
 	}
 	return db, nil
+}
+
+// migrate brings a database of any earlier version up to date.
+func migrate(db *sql.DB) error {
+	hadReads := tableExists(db, "conversation_reads")
+	steps := []func() error{
+		func() error { return exec(db, schema) },
+		func() error { return addColumns(db) },
+		func() error { return migrateMessages(db) },
+		func() error { return exec(db, lateIndexes) },
+		func() error {
+			if hadReads {
+				return nil
+			}
+			return markOldChatsRead(db)
+		},
+	}
+	for _, step := range steps {
+		if err := step(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func exec(db *sql.DB, statements string) error {
+	_, err := db.Exec(statements)
+	return err
+}
+
+func tableExists(db *sql.DB, name string) bool {
+	var n int
+	_ = db.QueryRow(`SELECT COUNT(*) FROM sqlite_master WHERE type = 'table' AND name = ?`, name).Scan(&n)
+	return n > 0
+}
+
+func addColumns(db *sql.DB) error {
+	for _, c := range addedColumns {
+		if err := addColumn(db, c.table, c.column, c.definition); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func addColumn(db *sql.DB, table, column, definition string) error {
+	rows, err := db.Query(`SELECT 1 FROM pragma_table_info(?) WHERE name = ?`, table, column)
+	if err != nil {
+		return err
+	}
+	exists := rows.Next()
+	rows.Close() // the single connection must be free before the ALTER below
+	if exists {
+		return nil
+	}
+	_, err = db.Exec(`ALTER TABLE ` + table + ` ADD COLUMN ` + column + ` ` + definition)
+	return err
 }
 
 // migrateMessages rebuilds a messages table from before group chats, where
@@ -202,7 +231,7 @@ func migrateMessages(db *sql.DB) error {
 	if notNull == 0 {
 		return nil
 	}
-	_, err := db.Exec(`
+	return exec(db, `
 		CREATE TABLE messages_v2 (
 			id           INTEGER PRIMARY KEY,
 			sender_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -219,19 +248,10 @@ func migrateMessages(db *sql.DB) error {
 		ALTER TABLE messages_v2 RENAME TO messages;
 		CREATE INDEX IF NOT EXISTS messages_sender ON messages(sender_id, recipient_id, id);
 		CREATE INDEX IF NOT EXISTS messages_recipient ON messages(recipient_id, sender_id, id)`)
-	return err
 }
 
-func addColumn(db *sql.DB, table, column, definition string) error {
-	rows, err := db.Query(`SELECT 1 FROM pragma_table_info(?) WHERE name = ?`, table, column)
-	if err != nil {
-		return err
-	}
-	exists := rows.Next()
-	rows.Close() // the single connection must be free before the ALTER below
-	if exists {
-		return nil
-	}
-	_, err = db.Exec(`ALTER TABLE ` + table + ` ADD COLUMN ` + column + ` ` + definition)
-	return err
+// markOldChatsRead: chats from before unread tracking start out read.
+func markOldChatsRead(db *sql.DB) error {
+	return exec(db, `INSERT OR IGNORE INTO conversation_reads(user_id, peer_id, last_read_id)
+		SELECT recipient_id, sender_id, MAX(id) FROM messages WHERE group_id IS NULL GROUP BY recipient_id, sender_id`)
 }

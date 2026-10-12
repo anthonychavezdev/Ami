@@ -15,13 +15,11 @@ func (s *server) friendStatus(me, other int64) (string, error) {
 	var status string
 	err := s.db.QueryRow(`SELECT from_id, status FROM friendships
 		WHERE (from_id = ?1 AND to_id = ?2) OR (from_id = ?2 AND to_id = ?1)`, me, other).Scan(&from, &status)
-	if errors.Is(err, sql.ErrNoRows) {
-		return "none", nil
-	}
-	if err != nil {
-		return "", err
-	}
 	switch {
+	case errors.Is(err, sql.ErrNoRows):
+		return "none", nil
+	case err != nil:
+		return "", err
 	case status == "accepted":
 		return "friends", nil
 	case from == me:
@@ -36,128 +34,103 @@ func (s *server) areFriends(a, b int64) (bool, error) {
 	return st == "friends", err
 }
 
-func (s *server) queryUsers(query string, args ...any) ([]User, error) {
-	rows, err := s.db.Query(query, args...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []User{}
-	for rows.Next() {
-		u, err := scanUser(rows)
-		if err != nil {
-			return nil, err
-		}
-		out = append(out, u)
-	}
-	return out, rows.Err()
+// friendIDs lists a user's accepted friends.
+func (s *server) friendIDs(userID int64) []int64 {
+	return queryIDs(s.db, `SELECT CASE WHEN from_id = ?1 THEN to_id ELSE from_id END FROM friendships
+		WHERE status = 'accepted' AND (from_id = ?1 OR to_id = ?1)`, userID)
 }
 
-func (s *server) listFriends(w http.ResponseWriter, r *http.Request, me *User) {
-	users, err := s.queryUsers(`SELECT `+userCols+` FROM users u WHERE u.id IN (
+func (s *server) listFriends(w http.ResponseWriter, r *http.Request, me *User) error {
+	users, err := queryAll(s.db, scanUser, `SELECT `+userCols+` FROM users u WHERE u.id IN (
 		SELECT CASE WHEN from_id = ?1 THEN to_id ELSE from_id END FROM friendships
 		WHERE status = 'accepted' AND (from_id = ?1 OR to_id = ?1)) ORDER BY u.display_name`, me.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
-	writeJSON(w, http.StatusOK, users)
+	return ok(w, users)
 }
 
-func (s *server) listFriendRequests(w http.ResponseWriter, r *http.Request, me *User) {
-	incoming, err := s.queryUsers(`SELECT `+userCols+` FROM friendships f JOIN users u ON u.id = f.from_id
+func (s *server) listFriendRequests(w http.ResponseWriter, r *http.Request, me *User) error {
+	incoming, err := queryAll(s.db, scanUser, `SELECT `+userCols+` FROM friendships f JOIN users u ON u.id = f.from_id
 		WHERE f.to_id = ? AND f.status = 'pending' ORDER BY f.created_at DESC`, me.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
-	outgoing, err := s.queryUsers(`SELECT `+userCols+` FROM friendships f JOIN users u ON u.id = f.to_id
+	outgoing, err := queryAll(s.db, scanUser, `SELECT `+userCols+` FROM friendships f JOIN users u ON u.id = f.to_id
 		WHERE f.from_id = ? AND f.status = 'pending' ORDER BY f.created_at DESC`, me.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
-	writeJSON(w, http.StatusOK, map[string][]User{"incoming": incoming, "outgoing": outgoing})
+	return ok(w, map[string][]User{"incoming": incoming, "outgoing": outgoing})
 }
 
-func (s *server) sendFriendRequest(w http.ResponseWriter, r *http.Request, me *User) {
-	other, ok := pathID(w, r, "id")
-	if !ok {
-		return
+func friendStatusResponse(w http.ResponseWriter, status string) error {
+	return ok(w, map[string]string{"friend_status": status})
+}
+
+func (s *server) sendFriendRequest(w http.ResponseWriter, r *http.Request, me *User) error {
+	other, err := pathID(r, "id")
+	if err != nil {
+		return err
 	}
 	if other == me.ID {
-		writeError(w, http.StatusBadRequest, "cannot friend yourself")
-		return
+		return badRequest("cannot friend yourself")
 	}
 	target, err := s.userByID(other)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "user not found")
-		return
+		return orNotFound(err, "user not found")
 	}
 	status, err := s.friendStatus(me.ID, other)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
 	switch status {
 	case "friends":
-		writeError(w, http.StatusConflict, "already friends")
-		return
+		return conflict("already friends")
 	case "outgoing":
-		writeError(w, http.StatusConflict, "request already sent")
-		return
+		return conflict("request already sent")
 	case "incoming":
-		// They already asked us: treat as accept.
-		s.acceptFriend(w, me, target)
-		return
+		return s.acceptFriend(w, me, target) // they already asked us
 	}
-	if _, err := s.db.Exec(`INSERT INTO friendships(from_id, to_id, status, created_at) VALUES (?, ?, 'pending', ?)`,
-		me.ID, other, nowString()); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+	if _, err := s.db.Exec(`INSERT INTO friendships(from_id, to_id, status, created_at) VALUES (?, ?, 'pending', ?)`, me.ID, other, nowString()); err != nil {
+		return err
 	}
 	s.hub.sendTo(other, map[string]any{"type": "friend.request", "user": me})
-	writeJSON(w, http.StatusOK, map[string]string{"friend_status": "outgoing"})
+	return friendStatusResponse(w, "outgoing")
 }
 
-func (s *server) acceptFriendRequest(w http.ResponseWriter, r *http.Request, me *User) {
-	other, ok := pathID(w, r, "id")
-	if !ok {
-		return
+func (s *server) acceptFriendRequest(w http.ResponseWriter, r *http.Request, me *User) error {
+	other, err := pathID(r, "id")
+	if err != nil {
+		return err
 	}
 	requester, err := s.userByID(other)
 	if err != nil {
-		writeError(w, http.StatusNotFound, "user not found")
-		return
+		return orNotFound(err, "user not found")
 	}
-	s.acceptFriend(w, me, requester)
+	return s.acceptFriend(w, me, requester)
 }
 
-func (s *server) acceptFriend(w http.ResponseWriter, me *User, requester User) {
-	res, err := s.db.Exec(`UPDATE friendships SET status = 'accepted' WHERE from_id = ? AND to_id = ? AND status = 'pending'`,
-		requester.ID, me.ID)
+func (s *server) acceptFriend(w http.ResponseWriter, me *User, requester User) error {
+	res, err := s.db.Exec(`UPDATE friendships SET status = 'accepted' WHERE from_id = ? AND to_id = ? AND status = 'pending'`, requester.ID, me.ID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
 	if n, _ := res.RowsAffected(); n == 0 {
-		writeError(w, http.StatusNotFound, "no pending request from that user")
-		return
+		return notFound("no pending request from that user")
 	}
 	s.hub.sendTo(requester.ID, map[string]any{"type": "friend.accepted", "user": me})
-	writeJSON(w, http.StatusOK, map[string]string{"friend_status": "friends"})
+	return friendStatusResponse(w, "friends")
 }
 
 // removeFriend cancels an outgoing request, rejects an incoming one, or unfriends.
-func (s *server) removeFriend(w http.ResponseWriter, r *http.Request, me *User) {
-	other, ok := pathID(w, r, "id")
-	if !ok {
-		return
-	}
-	_, err := s.db.Exec(`DELETE FROM friendships WHERE (from_id = ?1 AND to_id = ?2) OR (from_id = ?2 AND to_id = ?1)`, me.ID, other)
+func (s *server) removeFriend(w http.ResponseWriter, r *http.Request, me *User) error {
+	other, err := pathID(r, "id")
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"friend_status": "none"})
+	if _, err := s.db.Exec(`DELETE FROM friendships WHERE (from_id = ?1 AND to_id = ?2) OR (from_id = ?2 AND to_id = ?1)`, me.ID, other); err != nil {
+		return err
+	}
+	return friendStatusResponse(w, "none")
 }

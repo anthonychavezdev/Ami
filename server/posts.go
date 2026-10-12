@@ -1,9 +1,7 @@
 package main
 
 import (
-	"database/sql"
 	"encoding/json"
-	"errors"
 	"net/http"
 	"strings"
 	"unicode/utf8"
@@ -34,35 +32,7 @@ type Comment struct {
 	Deleted   bool    `json:"deleted"` // body and author read [deleted]; the row stays so replies keep their place
 }
 
-// deletedUser stands in for the author of a deleted comment.
-var deletedUser = User{Username: "deleted", DisplayName: "[deleted]"}
-
-const commentCols = `c.id, c.post_id, c.parent_id, c.body, c.created_at, c.edited_at, c.deleted_at, ` + userCols
-
-func scanComment(sc interface{ Scan(...any) error }) (Comment, error) {
-	var c Comment
-	var deleted *string
-	err := sc.Scan(&c.ID, &c.PostID, &c.ParentID, &c.Body, &c.CreatedAt, &c.EditedAt, &deleted,
-		&c.Author.ID, &c.Author.Username, &c.Author.DisplayName, &c.Author.CreatedAt, &c.Author.AvatarURL, &c.Author.Pronouns, &c.Author.AvatarCrop)
-	if deleted != nil {
-		c.Deleted, c.Body, c.EditedAt, c.Author = true, "[deleted]", nil, deletedUser
-	}
-	return c, err
-}
-
-func (s *server) loadComment(id int64) (Comment, error) {
-	return scanComment(s.db.QueryRow(`SELECT `+commentCols+` FROM comments c JOIN users u ON u.id = c.author_id WHERE c.id = ?`, id))
-}
-
-// commentAudience is everyone who can see the comment's post.
-func (s *server) commentAudience(postID int64) []int64 {
-	var author int64
-	var groupID *int64
-	if err := s.db.QueryRow(`SELECT author_id, group_id FROM posts WHERE id = ?`, postID).Scan(&author, &groupID); err != nil {
-		return nil
-	}
-	return s.postAudience(author, groupID)
-}
+// ---- reading posts
 
 // postSelect expects the viewer's user id as its first bound parameter.
 const postSelect = `
@@ -77,7 +47,7 @@ JOIN users u ON u.id = p.author_id
 LEFT JOIN groups g ON g.id = p.group_id
 `
 
-func scanPost(sc interface{ Scan(...any) error }) (Post, error) {
+func scanPost(sc scanner) (Post, error) {
 	var p Post
 	var reactions, attachments string
 	err := sc.Scan(&p.ID, &p.Body, &attachments, &p.CreatedAt, &p.EditedAt, &p.GroupID, &p.GroupName,
@@ -88,56 +58,54 @@ func scanPost(sc interface{ Scan(...any) error }) (Post, error) {
 	}
 	p.Reactions = map[string]int{}
 	_ = json.Unmarshal([]byte(reactions), &p.Reactions)
-	p.Attachments = []Attachment{}
-	_ = json.Unmarshal([]byte(attachments), &p.Attachments)
+	p.Attachments = decodeAttachments(attachments)
 	return p, nil
+}
+
+// decodeAttachments turns a stored JSON column into a (never nil) slice.
+func decodeAttachments(raw string) []Attachment {
+	out := []Attachment{}
+	_ = json.Unmarshal([]byte(raw), &out)
+	return out
 }
 
 // queryPosts runs postSelect + tail for viewer, binding args after the viewer id.
 func (s *server) queryPosts(viewer int64, tail string, args ...any) ([]Post, error) {
-	rows, err := s.db.Query(postSelect+tail, append([]any{viewer}, args...)...)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	posts := []Post{}
-	for rows.Next() {
-		p, err := scanPost(rows)
-		if err != nil {
-			return nil, err
-		}
-		posts = append(posts, p)
-	}
-	return posts, rows.Err()
+	return queryAll(s.db, scanPost, postSelect+tail, append([]any{viewer}, args...)...)
 }
 
 func (s *server) getPost(viewer, id int64) (Post, error) {
 	return scanPost(s.db.QueryRow(postSelect+`WHERE p.id = ?`, viewer, id))
 }
 
+func (s *server) respondPost(w http.ResponseWriter, code int, viewer, id int64) error {
+	p, err := s.getPost(viewer, id)
+	if err != nil {
+		return orNotFound(err, "post not found")
+	}
+	writeJSON(w, code, p)
+	return nil
+}
+
+// postOwner is who wrote a post and which group it was posted in.
+type postOwner struct {
+	author  int64
+	groupID *int64
+}
+
+func (s *server) postOwner(id int64) (postOwner, error) {
+	var o postOwner
+	err := s.db.QueryRow(`SELECT author_id, group_id FROM posts WHERE id = ?`, id).Scan(&o.author, &o.groupID)
+	return o, orNotFound(err, "post not found")
+}
+
 // postAudience lists who sees a post in their feed: the author and their
 // friends for profile posts, every member for group posts.
 func (s *server) postAudience(authorID int64, groupID *int64) []int64 {
-	var rows *sql.Rows
-	var err error
 	if groupID != nil {
-		rows, err = s.db.Query(`SELECT user_id FROM group_members WHERE group_id = ?`, *groupID)
-	} else {
-		rows, err = s.db.Query(`SELECT CASE WHEN from_id = ?1 THEN to_id ELSE from_id END FROM friendships
-			WHERE status = 'accepted' AND (from_id = ?1 OR to_id = ?1)`, authorID)
+		return append([]int64{authorID}, without(s.groupMemberIDs(*groupID), authorID)...)
 	}
-	ids := []int64{authorID}
-	if err != nil {
-		return ids
-	}
-	defer rows.Close()
-	for rows.Next() {
-		var id int64
-		if rows.Scan(&id) == nil && id != authorID {
-			ids = append(ids, id)
-		}
-	}
-	return ids
+	return append([]int64{authorID}, s.friendIDs(authorID)...)
 }
 
 // broadcastPost pushes a post's current state to everyone who sees it, each
@@ -151,16 +119,14 @@ func (s *server) broadcastPost(typ string, id int64) {
 		if !s.hub.online(uid) {
 			continue
 		}
-		p, err := s.getPost(uid, id)
-		if err != nil {
-			continue
+		if p, err := s.getPost(uid, id); err == nil {
+			s.hub.sendTo(uid, map[string]any{"type": typ, "post": p})
 		}
-		s.hub.sendTo(uid, map[string]any{"type": typ, "post": p})
 	}
 }
 
 // feed: my own posts, friends' profile posts, and posts in groups I belong to.
-func (s *server) feed(w http.ResponseWriter, r *http.Request, me *User) {
+func (s *server) feed(w http.ResponseWriter, r *http.Request, me *User) error {
 	before, limit := pagination(r)
 	posts, err := s.queryPosts(me.ID, `
 		WHERE p.id < ?2 AND (
@@ -170,374 +136,371 @@ func (s *server) feed(w http.ResponseWriter, r *http.Request, me *User) {
 			OR p.group_id IN (SELECT group_id FROM group_members WHERE user_id = ?1))
 		ORDER BY p.id DESC LIMIT ?3`, before, limit)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
-	writeJSON(w, http.StatusOK, posts)
+	return ok(w, posts)
 }
 
-func (s *server) createPost(w http.ResponseWriter, r *http.Request, me *User) {
-	var in struct {
-		Body        string       `json:"body"`
-		GroupID     *int64       `json:"group_id"`
-		Attachments []Attachment `json:"attachments"`
+func (s *server) getPostHandler(w http.ResponseWriter, r *http.Request, me *User) error {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return err
 	}
-	if !readJSON(w, r, &in) {
-		return
-	}
+	return s.respondPost(w, http.StatusOK, me.ID, id)
+}
+
+// ---- writing posts
+
+// postInput is the body of POST /api/posts and PUT /api/posts/{id}.
+type postInput struct {
+	Body        string       `json:"body"`
+	GroupID     *int64       `json:"group_id"`
+	Attachments []Attachment `json:"attachments"`
+}
+
+// cleanPostInput trims the text and checks it and the attachments.
+func (s *server) cleanPostInput(in postInput) (postInput, error) {
 	in.Body = strings.TrimSpace(in.Body)
 	if in.Body == "" && len(in.Attachments) == 0 {
-		writeError(w, http.StatusBadRequest, "a post needs text or an attachment")
-		return
+		return in, badRequest("a post needs text or an attachment")
 	}
 	if len(in.Body) > 5000 {
-		writeError(w, http.StatusBadRequest, "body must be at most 5000 characters")
-		return
+		return in, badRequest("body must be at most 5000 characters")
 	}
-	if in.Attachments == nil {
-		in.Attachments = []Attachment{}
+	atts, err := s.cleanAttachments(in.Attachments)
+	in.Attachments = atts
+	return in, err
+}
+
+func (s *server) createPost(w http.ResponseWriter, r *http.Request, me *User) error {
+	var raw postInput
+	if err := readJSON(w, r, &raw); err != nil {
+		return err
 	}
-	if err := s.validateAttachments(in.Attachments); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
+	in, err := s.cleanPostInput(raw)
+	if err != nil {
+		return err
 	}
-	attachments, _ := json.Marshal(in.Attachments)
 	if in.GroupID != nil {
-		role, err := s.groupRole(*in.GroupID, me.ID)
-		if err != nil || role == "" {
-			writeError(w, http.StatusForbidden, "join the group to post in it")
-			return
+		if role, err := s.groupRole(*in.GroupID, me.ID); err != nil || role == "" {
+			return forbidden("join the group to post in it")
 		}
 	}
 	res, err := s.db.Exec(`INSERT INTO posts(author_id, group_id, body, attachments, created_at) VALUES (?, ?, ?, ?, ?)`,
-		me.ID, in.GroupID, in.Body, string(attachments), nowString())
+		me.ID, in.GroupID, in.Body, jsonString(in.Attachments), nowString())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
 	id, _ := res.LastInsertId()
 	s.broadcastPost("post.created", id)
-	s.respondPost(w, http.StatusCreated, me.ID, id)
+	return s.respondPost(w, http.StatusCreated, me.ID, id)
 }
 
-func (s *server) respondPost(w http.ResponseWriter, code int, viewer, id int64) {
-	p, err := s.getPost(viewer, id)
-	if errors.Is(err, sql.ErrNoRows) {
-		writeError(w, http.StatusNotFound, "post not found")
-		return
-	}
+// updatePost lets the author change a post's text and attachments; everyone
+// who can see it gets a post.updated event.
+func (s *server) updatePost(w http.ResponseWriter, r *http.Request, me *User) error {
+	id, err := pathID(r, "id")
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
-	writeJSON(w, code, p)
-}
-
-func (s *server) getPostHandler(w http.ResponseWriter, r *http.Request, me *User) {
-	id, ok := pathID(w, r, "id")
-	if !ok {
-		return
+	var raw postInput
+	if err := readJSON(w, r, &raw); err != nil {
+		return err
 	}
-	s.respondPost(w, http.StatusOK, me.ID, id)
-}
-
-// deletePost: allowed for the author, or the admin of the group it was posted in.
-func (s *server) deletePost(w http.ResponseWriter, r *http.Request, me *User) {
-	id, ok := pathID(w, r, "id")
-	if !ok {
-		return
-	}
-	var author int64
-	var groupID *int64
-	err := s.db.QueryRow(`SELECT author_id, group_id FROM posts WHERE id = ?`, id).Scan(&author, &groupID)
-	if errors.Is(err, sql.ErrNoRows) {
-		writeError(w, http.StatusNotFound, "post not found")
-		return
-	}
+	in, err := s.cleanPostInput(raw)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
-	allowed := author == me.ID
-	if !allowed && groupID != nil {
-		role, _ := s.groupRole(*groupID, me.ID)
-		allowed = role == "admin"
+	o, err := s.postOwner(id)
+	if err != nil {
+		return err
 	}
-	if !allowed {
-		writeError(w, http.StatusForbidden, "not allowed")
-		return
+	if o.author != me.ID {
+		return forbidden("only the author can edit a post")
 	}
-	audience := s.postAudience(author, groupID)
+	if _, err := s.db.Exec(`UPDATE posts SET body = ?, attachments = ?, edited_at = ? WHERE id = ?`, in.Body, jsonString(in.Attachments), nowString(), id); err != nil {
+		return err
+	}
+	s.broadcastPost("post.updated", id)
+	return s.respondPost(w, http.StatusOK, me.ID, id)
+}
+
+// mayDeletePost: the author, or the admin of the group it was posted in.
+func (s *server) mayDeletePost(userID int64, o postOwner) bool {
+	if o.author == userID {
+		return true
+	}
+	if o.groupID == nil {
+		return false
+	}
+	role, _ := s.groupRole(*o.groupID, userID)
+	return role == "admin"
+}
+
+func (s *server) deletePost(w http.ResponseWriter, r *http.Request, me *User) error {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return err
+	}
+	o, err := s.postOwner(id)
+	if err != nil {
+		return err
+	}
+	if !s.mayDeletePost(me.ID, o) {
+		return forbidden("not allowed")
+	}
+	audience := s.postAudience(o.author, o.groupID)
 	if _, err := s.db.Exec(`DELETE FROM posts WHERE id = ?`, id); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
-	s.hub.sendToMany(audience, map[string]any{"type": "post.deleted", "id": id, "group_id": groupID})
-	w.WriteHeader(http.StatusNoContent)
+	s.hub.sendToMany(audience, map[string]any{"type": "post.deleted", "id": id, "group_id": o.groupID})
+	return noContent(w)
 }
 
-func (s *server) listComments(w http.ResponseWriter, r *http.Request, me *User) {
-	id, ok := pathID(w, r, "id")
-	if !ok {
-		return
+// ---- reactions
+
+func validEmoji(raw string) (string, error) {
+	e := strings.TrimSpace(raw)
+	if e == "" || len(e) > 32 || !utf8.ValidString(e) || utf8.RuneCountInString(e) > 8 {
+		return "", badRequest("invalid emoji")
 	}
-	after := queryInt(r, "after", 0)
-	rows, err := s.db.Query(`SELECT `+commentCols+`
-		FROM comments c JOIN users u ON u.id = c.author_id
-		WHERE c.post_id = ? AND c.id > ? ORDER BY c.id ASC LIMIT 500`, id, after)
+	return e, nil
+}
+
+// setReaction upserts the caller's single reaction on a post. Any emoji works.
+func (s *server) setReaction(w http.ResponseWriter, r *http.Request, me *User) error {
+	id, err := pathID(r, "id")
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
-	defer rows.Close()
-	out := []Comment{}
-	for rows.Next() {
-		c, err := scanComment(rows)
-		if err != nil {
-			writeError(w, http.StatusInternalServerError, err.Error())
-			return
-		}
-		out = append(out, c)
+	var in struct {
+		Emoji string `json:"emoji"`
 	}
-	writeJSON(w, http.StatusOK, out)
+	if err := readJSON(w, r, &in); err != nil {
+		return err
+	}
+	emoji, err := validEmoji(in.Emoji)
+	if err != nil {
+		return err
+	}
+	if _, err := s.postOwner(id); err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`INSERT INTO reactions(post_id, user_id, emoji) VALUES (?, ?, ?)
+		ON CONFLICT(post_id, user_id) DO UPDATE SET emoji = excluded.emoji`, id, me.ID, emoji); err != nil {
+		return err
+	}
+	s.broadcastPost("post.updated", id)
+	return s.respondPost(w, http.StatusOK, me.ID, id)
 }
 
-func (s *server) createComment(w http.ResponseWriter, r *http.Request, me *User) {
-	id, ok := pathID(w, r, "id")
-	if !ok {
-		return
+func (s *server) deleteReaction(w http.ResponseWriter, r *http.Request, me *User) error {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`DELETE FROM reactions WHERE post_id = ? AND user_id = ?`, id, me.ID); err != nil {
+		return err
+	}
+	s.broadcastPost("post.updated", id)
+	return s.respondPost(w, http.StatusOK, me.ID, id)
+}
+
+// ---- comments
+
+// deletedUser stands in for the author of a deleted comment.
+var deletedUser = User{Username: "deleted", DisplayName: "[deleted]"}
+
+const commentCols = `c.id, c.post_id, c.parent_id, c.body, c.created_at, c.edited_at, c.deleted_at, ` + userCols
+
+func scanComment(sc scanner) (Comment, error) {
+	var c Comment
+	var deleted *string
+	err := sc.Scan(&c.ID, &c.PostID, &c.ParentID, &c.Body, &c.CreatedAt, &c.EditedAt, &deleted,
+		&c.Author.ID, &c.Author.Username, &c.Author.DisplayName, &c.Author.CreatedAt, &c.Author.AvatarURL, &c.Author.Pronouns, &c.Author.AvatarCrop)
+	if deleted != nil {
+		c.Deleted, c.Body, c.EditedAt, c.Author = true, "[deleted]", nil, deletedUser
+	}
+	return c, err
+}
+
+func (s *server) loadComment(id int64) (Comment, error) {
+	return scanComment(s.db.QueryRow(`SELECT `+commentCols+` FROM comments c JOIN users u ON u.id = c.author_id WHERE c.id = ?`, id))
+}
+
+// ownComment loads a live comment the caller wrote, for editing or deleting.
+func (s *server) ownComment(id, userID int64, verb string) (Comment, error) {
+	c, err := s.loadComment(id)
+	if err = orNotFound(err, "comment not found"); err != nil {
+		return c, err
+	}
+	if c.Deleted {
+		return c, notFound("comment not found")
+	}
+	if c.Author.ID != userID {
+		return c, forbidden("only the author can " + verb + " a comment")
+	}
+	return c, nil
+}
+
+// commentAudience is everyone who can see the comment's post.
+func (s *server) commentAudience(postID int64) []int64 {
+	o, err := s.postOwner(postID)
+	if err != nil {
+		return nil
+	}
+	return s.postAudience(o.author, o.groupID)
+}
+
+func validCommentBody(raw string) (string, error) {
+	body := strings.TrimSpace(raw)
+	if !clampLen(body, 2000) {
+		return "", badRequest("body must be 1-2000 characters")
+	}
+	return body, nil
+}
+
+func (s *server) listComments(w http.ResponseWriter, r *http.Request, me *User) error {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return err
+	}
+	comments, err := queryAll(s.db, scanComment, `SELECT `+commentCols+`
+		FROM comments c JOIN users u ON u.id = c.author_id
+		WHERE c.post_id = ? AND c.id > ? ORDER BY c.id ASC LIMIT 500`, id, queryInt(r, "after", 0))
+	if err != nil {
+		return err
+	}
+	return ok(w, comments)
+}
+
+// validReplyTarget checks that a reply goes under a live comment of the same post.
+func (s *server) validReplyTarget(postID int64, parentID *int64) error {
+	if parentID == nil {
+		return nil
+	}
+	parent, err := s.loadComment(*parentID)
+	if err != nil || parent.PostID != postID || parent.Deleted {
+		return badRequest("cannot reply to that comment")
+	}
+	return nil
+}
+
+func (s *server) createComment(w http.ResponseWriter, r *http.Request, me *User) error {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return err
 	}
 	var in struct {
 		Body     string `json:"body"`
 		ParentID *int64 `json:"parent_id"`
 	}
-	if !readJSON(w, r, &in) {
-		return
+	if err := readJSON(w, r, &in); err != nil {
+		return err
 	}
-	in.Body = strings.TrimSpace(in.Body)
-	if !clampLen(in.Body, 2000) {
-		writeError(w, http.StatusBadRequest, "body must be 1-2000 characters")
-		return
-	}
-	var author int64
-	var groupID *int64
-	if err := s.db.QueryRow(`SELECT author_id, group_id FROM posts WHERE id = ?`, id).Scan(&author, &groupID); err != nil {
-		writeError(w, http.StatusNotFound, "post not found")
-		return
-	}
-	if in.ParentID != nil {
-		parent, err := s.loadComment(*in.ParentID)
-		if err != nil || parent.PostID != id || parent.Deleted {
-			writeError(w, http.StatusBadRequest, "cannot reply to that comment")
-			return
-		}
-	}
-	createdAt := nowString()
-	res, err := s.db.Exec(`INSERT INTO comments(post_id, parent_id, author_id, body, created_at) VALUES (?, ?, ?, ?, ?)`,
-		id, in.ParentID, me.ID, in.Body, createdAt)
+	body, err := validCommentBody(in.Body)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
-	cid, _ := res.LastInsertId()
-	c := Comment{ID: cid, PostID: id, ParentID: in.ParentID, Author: *me, Body: in.Body, CreatedAt: createdAt}
-	s.hub.sendToMany(s.postAudience(author, groupID), map[string]any{"type": "comment.created", "comment": c})
-	s.broadcastPost("post.updated", id)
-	writeJSON(w, http.StatusCreated, c)
-}
-
-// setReaction upserts the caller's single reaction on a post. Any emoji works.
-func (s *server) setReaction(w http.ResponseWriter, r *http.Request, me *User) {
-	id, ok := pathID(w, r, "id")
-	if !ok {
-		return
-	}
-	var in struct {
-		Emoji string `json:"emoji"`
-	}
-	if !readJSON(w, r, &in) {
-		return
-	}
-	in.Emoji = strings.TrimSpace(in.Emoji)
-	if in.Emoji == "" || len(in.Emoji) > 32 || !utf8.ValidString(in.Emoji) || utf8.RuneCountInString(in.Emoji) > 8 {
-		writeError(w, http.StatusBadRequest, "invalid emoji")
-		return
-	}
-	var exists int
-	if err := s.db.QueryRow(`SELECT 1 FROM posts WHERE id = ?`, id).Scan(&exists); err != nil {
-		writeError(w, http.StatusNotFound, "post not found")
-		return
-	}
-	_, err := s.db.Exec(`INSERT INTO reactions(post_id, user_id, emoji) VALUES (?, ?, ?)
-		ON CONFLICT(post_id, user_id) DO UPDATE SET emoji = excluded.emoji`, id, me.ID, in.Emoji)
+	o, err := s.postOwner(id)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
-	s.broadcastPost("post.updated", id)
-	s.respondPost(w, http.StatusOK, me.ID, id)
-}
-
-func (s *server) deleteReaction(w http.ResponseWriter, r *http.Request, me *User) {
-	id, ok := pathID(w, r, "id")
-	if !ok {
-		return
+	if err := s.validReplyTarget(id, in.ParentID); err != nil {
+		return err
 	}
-	if _, err := s.db.Exec(`DELETE FROM reactions WHERE post_id = ? AND user_id = ?`, id, me.ID); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	s.broadcastPost("post.updated", id)
-	s.respondPost(w, http.StatusOK, me.ID, id)
-}
-
-// updatePost lets the author change a post's text and attachments; everyone
-// who can see it gets a post.updated event.
-func (s *server) updatePost(w http.ResponseWriter, r *http.Request, me *User) {
-	id, ok := pathID(w, r, "id")
-	if !ok {
-		return
-	}
-	var in struct {
-		Body        string       `json:"body"`
-		Attachments []Attachment `json:"attachments"`
-	}
-	if !readJSON(w, r, &in) {
-		return
-	}
-	in.Body = strings.TrimSpace(in.Body)
-	if in.Body == "" && len(in.Attachments) == 0 {
-		writeError(w, http.StatusBadRequest, "a post needs text or an attachment")
-		return
-	}
-	if len(in.Body) > 5000 {
-		writeError(w, http.StatusBadRequest, "body must be at most 5000 characters")
-		return
-	}
-	if in.Attachments == nil {
-		in.Attachments = []Attachment{}
-	}
-	if err := s.validateAttachments(in.Attachments); err != nil {
-		writeError(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	var author int64
-	err := s.db.QueryRow(`SELECT author_id FROM posts WHERE id = ?`, id).Scan(&author)
-	if errors.Is(err, sql.ErrNoRows) {
-		writeError(w, http.StatusNotFound, "post not found")
-		return
-	}
+	c := Comment{PostID: id, ParentID: in.ParentID, Author: *me, Body: body, CreatedAt: nowString()}
+	res, err := s.db.Exec(`INSERT INTO comments(post_id, parent_id, author_id, body, created_at) VALUES (?, ?, ?, ?, ?)`, id, c.ParentID, me.ID, c.Body, c.CreatedAt)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
-	if author != me.ID {
-		writeError(w, http.StatusForbidden, "only the author can edit a post")
-		return
-	}
-	attachments, _ := json.Marshal(in.Attachments)
-	if _, err := s.db.Exec(`UPDATE posts SET body = ?, attachments = ?, edited_at = ? WHERE id = ?`, in.Body, string(attachments), nowString(), id); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	p, err := s.getPost(me.ID, id)
-	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
+	c.ID, _ = res.LastInsertId()
+	s.hub.sendToMany(s.postAudience(o.author, o.groupID), map[string]any{"type": "comment.created", "comment": c})
 	s.broadcastPost("post.updated", id)
-	writeJSON(w, http.StatusOK, p)
+	return created(w, c)
 }
 
 // updateComment lets the author change a comment's text.
-func (s *server) updateComment(w http.ResponseWriter, r *http.Request, me *User) {
-	id, ok := pathID(w, r, "id")
-	if !ok {
-		return
+func (s *server) updateComment(w http.ResponseWriter, r *http.Request, me *User) error {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return err
 	}
 	var in struct {
 		Body string `json:"body"`
 	}
-	if !readJSON(w, r, &in) {
-		return
+	if err := readJSON(w, r, &in); err != nil {
+		return err
 	}
-	in.Body = strings.TrimSpace(in.Body)
-	if !clampLen(in.Body, 2000) {
-		writeError(w, http.StatusBadRequest, "body must be 1-2000 characters")
-		return
+	body, err := validCommentBody(in.Body)
+	if err != nil {
+		return err
+	}
+	if _, err := s.ownComment(id, me.ID, "edit"); err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`UPDATE comments SET body = ?, edited_at = ? WHERE id = ?`, body, nowString(), id); err != nil {
+		return err
 	}
 	c, err := s.loadComment(id)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && c.Deleted) {
-		writeError(w, http.StatusNotFound, "comment not found")
-		return
-	}
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if c.Author.ID != me.ID {
-		writeError(w, http.StatusForbidden, "only the author can edit a comment")
-		return
-	}
-	if _, err := s.db.Exec(`UPDATE comments SET body = ?, edited_at = ? WHERE id = ?`, in.Body, nowString(), id); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if c, err = s.loadComment(id); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
 	s.hub.sendToMany(s.commentAudience(c.PostID), map[string]any{"type": "comment.updated", "comment": c})
-	writeJSON(w, http.StatusOK, c)
+	return ok(w, c)
 }
 
 // deleteComment removes the author's comment. One that has replies is kept as
 // a [deleted] placeholder so the thread below it stays readable; placeholders
 // whose last reply disappears are removed too.
-func (s *server) deleteComment(w http.ResponseWriter, r *http.Request, me *User) {
-	id, ok := pathID(w, r, "id")
-	if !ok {
-		return
-	}
-	c, err := s.loadComment(id)
-	if errors.Is(err, sql.ErrNoRows) || (err == nil && c.Deleted) {
-		writeError(w, http.StatusNotFound, "comment not found")
-		return
-	}
+func (s *server) deleteComment(w http.ResponseWriter, r *http.Request, me *User) error {
+	id, err := pathID(r, "id")
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
 	}
-	if c.Author.ID != me.ID {
-		writeError(w, http.StatusForbidden, "only the author can delete a comment")
-		return
-	}
-	var replies int
-	if err := s.db.QueryRow(`SELECT COUNT(*) FROM comments WHERE parent_id = ?`, id).Scan(&replies); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	if replies > 0 {
-		_, err = s.db.Exec(`UPDATE comments SET deleted_at = ?, body = '' WHERE id = ?`, nowString(), id)
-	} else {
-		_, err = s.db.Exec(`DELETE FROM comments WHERE id = ?`, id)
-		// Walk up: a [deleted] parent with nothing left under it goes too.
-		for parent := c.ParentID; parent != nil && err == nil; {
-			var deleted *string
-			var next *int64
-			var n int
-			if s.db.QueryRow(`SELECT deleted_at, parent_id, (SELECT COUNT(*) FROM comments x WHERE x.parent_id = c.id) FROM comments c WHERE id = ?`, *parent).Scan(&deleted, &next, &n) != nil || deleted == nil || n > 0 {
-				break
-			}
-			_, err = s.db.Exec(`DELETE FROM comments WHERE id = ?`, *parent)
-			parent = next
-		}
-	}
+	c, err := s.ownComment(id, me.ID, "delete")
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		return err
+	}
+	if err := s.removeComment(c); err != nil {
+		return err
 	}
 	s.hub.sendToMany(s.commentAudience(c.PostID), map[string]any{"type": "comment.deleted", "post_id": c.PostID, "id": id})
 	s.broadcastPost("post.updated", c.PostID)
-	w.WriteHeader(http.StatusNoContent)
+	return noContent(w)
+}
+
+func (s *server) removeComment(c Comment) error {
+	var replies int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM comments WHERE parent_id = ?`, c.ID).Scan(&replies); err != nil {
+		return err
+	}
+	if replies > 0 {
+		_, err := s.db.Exec(`UPDATE comments SET deleted_at = ?, body = '' WHERE id = ?`, nowString(), c.ID)
+		return err
+	}
+	if _, err := s.db.Exec(`DELETE FROM comments WHERE id = ?`, c.ID); err != nil {
+		return err
+	}
+	return s.pruneDeletedAncestors(c.ParentID)
+}
+
+// pruneDeletedAncestors walks up from a parent: a [deleted] placeholder with
+// nothing left under it goes too.
+func (s *server) pruneDeletedAncestors(parent *int64) error {
+	for parent != nil {
+		var deleted *string
+		var next *int64
+		var replies int
+		err := s.db.QueryRow(`SELECT deleted_at, parent_id, (SELECT COUNT(*) FROM comments x WHERE x.parent_id = c.id) FROM comments c WHERE id = ?`, *parent).
+			Scan(&deleted, &next, &replies)
+		if err != nil || deleted == nil || replies > 0 {
+			return nil
+		}
+		if _, err := s.db.Exec(`DELETE FROM comments WHERE id = ?`, *parent); err != nil {
+			return err
+		}
+		parent = next
+	}
+	return nil
 }

@@ -140,68 +140,52 @@ func (h *hub) marshal(v any) ([]byte, error) {
 
 // sendAll pushes an event to every connection.
 func (h *hub) sendAll(v any) {
-	data, err := h.marshal(v)
-	if err != nil {
-		return
-	}
 	h.mu.RLock()
-	defer h.mu.RUnlock()
-	for _, set := range h.users {
-		for c := range set {
-			select {
-			case c.send <- data:
-			default:
-			}
-		}
+	ids := make([]int64, 0, len(h.users))
+	for id := range h.users {
+		ids = append(ids, id)
 	}
+	h.mu.RUnlock()
+	h.deliver(ids, v)
 }
 
-// sendTo pushes a JSON event to every connection of a user. Slow clients are
-// skipped rather than blocking the caller. Returns true if anyone was online.
-func (h *hub) sendTo(userID int64, v any) bool {
-	data, err := h.marshal(v)
-	if err != nil {
-		return false
-	}
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-	set := h.users[userID]
-	for c := range set {
-		select {
-		case c.send <- data:
-		default:
-		}
-	}
-	return len(set) > 0
-}
+// sendTo pushes an event to every connection of a user. Returns true if anyone was online.
+func (h *hub) sendTo(userID int64, v any) bool { return h.deliver([]int64{userID}, v) > 0 }
+
+// sendToMany fans an event out to several users.
+func (h *hub) sendToMany(userIDs []int64, v any) { h.deliver(userIDs, v) }
 
 // sendToClient pushes an event to one connection only (the device that acted).
 func (h *hub) sendToClient(c *client, v any) {
-	data, err := h.marshal(v)
-	if err != nil {
-		return
-	}
-	select {
-	case c.send <- data:
-	default:
+	if data, err := h.marshal(v); err == nil {
+		c.queue(data)
 	}
 }
 
-// sendToMany fans an event out to several users.
-func (h *hub) sendToMany(userIDs []int64, v any) {
+// deliver queues an event on every connection of the users and reports how
+// many connections got it. Slow clients are skipped rather than blocking.
+func (h *hub) deliver(userIDs []int64, v any) int {
 	data, err := h.marshal(v)
 	if err != nil {
-		return
+		return 0
 	}
 	h.mu.RLock()
 	defer h.mu.RUnlock()
+	n := 0
 	for _, id := range userIDs {
 		for c := range h.users[id] {
-			select {
-			case c.send <- data:
-			default:
-			}
+			c.queue(data)
+			n++
 		}
+	}
+	return n
+}
+
+// queue hands a frame to the writer without waiting for it.
+func (c *client) queue(data []byte) {
+	select {
+	case c.send <- data:
+	default:
 	}
 }
 
