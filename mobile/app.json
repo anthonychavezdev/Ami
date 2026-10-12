@@ -51,6 +51,13 @@
         }
       ],
       [
+        "expo-media-library",
+        {
+          "photosPermission": "Ami needs access to your photo library to save pictures and videos.",
+          "savePhotosPermission": "Ami saves pictures and videos you download to your photo library."
+        }
+      ],
+      [
         "expo-image-picker",
         {
           "photosPermission": "Ami needs access to your photos to attach pictures and videos to posts."
