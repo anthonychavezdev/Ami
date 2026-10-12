@@ -1,5 +1,14 @@
 import React from 'react';
-import { MediaStream, MediaStreamTrack, RTCIceCandidate, RTCPeerConnection, RTCSessionDescription, RTCView, ScreenCapturePickerView, mediaDevices } from 'react-native-webrtc';
+import {
+  MediaStream,
+  MediaStreamTrack,
+  RTCIceCandidate,
+  RTCPeerConnection,
+  RTCSessionDescription,
+  RTCView,
+  ScreenCapturePickerView,
+  mediaDevices,
+} from 'react-native-webrtc';
 
 // WebRTC primitives for Android and iOS; webrtc.web.tsx is the browser twin
 // with the same exports, so the call manager runs unchanged on the web.

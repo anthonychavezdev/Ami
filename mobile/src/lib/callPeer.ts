@@ -1,8 +1,7 @@
 import { MediaStream, type MediaStreamTrack, RTCIceCandidate, RTCPeerConnection, RTCSessionDescription } from './webrtc';
 
 import { ICE_SERVERS } from './config';
-
-export type SDP = { type: string; sdp: string };
+import type { SDP } from './events';
 
 // What a connection reports back to the call manager.
 export interface PeerEvents {

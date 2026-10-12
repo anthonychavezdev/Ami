@@ -11,7 +11,19 @@ import { spacing, type ThemeColors } from '@/theme';
 
 // The top of someone's profile: picture, names, bio, counts and what you can
 // do with them (befriend, message, call).
-export function ProfileHeader({ profile, isMe, error, onFriendChange, onCall }: { profile: UserProfile; isMe: boolean; error: string | null; onFriendChange: (fn: () => Promise<{ friend_status: string }>) => void; onCall: (video: boolean) => void }) {
+export function ProfileHeader({
+  profile,
+  isMe,
+  error,
+  onFriendChange,
+  onCall,
+}: {
+  profile: UserProfile;
+  isMe: boolean;
+  error: string | null;
+  onFriendChange: (fn: () => Promise<{ friend_status: string }>) => void;
+  onCall: (video: boolean) => void;
+}) {
   const styles = useStyles(makeStyles);
   return (
     <View style={styles.header}>
@@ -37,7 +49,15 @@ export function ProfileHeader({ profile, isMe, error, onFriendChange, onCall }: 
 }
 
 // The buttons for each friendship state.
-function FriendButtons({ profile, onChange, onCall }: { profile: UserProfile; onChange: (fn: () => Promise<{ friend_status: string }>) => void; onCall: (video: boolean) => void }) {
+function FriendButtons({
+  profile,
+  onChange,
+  onCall,
+}: {
+  profile: UserProfile;
+  onChange: (fn: () => Promise<{ friend_status: string }>) => void;
+  onCall: (video: boolean) => void;
+}) {
   const router = useRouter();
   switch (profile.friend_status) {
     case 'none':
@@ -57,7 +77,13 @@ function FriendButtons({ profile, onChange, onCall }: { profile: UserProfile; on
           <Button title="Message" onPress={() => router.push(`/chat/${profile.id}`)} />
           <Button title="Call" icon="phone" variant="secondary" onPress={() => onCall(false)} />
           <Button title="Video" icon="video" variant="secondary" onPress={() => onCall(true)} />
-          <Button title="Unfriend" variant="ghost" onPress={() => confirmAction('Remove friend?', profile.display_name, 'Remove', () => onChange(() => api.removeFriend(profile.id)))} />
+          <Button
+            title="Unfriend"
+            variant="ghost"
+            onPress={() =>
+              confirmAction('Remove friend?', profile.display_name, 'Remove', () => onChange(() => api.removeFriend(profile.id)))
+            }
+          />
         </>
       );
     default:
@@ -65,12 +91,13 @@ function FriendButtons({ profile, onChange, onCall }: { profile: UserProfile; on
   }
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  header: { alignItems: 'center', padding: spacing.xl, gap: spacing.xs },
-  name: { fontSize: 22, fontWeight: '800', color: colors.text, marginTop: spacing.sm },
-  username: { color: colors.muted },
-  bio: { color: colors.text, fontSize: 15, lineHeight: 21, textAlign: 'center', marginTop: spacing.sm, paddingHorizontal: spacing.lg },
-  stats: { color: colors.muted, marginTop: spacing.xs },
-  actions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: spacing.sm, marginTop: spacing.lg },
-  section: { alignSelf: 'flex-start', fontWeight: '700', color: colors.text, fontSize: 16, marginTop: spacing.xl },
-});
+const makeStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    header: { alignItems: 'center', padding: spacing.xl, gap: spacing.xs },
+    name: { fontSize: 22, fontWeight: '800', color: colors.text, marginTop: spacing.sm },
+    username: { color: colors.muted },
+    bio: { color: colors.text, fontSize: 15, lineHeight: 21, textAlign: 'center', marginTop: spacing.sm, paddingHorizontal: spacing.lg },
+    stats: { color: colors.muted, marginTop: spacing.xs },
+    actions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: spacing.sm, marginTop: spacing.lg },
+    section: { alignSelf: 'flex-start', fontWeight: '700', color: colors.text, fontSize: 16, marginTop: spacing.xl },
+  });

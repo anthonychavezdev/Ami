@@ -54,25 +54,26 @@ export function ReactionButton({ current, onReact }: { current: string; onReact:
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  btn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 12, borderRadius: radius.pill },
-  btnActive: { backgroundColor: colors.accentSoft },
-  btnText: { fontSize: 18 },
-  label: { color: colors.muted, fontWeight: '600' },
-  labelActive: { color: colors.accent },
-  picker: {
-    position: 'absolute',
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    backgroundColor: colors.card,
-    borderRadius: radius.lg,
-    padding: spacing.sm,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
-  },
-  emoji: { width: 44, height: 50, alignItems: 'center', justifyContent: 'center', borderRadius: radius.sm },
-  emojiActive: { backgroundColor: colors.accentSoft },
-});
+const makeStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    btn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 12, borderRadius: radius.pill },
+    btnActive: { backgroundColor: colors.accentSoft },
+    btnText: { fontSize: 18 },
+    label: { color: colors.muted, fontWeight: '600' },
+    labelActive: { color: colors.accent },
+    picker: {
+      position: 'absolute',
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      backgroundColor: colors.card,
+      borderRadius: radius.lg,
+      padding: spacing.sm,
+      shadowColor: '#000',
+      shadowOpacity: 0.15,
+      shadowRadius: 12,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 8,
+    },
+    emoji: { width: 44, height: 50, alignItems: 'center', justifyContent: 'center', borderRadius: radius.sm },
+    emojiActive: { backgroundColor: colors.accentSoft },
+  });

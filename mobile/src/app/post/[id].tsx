@@ -15,6 +15,7 @@ import type { Comment } from '@/lib/types';
 import { useComments } from '@/lib/useComments';
 import { useStyles } from '@/lib/theme';
 import { spacing, type ThemeColors } from '@/theme';
+import { errorMessage } from '@/lib/errors';
 
 // The composer is writing a new comment, a reply, or an edit.
 type Mode = { kind: 'new' } | { kind: 'reply'; to: Comment } | { kind: 'edit'; comment: Comment };
@@ -36,7 +37,7 @@ export default function PostScreen() {
         await remove(c);
         if (mode.kind !== 'new' && ('to' in mode ? mode.to : mode.comment).id === c.id) setMode({ kind: 'new' });
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : String(e));
+        toast.error(errorMessage(e));
       }
     });
 
@@ -76,7 +77,9 @@ export default function PostScreen() {
         contentContainerStyle={{ paddingBottom: spacing.lg }}
       />
       {mode.kind === 'edit' && <EditBar icon="edit-2" text={`Editing: ${mode.comment.body}`} onCancel={() => setMode({ kind: 'new' })} />}
-      {mode.kind === 'reply' && <EditBar icon="corner-down-right" text={`Replying to ${mode.to.author.display_name}`} onCancel={() => setMode({ kind: 'new' })} />}
+      {mode.kind === 'reply' && (
+        <EditBar icon="corner-down-right" text={`Replying to ${mode.to.author.display_name}`} onCancel={() => setMode({ kind: 'new' })} />
+      )}
       <Composer
         key={mode.kind === 'edit' ? `edit-${mode.comment.id}` : mode.kind === 'reply' ? `reply-${mode.to.id}` : 'new'}
         inputRef={commentInput}
@@ -93,7 +96,15 @@ export default function PostScreen() {
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  heading: { fontWeight: '700', color: colors.text, fontSize: 16, paddingHorizontal: spacing.lg, marginTop: spacing.sm, marginBottom: spacing.sm },
-  empty: { color: colors.muted, paddingHorizontal: spacing.lg },
-});
+const makeStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    heading: {
+      fontWeight: '700',
+      color: colors.text,
+      fontSize: 16,
+      paddingHorizontal: spacing.lg,
+      marginTop: spacing.sm,
+      marginBottom: spacing.sm,
+    },
+    empty: { color: colors.muted, paddingHorizontal: spacing.lg },
+  });

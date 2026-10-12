@@ -21,11 +21,17 @@ export default function FeedScreen() {
       renderItem={({ item }) => <PostCard post={item} onChange={update} onDelete={remove} />}
       ListHeaderComponent={
         <>
-          <Composer rich placeholder="What's on your mind?" onSubmit={async (body, attachments) => prepend(await api.createPost(body, undefined, attachments))} />
+          <Composer
+            rich
+            placeholder="What's on your mind?"
+            onSubmit={async (body, attachments) => prepend(await api.createPost(body, undefined, attachments))}
+          />
           <ErrorBanner error={error} />
         </>
       }
-      ListEmptyComponent={loading ? <Loading /> : <Empty text="Nothing here yet. Post something, or add friends and join groups to fill your feed." />}
+      ListEmptyComponent={
+        loading ? <Loading /> : <Empty text="Nothing here yet. Post something, or add friends and join groups to fill your feed." />
+      }
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refresh} tintColor={colors.accent} />}
       onEndReached={loadMore}
       onEndReachedThreshold={0.4}

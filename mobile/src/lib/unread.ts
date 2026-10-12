@@ -1,4 +1,5 @@
 import { api } from './api';
+import { errorMessage } from './errors';
 import { chatKey, chatOf, messagePreview } from './messages';
 import { isHidden, notify, setBadge } from './notifications';
 import { createStore } from './store';
@@ -39,20 +40,28 @@ function notificationTitle(m: Message, sender: User, groupName?: string) {
   return m.group_id ? `${groupName ?? 'Group'} · ${sender.display_name}` : sender.display_name;
 }
 
-socket.on('hello', (e) => count.set(e.unread ?? 0));
-socket.on('messages.read', (e) => count.set(e.unread ?? 0));
-socket.on('message.deleted', (e) => count.set(e.unread ?? 0));
-socket.on('message', (e) => {
-  const m: Message = e.message;
-  switch (reactionTo(m, me, activeChat, isHidden())) {
-    case 'read':
-      void api.markRead(chatOf(m, me!));
-      return;
-    case 'notify':
-      if (typeof e.unread === 'number') count.set(e.unread);
-      void notify(notificationTitle(m, e.sender, e.group?.name), messagePreview(m), m.group_id ? { group_chat: m.group_id } : { chat: m.sender_id });
-      return;
-    default:
-      return;
-  }
-});
+// Keeps the count in step with the server and notifies about new messages
+// (called once by startRealtime).
+export function listenUnread() {
+  socket.on('hello', (e) => count.set(e.unread));
+  socket.on('messages.read', (e) => count.set(e.unread));
+  socket.on('message.deleted', (e) => count.set(e.unread));
+  socket.on('message', (e) => {
+    const m = e.message;
+    switch (reactionTo(m, me, activeChat, isHidden())) {
+      case 'read':
+        api.markRead(chatOf(m, me!)).catch((err) => console.warn('mark read failed', errorMessage(err)));
+        return;
+      case 'notify':
+        if (typeof e.unread === 'number') count.set(e.unread);
+        void notify(
+          notificationTitle(m, e.sender, e.group?.name),
+          messagePreview(m),
+          m.group_id ? { group_chat: m.group_id } : { chat: m.sender_id },
+        );
+        return;
+      default:
+        return;
+    }
+  });
+}

@@ -1,6 +1,7 @@
 import { API_URL } from './config';
 import { fileBlob } from './upload';
 import type { Attachment, ChatTarget, Comment, Conversation, Group, GroupDetail, Me, Message, Post, User, UserProfile } from './types';
+import { errorMessage } from './errors';
 
 let authToken: string | null = null;
 export function setAuthToken(token: string | null) {
@@ -8,7 +9,10 @@ export function setAuthToken(token: string | null) {
 }
 
 export class ApiError extends Error {
-  constructor(public status: number, message: string) {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
     super(message);
   }
 }
@@ -39,7 +43,7 @@ async function upload<T>(path: string, file: { uri: string; name: string; type: 
   try {
     res = await fetch(API_URL + path, { method: 'POST', headers, body: form });
   } catch (e) {
-    throw new ApiError(0, `Cannot reach server at ${API_URL} (${e instanceof Error ? e.message : String(e)})`);
+    throw new ApiError(0, `Cannot reach server at ${API_URL} (${errorMessage(e)})`);
   }
   const data = await res.json().catch(() => null);
   if (!res.ok) throw new ApiError(res.status, data?.error ?? res.statusText);
@@ -52,7 +56,7 @@ export const mediaUrl = (a: Attachment) => (a.type === 'link' ? a.url : API_URL 
 const get = <T>(path: string) => request<T>('GET', path);
 const post = <T>(path: string, body?: unknown) => request<T>('POST', path, body ?? {});
 const put = <T>(path: string, body?: unknown) => request<T>('PUT', path, body ?? {});
-const del = <T>(path: string) => request<T>('DELETE', path);
+const del = <T>(path: string, body?: unknown) => request<T>('DELETE', path, body);
 
 // Direct messages live under /api/messages/{user}, group chats under /api/groups/{id}/messages.
 const chatApi = (chat: ChatTarget) => (chat.kind === 'group' ? `/api/groups/${chat.id}/messages` : `/api/messages/${chat.id}`);
@@ -72,7 +76,8 @@ export const api = {
   login: (username: string, password: string) => post<{ token: string; user: Me }>('/api/login', { username, password }),
   logout: () => post<void>('/api/logout'),
   me: () => get<Me>('/api/me'),
-  updateMe: (patch: Partial<Pick<Me, 'username' | 'display_name' | 'bio' | 'pronouns' | 'avatar_url' | 'avatar_crop'>>) => put<Me>('/api/me', patch),
+  updateMe: (patch: Partial<Pick<Me, 'username' | 'display_name' | 'bio' | 'pronouns' | 'avatar_url' | 'avatar_crop'>>) =>
+    put<Me>('/api/me', patch),
   setInvisible: (invisible: boolean) => put<{ invisible: boolean }>('/api/me/presence', { invisible }),
 
   // users
@@ -82,13 +87,15 @@ export const api = {
 
   // posts
   feed: (before?: number) => get<Post[]>(`/api/feed${q({ before })}`),
-  createPost: (body: string, group_id?: number, attachments: Attachment[] = []) => post<Post>('/api/posts', { body, group_id, attachments }),
+  createPost: (body: string, group_id?: number, attachments: Attachment[] = []) =>
+    post<Post>('/api/posts', { body, group_id, attachments }),
   uploadMedia: (file: { uri: string; name: string; type: string }) => upload<Attachment>('/api/media', file),
   post: (id: number) => get<Post>(`/api/posts/${id}`),
   deletePost: (id: number) => del<void>(`/api/posts/${id}`),
   updatePost: (id: number, body: string, attachments: Attachment[]) => put<Post>(`/api/posts/${id}`, { body, attachments }),
   comments: (postId: number) => get<Comment[]>(`/api/posts/${postId}/comments`),
-  addComment: (postId: number, body: string, parentId?: number) => post<Comment>(`/api/posts/${postId}/comments`, { body, parent_id: parentId ?? null }),
+  addComment: (postId: number, body: string, parentId?: number) =>
+    post<Comment>(`/api/posts/${postId}/comments`, { body, parent_id: parentId ?? null }),
   updateComment: (id: number, body: string) => put<Comment>(`/api/comments/${id}`, { body }),
   deleteComment: (id: number) => del<void>(`/api/comments/${id}`),
   react: (postId: number, emoji: string) => put<Post>(`/api/posts/${postId}/reaction`, { emoji }),
@@ -122,5 +129,5 @@ export const api = {
   deleteMessage: (chat: ChatTarget, messageId: number) => del<void>(`${chatApi(chat)}/${messageId}`),
   markRead: (chat: ChatTarget) => post<{ unread: number }>(`${chatApi(chat)}/read`),
   setPushToken: (token: string) => put<void>('/api/push-token', { token }),
-  deletePushToken: (token: string) => request<void>('DELETE', '/api/push-token', { token }),
+  deletePushToken: (token: string) => del<void>('/api/push-token', { token }),
 };

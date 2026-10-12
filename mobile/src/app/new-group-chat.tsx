@@ -9,6 +9,7 @@ import { toast } from '@/lib/toast';
 import type { User } from '@/lib/types';
 import { useStyles } from '@/lib/theme';
 import { spacing, type ThemeColors } from '@/theme';
+import { errorMessage } from '@/lib/errors';
 
 // Pick friends for a new invite-only group chat, or (with ?group=<id>) add
 // friends to a group you administer.
@@ -35,14 +36,20 @@ export default function NewGroupChatScreen() {
         router.replace(`/chat/group/${r.group.id}`);
       }
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e));
+      toast.error(errorMessage(e));
     } finally {
       setBusy(false);
     }
   };
 
   const canSubmit = selected.size > 0 && (groupId !== null || name.trim().length > 0);
-  const buttonTitle = groupId ? (selected.size ? `Add ${selected.size}` : 'Add members') : selected.size ? `Create with ${selected.size}` : 'Create group chat';
+  const buttonTitle = groupId
+    ? selected.size
+      ? `Add ${selected.size}`
+      : 'Add members'
+    : selected.size
+      ? `Create with ${selected.size}`
+      : 'Create group chat';
 
   return (
     <View style={{ flex: 1 }}>
@@ -89,14 +96,24 @@ function useFriendsNotIn(groupId: number | null) {
         const already = new Set(detail?.members.map((m) => m.id) ?? []);
         setFriends(all.filter((f) => !already.has(f.id)));
       })
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+      .catch((e) => setError(errorMessage(e)));
   }, [groupId]);
   return { friends, error };
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  header: { padding: spacing.lg, gap: spacing.sm },
-  hint: { color: colors.muted, fontSize: 13 },
-  section: { fontWeight: '700', color: colors.text, marginTop: spacing.sm },
-  footer: { position: 'absolute', left: 0, right: 0, bottom: 0, padding: spacing.lg, backgroundColor: colors.bg, borderTopWidth: 1, borderTopColor: colors.border },
-});
+const makeStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    header: { padding: spacing.lg, gap: spacing.sm },
+    hint: { color: colors.muted, fontSize: 13 },
+    section: { fontWeight: '700', color: colors.text, marginTop: spacing.sm },
+    footer: {
+      position: 'absolute',
+      left: 0,
+      right: 0,
+      bottom: 0,
+      padding: spacing.lg,
+      backgroundColor: colors.bg,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+  });

@@ -1,6 +1,6 @@
 import { Feather } from '@expo/vector-icons';
 import { Image } from 'expo-image';
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { PanResponder, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 
 import { useStyles, useTheme } from '@/lib/theme';
@@ -34,12 +34,15 @@ export function AvatarEditor({ uri, crop, onChange }: { uri: string; crop: Avata
   const left = crop.x * boxW;
   const top = crop.y * boxH;
 
-  const latest = useRef(crop);
-  latest.current = crop;
+  const latest = useRef(crop); // what the gesture handlers read, since they are created once
+  useEffect(() => {
+    latest.current = crop;
+  });
   const start = useRef(crop);
   const [dragging, setDragging] = useState(false);
   const pan = useMemo(
     () =>
+      // eslint-disable-next-line react-hooks/refs -- the handlers run on gestures, not during render
       PanResponder.create({
         onStartShouldSetPanResponder: () => true,
         onMoveShouldSetPanResponder: () => true,
@@ -47,7 +50,8 @@ export function AvatarEditor({ uri, crop, onChange }: { uri: string; crop: Avata
           start.current = latest.current;
           setDragging(true);
         },
-        onPanResponderMove: (_, g) => onChange(clamp({ ...start.current, x: start.current.x + g.dx / boxW, y: start.current.y + g.dy / boxH })),
+        onPanResponderMove: (_, g) =>
+          onChange(clamp({ ...start.current, x: start.current.x + g.dx / boxW, y: start.current.y + g.dy / boxH })),
         onPanResponderRelease: () => setDragging(false),
         onPanResponderTerminate: () => setDragging(false),
       }),
@@ -64,7 +68,10 @@ export function AvatarEditor({ uri, crop, onChange }: { uri: string; crop: Avata
     <View style={styles.wrap}>
       <View style={[styles.box, { width: boxW, height: boxH }]} {...pan.panHandlers} accessibilityLabel="Picture position: drag the circle">
         <Image source={{ uri }} style={{ width: boxW, height: boxH, opacity: 0.35 }} contentFit="fill" />
-        <View pointerEvents="none" style={[styles.circle, { left, top, width: d, height: d, borderRadius: d / 2, borderColor: dragging ? colors.accent : '#fff' }]}>
+        <View
+          pointerEvents="none"
+          style={[styles.circle, { left, top, width: d, height: d, borderRadius: d / 2, borderColor: dragging ? colors.accent : '#fff' }]}
+        >
           <Image source={{ uri }} style={{ position: 'absolute', left: -left, top: -top, width: boxW, height: boxH }} contentFit="fill" />
         </View>
       </View>
@@ -81,11 +88,21 @@ export function AvatarEditor({ uri, crop, onChange }: { uri: string; crop: Avata
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  wrap: { alignItems: 'center', gap: spacing.sm },
-  box: { backgroundColor: '#000', borderRadius: radius.md, overflow: 'hidden' },
-  circle: { position: 'absolute', overflow: 'hidden', borderWidth: 2 },
-  tools: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  tool: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.card, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
-  hint: { color: colors.muted, fontSize: 12, flexShrink: 1, textAlign: 'center' },
-});
+const makeStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    wrap: { alignItems: 'center', gap: spacing.sm },
+    box: { backgroundColor: '#000', borderRadius: radius.md, overflow: 'hidden' },
+    circle: { position: 'absolute', overflow: 'hidden', borderWidth: 2 },
+    tools: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+    tool: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    hint: { color: colors.muted, fontSize: 12, flexShrink: 1, textAlign: 'center' },
+  });

@@ -1,13 +1,17 @@
 import type { ChatTarget, Message } from './types';
 
 // Text of a message, or what kind of attachment it carries.
-export const messagePreview = (m: Message) => m.body || (m.attachments?.[0]?.type === 'video' ? 'Video' : m.attachments?.[0]?.type === 'link' ? 'Link' : 'Picture');
+export const messagePreview = (m: Message) =>
+  m.body || (m.attachments?.[0]?.type === 'video' ? 'Video' : m.attachments?.[0]?.type === 'link' ? 'Link' : 'Picture');
 
 // The chat a message belongs to, seen from `me`.
 export const chatOf = (m: Message, me: number): ChatTarget =>
   m.group_id ? { kind: 'group', id: m.group_id } : { kind: 'user', id: m.sender_id === me ? (m.recipient_id ?? m.sender_id) : m.sender_id };
 
 export const chatKey = (chat: ChatTarget) => `${chat.kind === 'group' ? 'g' : 'u'}:${chat.id}`;
+
+// The server's room key of a group's call (see server/calls.go).
+export const groupRoomKey = (groupId: number) => `g:${groupId}`;
 
 // Route of a chat screen.
 export const chatRoute = (chat: ChatTarget) => (chat.kind === 'group' ? `/chat/group/${chat.id}` : `/chat/${chat.id}`);
@@ -23,9 +27,13 @@ export const removeMessage = (list: Message[], id: number) => list.filter((x) =>
 
 // The second line of a Messages tab row: who wrote last and what, or how
 // many members a silent group has.
-export function conversationSubtitle(c: { last_message: Message | null; group?: { member_count: number } }, me: number | undefined, when: (iso: string) => string): string {
+export function conversationSubtitle(
+  c: { last_message: Message | null; group?: { member_count: number } },
+  me: number | undefined,
+  when: (iso: string) => string,
+): string {
   const last = c.last_message;
   if (!last) return c.group ? `${c.group.member_count} members · no messages yet` : '';
-  const who = last.sender_id === me ? 'You' : c.group ? last.sender?.display_name ?? 'Someone' : null;
+  const who = last.sender_id === me ? 'You' : c.group ? (last.sender?.display_name ?? 'Someone') : null;
   return `${who ? `${who}: ` : ''}${messagePreview(last)} · ${when(last.created_at)}`;
 }
