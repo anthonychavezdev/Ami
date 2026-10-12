@@ -52,7 +52,7 @@ export function useComments(postId: number) {
     async (body: string, parentId?: number) => {
       const c = await api.addComment(postId, body, parentId);
       setComments((list) => addComment(list, c));
-      setPost((p) => (p ? { ...p, comment_count: p.comment_count + 1 } : p));
+      setPost(await api.post(postId)); // the server counts; a local +1 could double up with its post.updated event
     },
     [postId],
   );

@@ -8,8 +8,9 @@ groups, direct messages, and peer-to-peer voice/video calls with screen sharing.
   (PBKDF2 + session tokens) and WebRTC signaling are stdlib; the WebSocket
   server uses gorilla/websocket.
 - `mobile/` — Expo / React Native app (TypeScript, Expo Router, `react-native-webrtc`); runs on Android, iOS and in the browser.
-- `devenv.nix` — toolchains and env vars. Everything installs inside this repo
-  (`.go/`, `.npm/`, `mobile/node_modules/`, `.gradle/`, `.android/`, `.cocoapods/`).
+- `devenv.nix` — toolchains, env vars and the `server`, `web`, `android`, `test`, `build`
+  scripts. Everything installs inside this repo (`.go/`, `.npm/`,
+  `mobile/node_modules/`, `.gradle/`, `.android/`, `.cocoapods/`).
 
 ## Run
 
@@ -21,6 +22,7 @@ android               # build the app, install it on the emulator (created on fi
 ios                   # same, in the iOS Simulator (needs Xcode from the App Store)
 mobile                # Metro only — once the app is installed, for day-to-day JS work
 web                   # the same app in a browser tab (http://localhost:8081)
+test                  # gofmt, go vet, go test; tsc, eslint, prettier --check
 ```
 
 `server` runs with `-dev`, which fills an empty database with demo accounts
@@ -34,6 +36,27 @@ phone if one is plugged in; `ios` does the same in the Simulator. The native
 projects (`mobile/android`, `mobile/ios`) are generated: after changing native
 dependencies, `app.json` or `mobile/plugins/`, run `npx expo prebuild --clean`
 in `mobile/` so the next `android`/`ios` picks the changes up.
+
+## Checks
+
+`test` runs everything that must pass before a commit. The Go tests
+(`server/*_test.go`) drive a real server over HTTP and WebSocket on a
+temporary database: every route, the realtime events, call signaling and the
+upgrade of a first-release database. The app is type-checked, linted
+(`eslint-config-expo`) and format-checked (Prettier; `npm run format` fixes
+it). `mobile/e2e/` has scripts that drive the Android app on emulators for
+what tests cannot cover: screens, WebRTC media and permission dialogs.
+
+### Changing things
+
+- The schema: edit `schema` in `server/db.go` and append a migration to
+  `migrations`; a database records how many have run in `PRAGMA user_version`.
+- A user column: `userCols` and `User.fields()` in `server/users.go`, the
+  schema, and `User` in `mobile/src/lib/types.ts`.
+- A realtime event: a struct in `server/events.go` and its twin in
+  `mobile/src/lib/events.ts`; `socket.on` and `socket.send` are typed from it.
+- Presence: `User.online` is filled in by reflection over every response
+  (`server/presence.go`), so handlers never set it.
 
 ### Ports and addresses
 
@@ -161,10 +184,8 @@ GET    /api/conversations   (direct chats + group chats)
 GET|POST /api/messages/{userId} {body, attachments}
 POST   /api/messages/{userId}/read   PUT|DELETE /api/messages/{userId}/{messageId}   (sender; PUT {body})
 PUT|DELETE /api/push-token {token}
-GET    /ws?token=   (events: hello, presence, message, message.updated, message.deleted, messages.read, group.added,
-                     friend.request, friend.accepted, post.created/updated/deleted, comment.created/updated/deleted,
-                     call.ring/joined/peer_joined/peer_left/declined/ended/unavailable and the relayed
-                     call.offer/answer/ice/streams; the client messages are documented in server/calls.go)
+GET    /ws?token=   (every event and client message is a struct in server/events.go, mirrored by
+                     mobile/src/lib/events.ts; the call protocol is described in server/calls.go)
 ```
 
 Server flags: `-addr :8080 -db ami.db -media-dir media`.

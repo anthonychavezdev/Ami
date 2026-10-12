@@ -91,7 +91,7 @@ func newServer(cfg config) (*server, error) {
 		if err := s.seedIfEmpty(); err != nil {
 			return nil, fmt.Errorf("seed demo data: %w", err)
 		}
-		log.Printf("dev mode: demo data seeded, browser origins allowed: %s", describeOrigins(s.origins))
+		log.Printf("dev mode: browser origins allowed: %s", describeOrigins(s.origins))
 	}
 	presenceHook = s.markPresence
 	s.hub.decorate = s.markPresence
