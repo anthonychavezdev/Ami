@@ -2,10 +2,10 @@ import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { AvatarEditor, defaultCrop } from '@/components/AvatarEditor';
-import { Avatar, Button, ErrorBanner, Input, SectionLabel } from '@/components/ui';
+import { Avatar, Button, ErrorBanner, Input, KeyboardScreen, SectionLabel } from '@/components/ui';
 import { api } from '@/lib/api';
 import { API_URL } from '@/lib/config';
 import { useAuth } from '@/lib/auth';
@@ -71,7 +71,7 @@ export default function EditProfileScreen() {
   const usernameChanged = form.username.trim() !== user.username;
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }} keyboardVerticalOffset={90}>
+    <KeyboardScreen>
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
         <Pressable
           onPress={() => void pickPicture()}
@@ -163,7 +163,7 @@ export default function EditProfileScreen() {
           style={{ marginTop: spacing.lg }}
         />
       </ScrollView>
-    </KeyboardAvoidingView>
+    </KeyboardScreen>
   );
 }
 

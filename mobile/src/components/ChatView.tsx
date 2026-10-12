@@ -1,14 +1,14 @@
 import { Feather } from '@expo/vector-icons';
 import { Stack, useRouter } from 'expo-router';
 import React, { useRef, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { CallBanner } from './CallBanner';
 import { Composer } from './Composer';
 import { useContextMenu } from './ContextMenu';
 import { EditBar } from './EditBar';
 import { MessageBubble, type MessageActions } from './MessageBubble';
-import { Empty, Loading } from './ui';
+import { Empty, KeyboardScreen, Loading } from './ui';
 import { useAuth } from '@/lib/auth';
 import { useCall } from '@/lib/call';
 import { confirmAction } from '@/lib/confirm';
@@ -71,7 +71,7 @@ export function ChatView({ kind, id }: ChatTarget) {
   const title = chat.isGroup ? chat.group!.name : chat.other!.display_name;
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }} keyboardVerticalOffset={90}>
+    <KeyboardScreen>
       <View style={{ flex: 1 }}>
         <Stack.Screen options={{ title, headerRight: () => <HeaderButtons isGroup={chat.isGroup} groupId={id} onCall={startCall} /> }} />
         {chat.isGroup && (
@@ -126,7 +126,7 @@ export function ChatView({ kind, id }: ChatTarget) {
         />
         {menu}
       </View>
-    </KeyboardAvoidingView>
+    </KeyboardScreen>
   );
 }
 
