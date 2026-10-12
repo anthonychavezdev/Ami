@@ -77,6 +77,8 @@ func main() {
 	if *apiRate > 0 {
 		s.apiLimiter = newLimiter(*apiRate, time.Minute)
 	}
+	presenceHook = s.markPresence
+	s.hub.decorate = s.markPresence
 	s.upgrader = websocket.Upgrader{ReadBufferSize: 4096, WriteBufferSize: 4096, CheckOrigin: s.originAllowed}
 	go s.purgeSessions()
 	mux := http.NewServeMux()

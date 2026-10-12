@@ -14,7 +14,13 @@ var errUnauthorized = errors.New("unauthorized")
 func now() time.Time    { return time.Now().UTC() }
 func nowString() string { return now().Format(time.RFC3339Nano) }
 
+// presenceHook marks users as online/offline in every response (see presence.go).
+var presenceHook func(v any) any
+
 func writeJSON(w http.ResponseWriter, code int, v any) {
+	if presenceHook != nil {
+		v = presenceHook(v)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(code)
 	_ = json.NewEncoder(w).Encode(v)

@@ -27,6 +27,7 @@ type User struct {
 	Username    string `json:"username"`
 	DisplayName string `json:"display_name"`
 	CreatedAt   string `json:"created_at"`
+	Online      bool   `json:"online"` // has a live connection; filled in by markPresence on output
 }
 
 const userCols = `u.id, u.username, u.display_name, u.created_at`
