@@ -102,7 +102,7 @@ project id the app simply never registers a push token.
 | Comments | On the post screen. |
 | Friends | Request → accept. Only friends can message/call each other. Pushed live over WebSocket. |
 | Groups | Creator is owner + admin; others join as members. Admin can remove members, delete posts, delete the group. |
-| Messages | Direct messages with pictures and videos, delivered in real time. Hold one of your messages to edit it. Unread badge on the Messages tab and OS notifications (browser, Android, iOS). |
+| Messages | Direct messages with pictures and videos, delivered in real time. Hold one of your messages to edit or delete it. Unread badge on the Messages tab and OS notifications (browser, Android, iOS). |
 | Calls | Voice or video, 1:1, WebRTC with STUN (`stun.l.google.com`). Mute, camera on/off, flip camera. |
 | Screen share | Toggle during a call; sent as a second video stream. |
 | Theme | Light, dark, or follow the device setting (Me tab). |
@@ -138,9 +138,9 @@ GET    /api/groups?mine=1|q=       POST /api/groups {name, description}
 GET|DELETE /api/groups/{id}        POST /api/groups/{id}/join | /leave
 GET    /api/groups/{id}/posts      DELETE /api/groups/{id}/members/{uid}
 GET    /api/conversations          GET|POST /api/messages/{userId} {body, attachments}
-POST   /api/messages/{userId}/read   PUT /api/messages/{userId}/{messageId} {body}   (sender)
+POST   /api/messages/{userId}/read   PUT|DELETE /api/messages/{userId}/{messageId}   (sender; PUT {body})
 PUT|DELETE /api/push-token {token}
-GET    /ws?token=   (events: hello, message, message.updated, messages.read, friend.request, friend.accepted,
+GET    /ws?token=   (events: hello, message, message.updated, message.deleted, messages.read, friend.request, friend.accepted,
                      post.created/updated/deleted, comment.created/updated/deleted,
                      call.offer/answer/ice/streams/hangup/reject/busy/unavailable)
 ```
