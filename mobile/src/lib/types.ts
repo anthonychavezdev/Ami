@@ -39,6 +39,9 @@ export interface Post {
 export interface Comment {
   id: number;
   post_id: number;
+  parent_id: number | null;
+  edited_at: string | null;
+  deleted: boolean; // body and author read [deleted]
   author: User;
   body: string;
   created_at: string;
