@@ -24,18 +24,51 @@ type Post struct {
 }
 
 type Comment struct {
-	ID        int64  `json:"id"`
-	PostID    int64  `json:"post_id"`
-	Author    User   `json:"author"`
-	Body      string `json:"body"`
-	CreatedAt string `json:"created_at"`
+	ID        int64   `json:"id"`
+	PostID    int64   `json:"post_id"`
+	ParentID  *int64  `json:"parent_id"` // reply to another comment of the same post
+	Author    User    `json:"author"`
+	Body      string  `json:"body"`
+	CreatedAt string  `json:"created_at"`
+	EditedAt  *string `json:"edited_at"`
+	Deleted   bool    `json:"deleted"` // body and author read [deleted]; the row stays so replies keep their place
+}
+
+// deletedUser stands in for the author of a deleted comment.
+var deletedUser = User{Username: "deleted", DisplayName: "[deleted]"}
+
+const commentCols = `c.id, c.post_id, c.parent_id, c.body, c.created_at, c.edited_at, c.deleted_at, ` + userCols
+
+func scanComment(sc interface{ Scan(...any) error }) (Comment, error) {
+	var c Comment
+	var deleted *string
+	err := sc.Scan(&c.ID, &c.PostID, &c.ParentID, &c.Body, &c.CreatedAt, &c.EditedAt, &deleted,
+		&c.Author.ID, &c.Author.Username, &c.Author.DisplayName, &c.Author.CreatedAt)
+	if deleted != nil {
+		c.Deleted, c.Body, c.EditedAt, c.Author = true, "[deleted]", nil, deletedUser
+	}
+	return c, err
+}
+
+func (s *server) loadComment(id int64) (Comment, error) {
+	return scanComment(s.db.QueryRow(`SELECT `+commentCols+` FROM comments c JOIN users u ON u.id = c.author_id WHERE c.id = ?`, id))
+}
+
+// commentAudience is everyone who can see the comment's post.
+func (s *server) commentAudience(postID int64) []int64 {
+	var author int64
+	var groupID *int64
+	if err := s.db.QueryRow(`SELECT author_id, group_id FROM posts WHERE id = ?`, postID).Scan(&author, &groupID); err != nil {
+		return nil
+	}
+	return s.postAudience(author, groupID)
 }
 
 // postSelect expects the viewer's user id as its first bound parameter.
 const postSelect = `
 SELECT p.id, p.body, p.attachments, p.created_at, p.edited_at, p.group_id, COALESCE(g.name, ''),
        ` + userCols + `,
-       (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id),
+       (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted_at IS NULL),
        COALESCE((SELECT json_group_object(emoji, n) FROM
             (SELECT emoji, COUNT(*) AS n FROM reactions r WHERE r.post_id = p.id GROUP BY emoji)), '{}'),
        COALESCE((SELECT emoji FROM reactions r WHERE r.post_id = p.id AND r.user_id = ?), '')
@@ -249,9 +282,9 @@ func (s *server) listComments(w http.ResponseWriter, r *http.Request, me *User) 
 		return
 	}
 	after := queryInt(r, "after", 0)
-	rows, err := s.db.Query(`SELECT c.id, c.post_id, c.body, c.created_at, `+userCols+`
+	rows, err := s.db.Query(`SELECT `+commentCols+`
 		FROM comments c JOIN users u ON u.id = c.author_id
-		WHERE c.post_id = ? AND c.id > ? ORDER BY c.id ASC LIMIT 200`, id, after)
+		WHERE c.post_id = ? AND c.id > ? ORDER BY c.id ASC LIMIT 500`, id, after)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -259,9 +292,8 @@ func (s *server) listComments(w http.ResponseWriter, r *http.Request, me *User) 
 	defer rows.Close()
 	out := []Comment{}
 	for rows.Next() {
-		var c Comment
-		if err := rows.Scan(&c.ID, &c.PostID, &c.Body, &c.CreatedAt,
-			&c.Author.ID, &c.Author.Username, &c.Author.DisplayName, &c.Author.CreatedAt); err != nil {
+		c, err := scanComment(rows)
+		if err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -276,7 +308,8 @@ func (s *server) createComment(w http.ResponseWriter, r *http.Request, me *User)
 		return
 	}
 	var in struct {
-		Body string `json:"body"`
+		Body     string `json:"body"`
+		ParentID *int64 `json:"parent_id"`
 	}
 	if !readJSON(w, r, &in) {
 		return
@@ -292,15 +325,22 @@ func (s *server) createComment(w http.ResponseWriter, r *http.Request, me *User)
 		writeError(w, http.StatusNotFound, "post not found")
 		return
 	}
+	if in.ParentID != nil {
+		parent, err := s.loadComment(*in.ParentID)
+		if err != nil || parent.PostID != id || parent.Deleted {
+			writeError(w, http.StatusBadRequest, "cannot reply to that comment")
+			return
+		}
+	}
 	createdAt := nowString()
-	res, err := s.db.Exec(`INSERT INTO comments(post_id, author_id, body, created_at) VALUES (?, ?, ?, ?)`,
-		id, me.ID, in.Body, createdAt)
+	res, err := s.db.Exec(`INSERT INTO comments(post_id, parent_id, author_id, body, created_at) VALUES (?, ?, ?, ?, ?)`,
+		id, in.ParentID, me.ID, in.Body, createdAt)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 	cid, _ := res.LastInsertId()
-	c := Comment{ID: cid, PostID: id, Author: *me, Body: in.Body, CreatedAt: createdAt}
+	c := Comment{ID: cid, PostID: id, ParentID: in.ParentID, Author: *me, Body: in.Body, CreatedAt: createdAt}
 	s.hub.sendToMany(s.postAudience(author, groupID), map[string]any{"type": "comment.created", "comment": c})
 	s.broadcastPost("post.updated", id)
 	writeJSON(w, http.StatusCreated, c)
@@ -407,4 +447,97 @@ func (s *server) updatePost(w http.ResponseWriter, r *http.Request, me *User) {
 	}
 	s.broadcastPost("post.updated", id)
 	writeJSON(w, http.StatusOK, p)
+}
+
+// updateComment lets the author change a comment's text.
+func (s *server) updateComment(w http.ResponseWriter, r *http.Request, me *User) {
+	id, ok := pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	var in struct {
+		Body string `json:"body"`
+	}
+	if !readJSON(w, r, &in) {
+		return
+	}
+	in.Body = strings.TrimSpace(in.Body)
+	if !clampLen(in.Body, 2000) {
+		writeError(w, http.StatusBadRequest, "body must be 1-2000 characters")
+		return
+	}
+	c, err := s.loadComment(id)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && c.Deleted) {
+		writeError(w, http.StatusNotFound, "comment not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if c.Author.ID != me.ID {
+		writeError(w, http.StatusForbidden, "only the author can edit a comment")
+		return
+	}
+	if _, err := s.db.Exec(`UPDATE comments SET body = ?, edited_at = ? WHERE id = ?`, in.Body, nowString(), id); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if c, err = s.loadComment(id); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.hub.sendToMany(s.commentAudience(c.PostID), map[string]any{"type": "comment.updated", "comment": c})
+	writeJSON(w, http.StatusOK, c)
+}
+
+// deleteComment removes the author's comment. One that has replies is kept as
+// a [deleted] placeholder so the thread below it stays readable; placeholders
+// whose last reply disappears are removed too.
+func (s *server) deleteComment(w http.ResponseWriter, r *http.Request, me *User) {
+	id, ok := pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	c, err := s.loadComment(id)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && c.Deleted) {
+		writeError(w, http.StatusNotFound, "comment not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if c.Author.ID != me.ID {
+		writeError(w, http.StatusForbidden, "only the author can delete a comment")
+		return
+	}
+	var replies int
+	if err := s.db.QueryRow(`SELECT COUNT(*) FROM comments WHERE parent_id = ?`, id).Scan(&replies); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if replies > 0 {
+		_, err = s.db.Exec(`UPDATE comments SET deleted_at = ?, body = '' WHERE id = ?`, nowString(), id)
+	} else {
+		_, err = s.db.Exec(`DELETE FROM comments WHERE id = ?`, id)
+		// Walk up: a [deleted] parent with nothing left under it goes too.
+		for parent := c.ParentID; parent != nil && err == nil; {
+			var deleted *string
+			var next *int64
+			var n int
+			if s.db.QueryRow(`SELECT deleted_at, parent_id, (SELECT COUNT(*) FROM comments x WHERE x.parent_id = c.id) FROM comments c WHERE id = ?`, *parent).Scan(&deleted, &next, &n) != nil || deleted == nil || n > 0 {
+				break
+			}
+			_, err = s.db.Exec(`DELETE FROM comments WHERE id = ?`, *parent)
+			parent = next
+		}
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.hub.sendToMany(s.commentAudience(c.PostID), map[string]any{"type": "comment.deleted", "post_id": c.PostID, "id": id})
+	s.broadcastPost("post.updated", c.PostID)
+	w.WriteHeader(http.StatusNoContent)
 }
