@@ -1,12 +1,15 @@
+import { Feather } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import React from 'react';
-import { Text } from 'react-native';
+import type { ColorValue } from 'react-native';
 
 import { useTheme } from '@/lib/theme';
 
-const icon = (glyph: string) =>
-  function TabIcon({ focused }: { focused: boolean }) {
-    return <Text style={{ fontSize: 22, opacity: focused ? 1 : 0.45 }}>{glyph}</Text>;
+type FeatherName = React.ComponentProps<typeof Feather>['name'];
+
+const icon = (name: FeatherName) =>
+  function TabIcon({ color, size }: { color: ColorValue; size: number }) {
+    return <Feather name={name} size={size} color={color} />;
   };
 
 export default function TabsLayout() {
@@ -23,11 +26,11 @@ export default function TabsLayout() {
         sceneStyle: { backgroundColor: colors.bg },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: 'Feed', tabBarIcon: icon('🏠') }} />
-      <Tabs.Screen name="friends" options={{ title: 'Friends', tabBarIcon: icon('👥') }} />
-      <Tabs.Screen name="groups" options={{ title: 'Groups', tabBarIcon: icon('🫂') }} />
-      <Tabs.Screen name="messages" options={{ title: 'Messages', tabBarIcon: icon('💬') }} />
-      <Tabs.Screen name="profile" options={{ title: 'Me', tabBarIcon: icon('👤') }} />
+      <Tabs.Screen name="index" options={{ title: 'Feed', tabBarIcon: icon('home') }} />
+      <Tabs.Screen name="friends" options={{ title: 'Friends', tabBarIcon: icon('users') }} />
+      <Tabs.Screen name="groups" options={{ title: 'Groups', tabBarIcon: icon('grid') }} />
+      <Tabs.Screen name="messages" options={{ title: 'Messages', tabBarIcon: icon('message-circle') }} />
+      <Tabs.Screen name="profile" options={{ title: 'Me', tabBarIcon: icon('user') }} />
     </Tabs>
   );
 }

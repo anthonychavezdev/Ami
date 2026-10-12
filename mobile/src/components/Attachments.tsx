@@ -1,9 +1,10 @@
+import { Feather } from '@expo/vector-icons';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import React, { useState } from 'react';
 import { Image, Linking, Pressable, StyleProp, StyleSheet, Text, View, ViewStyle } from 'react-native';
 
 import { mediaUrl } from '@/lib/api';
-import { useStyles } from '@/lib/theme';
+import { useStyles, useTheme } from '@/lib/theme';
 import type { Attachment } from '@/lib/types';
 import { radius, spacing, type ThemeColors } from '@/theme';
 
@@ -46,6 +47,7 @@ function Video({ att, style }: { att: Attachment; style: StyleProp<ViewStyle> })
 
 function LinkCard({ url }: { url: string }) {
   const styles = useStyles(makeStyles);
+  const { colors } = useTheme();
   let host = url;
   try {
     host = new URL(url).host || url;
@@ -54,7 +56,10 @@ function LinkCard({ url }: { url: string }) {
   }
   return (
     <Pressable onPress={() => Linking.openURL(url).catch(() => {})} style={({ pressed }) => [styles.link, pressed && { opacity: 0.7 }]}>
-      <Text style={styles.linkHost}>🔗 {host}</Text>
+      <View style={styles.linkHead}>
+        <Feather name="link" size={14} color={colors.muted} />
+        <Text style={styles.linkHost}>{host}</Text>
+      </View>
       <Text style={styles.linkUrl} numberOfLines={2}>
         {url}
       </Text>
@@ -67,6 +72,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
   media: { backgroundColor: colors.bg, borderRadius: radius.md, overflow: 'hidden' },
   link: { backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, gap: 2 },
+  linkHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   linkHost: { color: colors.text, fontWeight: '700' },
   linkUrl: { color: colors.accent, fontSize: 13 },
 });

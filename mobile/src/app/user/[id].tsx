@@ -7,7 +7,8 @@ import { Avatar, Button, Empty, ErrorBanner, Loading } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useCall } from '@/lib/call';
-import type { UserProfile } from '@/lib/types';
+import { toast } from '@/lib/toast';
+import type { Post, UserProfile } from '@/lib/types';
 import { usePosts } from '@/lib/usePosts';
 import { useStyles, useTheme } from '@/lib/theme';
 import { spacing, type ThemeColors } from '@/theme';
@@ -24,7 +25,8 @@ export default function UserScreen() {
   const [error, setError] = useState<string | null>(null);
 
   const fetchPage = useCallback((before?: number) => api.userPosts(userId, before), [userId]);
-  const { posts, loading, refreshing, refresh, loadMore, update, remove } = usePosts(fetchPage);
+  const accept = useCallback((p: Post) => p.author.id === userId && p.group_id === null, [userId]);
+  const { posts, loading, refreshing, refresh, loadMore, update, remove } = usePosts(fetchPage, accept);
 
   const loadProfile = useCallback(async () => {
     try {
@@ -43,7 +45,7 @@ export default function UserScreen() {
       const r = await fn();
       setProfile((p) => (p ? { ...p, friend_status: r.friend_status as UserProfile['friend_status'] } : p));
     } catch (e) {
-      Alert.alert('Error', e instanceof Error ? e.message : String(e));
+      toast.error(e instanceof Error ? e.message : String(e));
     }
   };
 
@@ -84,8 +86,8 @@ export default function UserScreen() {
                 {profile.friend_status === 'friends' && (
                   <>
                     <Button title="Message" onPress={() => router.push(`/chat/${profile.id}`)} />
-                    <Button title="📞" variant="secondary" onPress={() => startCall(false)} />
-                    <Button title="📹" variant="secondary" onPress={() => startCall(true)} />
+                    <Button title="Call" icon="phone" variant="secondary" onPress={() => startCall(false)} />
+                    <Button title="Video" icon="video" variant="secondary" onPress={() => startCall(true)} />
                     <Button
                       title="Unfriend"
                       variant="ghost"
