@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -10,11 +11,12 @@ import { useCall } from '@/lib/call';
 import { clock } from '@/lib/time';
 import type { Message, User } from '@/lib/types';
 import { socket } from '@/lib/ws';
-import { useStyles } from '@/lib/theme';
+import { useStyles, useTheme } from '@/lib/theme';
 import { radius, spacing, type ThemeColors } from '@/theme';
 
 export default function ChatScreen() {
   const styles = useStyles(makeStyles);
+  const { colors } = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
   const otherId = Number(id);
   const { user: me } = useAuth();
@@ -65,11 +67,11 @@ export default function ChatScreen() {
           title: other.display_name,
           headerRight: () => (
             <View style={{ flexDirection: 'row', gap: spacing.md }}>
-              <Pressable onPress={() => startCall(false)} hitSlop={8}>
-                <Text style={styles.headerBtn}>📞</Text>
+              <Pressable onPress={() => startCall(false)} hitSlop={8} accessibilityLabel="Voice call">
+                <Feather name="phone" size={22} color={colors.accent} />
               </Pressable>
-              <Pressable onPress={() => startCall(true)} hitSlop={8}>
-                <Text style={styles.headerBtn}>📹</Text>
+              <Pressable onPress={() => startCall(true)} hitSlop={8} accessibilityLabel="Video call">
+                <Feather name="video" size={22} color={colors.accent} />
               </Pressable>
             </View>
           ),
@@ -101,7 +103,6 @@ export default function ChatScreen() {
 }
 
 const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  headerBtn: { fontSize: 22 },
   bubbleRow: { flexDirection: 'row', marginBottom: spacing.sm },
   bubble: { maxWidth: '80%', paddingHorizontal: spacing.md, paddingVertical: spacing.sm, borderRadius: radius.lg },
   mine: { backgroundColor: colors.accent, borderBottomRightRadius: 4 },

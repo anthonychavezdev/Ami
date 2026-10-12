@@ -1,3 +1,4 @@
+import { Feather } from '@expo/vector-icons';
 import { Link, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -5,12 +6,13 @@ import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { AttachmentList } from './Attachments';
 import { ReactionButton } from './ReactionButton';
 import { Avatar } from './ui';
-import { api } from '@/lib/api';
+import { ApiError, api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { PostMarkdown } from '@/lib/markdown';
 import { timeAgo } from '@/lib/time';
 import type { Post } from '@/lib/types';
-import { useStyles } from '@/lib/theme';
+import { useStyles, useTheme } from '@/lib/theme';
+import { toast } from '@/lib/toast';
 import { radius, spacing, type ThemeColors } from '@/theme';
 
 export function PostCard({
@@ -27,6 +29,7 @@ export function PostCard({
   showGroup?: boolean;
 }) {
   const styles = useStyles(makeStyles);
+  const { colors } = useTheme();
   const { user } = useAuth();
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -37,7 +40,12 @@ export function PostCard({
     try {
       onChange(emoji ? await api.react(post.id, emoji) : await api.unreact(post.id));
     } catch (e) {
-      Alert.alert('Reaction failed', e instanceof Error ? e.message : String(e));
+      if (e instanceof ApiError && e.status === 404) {
+        toast.show('That post was deleted');
+        onDelete?.(post.id);
+      } else {
+        toast.error(e instanceof Error ? e.message : String(e));
+      }
     } finally {
       setBusy(false);
     }
@@ -54,7 +62,7 @@ export function PostCard({
             await api.deletePost(post.id);
             onDelete?.(post.id);
           } catch (e) {
-            Alert.alert('Delete failed', e instanceof Error ? e.message : String(e));
+            toast.error(e instanceof Error ? e.message : String(e));
           }
         },
       },
@@ -81,7 +89,7 @@ export function PostCard({
         </Link>
         {mayDelete && (
           <Pressable onPress={remove} hitSlop={10}>
-            <Text style={styles.meta}>✕</Text>
+            <Feather name="x" size={18} color={colors.muted} />
           </Pressable>
         )}
       </View>
@@ -108,7 +116,8 @@ export function PostCard({
       <View style={styles.footer}>
         <ReactionButton current={post.my_reaction} onReact={react} />
         <Pressable onPress={() => router.push(`/post/${post.id}`)} style={styles.commentBtn}>
-          <Text style={styles.commentText}>💬 {post.comment_count > 0 ? `${post.comment_count} ` : ''}Comment</Text>
+          <Feather name="message-circle" size={16} color={colors.muted} />
+          <Text style={styles.commentText}>{post.comment_count > 0 ? `${post.comment_count} ` : ''}Comment</Text>
         </Pressable>
       </View>
     </View>
@@ -126,6 +135,6 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   reactionPill: { backgroundColor: colors.bg, borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: colors.border },
   reactionMine: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
   footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.sm },
-  commentBtn: { paddingVertical: 6, paddingHorizontal: 12 },
+  commentBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 12 },
   commentText: { color: colors.muted, fontWeight: '600' },
 });

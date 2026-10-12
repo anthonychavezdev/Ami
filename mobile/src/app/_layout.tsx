@@ -7,6 +7,7 @@ import { Loading } from '@/components/ui';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { CallProvider } from '@/lib/call';
 import { ThemeProvider, useTheme } from '@/lib/theme';
+import { ToastHost } from '@/lib/toast';
 
 export default function RootLayout() {
   return (
@@ -32,6 +33,12 @@ function RootNavigator() {
     <CallProvider onIncoming={onIncoming}>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       <Stack
+        screenLayout={({ children }) => (
+          <>
+            {children}
+            <ToastHost />
+          </>
+        )}
         screenOptions={{
           headerTintColor: colors.accent,
           headerTitleStyle: { color: colors.text },
