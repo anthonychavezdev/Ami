@@ -6,7 +6,17 @@ import { useStyles, useTheme } from '@/lib/theme';
 import { radius, spacing, type ThemeColors } from '@/theme';
 
 // The strip above a composer saying what is being edited or replied to.
-export function EditBar({ icon, text, cancelLabel = 'Cancel', onCancel }: { icon: React.ComponentProps<typeof Feather>['name']; text: string; cancelLabel?: string; onCancel: () => void }) {
+export function EditBar({
+  icon,
+  text,
+  cancelLabel = 'Cancel',
+  onCancel,
+}: {
+  icon: React.ComponentProps<typeof Feather>['name'];
+  text: string;
+  cancelLabel?: string;
+  onCancel: () => void;
+}) {
   const styles = useStyles(makeStyles);
   const { colors } = useTheme();
   return (
@@ -22,7 +32,18 @@ export function EditBar({ icon, text, cancelLabel = 'Cancel', onCancel }: { icon
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  bar: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, backgroundColor: colors.card, borderTopWidth: 1, borderTopColor: colors.border, borderRadius: radius.sm },
-  text: { flex: 1, color: colors.text, fontSize: 13 },
-});
+const makeStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    bar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.sm,
+      backgroundColor: colors.card,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+      borderRadius: radius.sm,
+    },
+    text: { flex: 1, color: colors.text, fontSize: 13 },
+  });

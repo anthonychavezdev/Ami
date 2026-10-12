@@ -17,6 +17,7 @@ import { useGroup } from '@/lib/useGroup';
 import { usePosts } from '@/lib/usePosts';
 import { useTheme } from '@/lib/theme';
 import { spacing } from '@/theme';
+import { errorMessage } from '@/lib/errors';
 
 type Tab = 'posts' | 'members';
 
@@ -40,7 +41,7 @@ export default function GroupScreen() {
         await api.deleteGroup(groupId);
         router.back();
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : String(e));
+        toast.error(errorMessage(e));
       }
     });
 
@@ -56,7 +57,13 @@ export default function GroupScreen() {
 
   const header = (
     <View>
-      <GroupHeader group={group} onJoin={() => change(() => api.joinGroup(groupId))} onLeave={() => change(() => api.leaveGroup(groupId))} onDelete={deleteGroup} onCall={startCall} />
+      <GroupHeader
+        group={group}
+        onJoin={() => change(() => api.joinGroup(groupId))}
+        onLeave={() => change(() => api.leaveGroup(groupId))}
+        onDelete={deleteGroup}
+        onCall={startCall}
+      />
       <ErrorBanner error={error} />
       <Segmented
         value={tab}
@@ -68,7 +75,11 @@ export default function GroupScreen() {
       />
       {tab === 'posts' && isMember && (
         <View style={{ marginBottom: spacing.md }}>
-          <Composer rich placeholder={`Post in ${group.name}`} onSubmit={async (body, attachments) => prepend(await api.createPost(body, groupId, attachments))} />
+          <Composer
+            rich
+            placeholder={`Post in ${group.name}`}
+            onSubmit={async (body, attachments) => prepend(await api.createPost(body, groupId, attachments))}
+          />
         </View>
       )}
     </View>
@@ -88,7 +99,16 @@ export default function GroupScreen() {
               subtitle={item.role === 'admin' ? 'Admin (owner)' : `@${item.username}`}
               right={
                 isAdmin && item.id !== me?.id ? (
-                  <Button title="Remove" small variant="secondary" onPress={() => confirmAction('Remove member?', item.display_name, 'Remove', () => change(() => api.removeGroupMember(groupId, item.id)))} />
+                  <Button
+                    title="Remove"
+                    small
+                    variant="secondary"
+                    onPress={() =>
+                      confirmAction('Remove member?', item.display_name, 'Remove', () =>
+                        change(() => api.removeGroupMember(groupId, item.id)),
+                      )
+                    }
+                  />
                 ) : null
               }
             />
@@ -107,7 +127,16 @@ export default function GroupScreen() {
         ListHeaderComponent={header}
         renderItem={({ item }) => <PostCard post={item} onChange={update} onDelete={remove} canDelete={isAdmin} showGroup={false} />}
         ListEmptyComponent={loading ? <Loading /> : <Empty text={isMember ? 'No posts yet. Start the conversation.' : 'No posts yet.'} />}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { refresh(); void reload(); }} tintColor={colors.accent} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              refresh();
+              void reload();
+            }}
+            tintColor={colors.accent}
+          />
+        }
         onEndReached={loadMore}
         onEndReachedThreshold={0.4}
         contentContainerStyle={{ paddingBottom: spacing.xl, flexGrow: 1 }}

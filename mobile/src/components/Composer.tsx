@@ -10,6 +10,7 @@ import { toast } from '@/lib/toast';
 import type { Attachment } from '@/lib/types';
 import { useAttachments } from '@/lib/useAttachments';
 import { radius, spacing, type ThemeColors } from '@/theme';
+import { errorMessage } from '@/lib/errors';
 
 // Generic "write something and submit" box used for posts, comments and chat.
 // `rich` adds a Markdown toolbar plus picture, video and link attachments;
@@ -61,7 +62,7 @@ export function Composer({
       attachments.clear();
       setLinkDraft(null);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e));
+      toast.error(errorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -81,7 +82,9 @@ export function Composer({
     setLinkDraft(null);
   };
 
-  const chips = allowMedia && <AttachmentChips items={attachments.attachments} uploading={attachments.uploading} onRemove={attachments.removeAt} />;
+  const chips = allowMedia && (
+    <AttachmentChips items={attachments.attachments} uploading={attachments.uploading} onRemove={attachments.removeAt} />
+  );
 
   return (
     <View style={[styles.wrap, compact && styles.wrapCompact]}>
@@ -115,7 +118,16 @@ export function Composer({
         />
         {rich && linkDraft !== null && (
           <View style={styles.linkRow}>
-            <Input placeholder="https://…" autoCapitalize="none" autoCorrect={false} keyboardType="url" value={linkDraft} onChangeText={setLinkDraft} onSubmitEditing={addLink} style={{ flex: 1 }} />
+            <Input
+              placeholder="https://…"
+              autoCapitalize="none"
+              autoCorrect={false}
+              keyboardType="url"
+              value={linkDraft}
+              onChangeText={setLinkDraft}
+              onSubmitEditing={addLink}
+              style={{ flex: 1 }}
+            />
             <Button title="Add link" small onPress={addLink} />
           </View>
         )}
@@ -126,7 +138,14 @@ export function Composer({
             <Button title={buttonTitle} onPress={submit} loading={busy} disabled={!canSubmit} small />
           </View>
         ) : (
-          <Button title={buttonTitle} onPress={submit} loading={busy} disabled={!canSubmit} small style={compact ? undefined : styles.btn} />
+          <Button
+            title={buttonTitle}
+            onPress={submit}
+            loading={busy}
+            disabled={!canSubmit}
+            small
+            style={compact ? undefined : styles.btn}
+          />
         )}
       </View>
     </View>
@@ -167,29 +186,55 @@ function MarkdownToolbar({
 type FeatherName = React.ComponentProps<typeof Feather>['name'];
 type MciName = React.ComponentProps<typeof MaterialCommunityIcons>['name'];
 
-function Tool({ icon, mci, label, active, onPress }: { icon?: FeatherName; mci?: MciName; label: string; active?: boolean; onPress: () => void }) {
+function Tool({
+  icon,
+  mci,
+  label,
+  active,
+  onPress,
+}: {
+  icon?: FeatherName;
+  mci?: MciName;
+  label: string;
+  active?: boolean;
+  onPress: () => void;
+}) {
   const styles = useStyles(makeStyles);
   const { colors } = useTheme();
   const color = active ? colors.accent : colors.text;
   return (
-    <Pressable onPress={onPress} hitSlop={6} accessibilityLabel={label} style={({ pressed }) => [styles.tool, active && styles.toolActive, pressed && { opacity: 0.6 }]}>
+    <Pressable
+      onPress={onPress}
+      hitSlop={6}
+      accessibilityLabel={label}
+      style={({ pressed }) => [styles.tool, active && styles.toolActive, pressed && { opacity: 0.6 }]}
+    >
       {mci ? <MaterialCommunityIcons name={mci} size={20} color={color} /> : <Feather name={icon ?? 'bold'} size={18} color={color} />}
     </Pressable>
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  wrap: { padding: spacing.lg, backgroundColor: colors.card, borderBottomWidth: 1, borderBottomColor: colors.border, gap: spacing.sm },
-  wrapCompact: { borderBottomWidth: 0, borderTopWidth: 1, borderTopColor: colors.border, padding: spacing.sm },
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  column: { gap: spacing.sm },
-  input: { minHeight: 70, textAlignVertical: 'top' },
-  inputRich: { minHeight: 90 },
-  inputRow: { flex: 1, maxHeight: 120 },
-  btn: { alignSelf: 'flex-end' },
-  actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
-  toolbar: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 2 },
-  tool: { minWidth: 32, height: 32, paddingHorizontal: 6, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg },
-  toolActive: { backgroundColor: colors.accentSoft },
-  linkRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-});
+const makeStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    wrap: { padding: spacing.lg, backgroundColor: colors.card, borderBottomWidth: 1, borderBottomColor: colors.border, gap: spacing.sm },
+    wrapCompact: { borderBottomWidth: 0, borderTopWidth: 1, borderTopColor: colors.border, padding: spacing.sm },
+    row: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    column: { gap: spacing.sm },
+    input: { minHeight: 70, textAlignVertical: 'top' },
+    inputRich: { minHeight: 90 },
+    inputRow: { flex: 1, maxHeight: 120 },
+    btn: { alignSelf: 'flex-end' },
+    actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
+    toolbar: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 2 },
+    tool: {
+      minWidth: 32,
+      height: 32,
+      paddingHorizontal: 6,
+      borderRadius: radius.sm,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.bg,
+    },
+    toolActive: { backgroundColor: colors.accentSoft },
+    linkRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+  });

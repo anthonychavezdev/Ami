@@ -33,6 +33,10 @@
   "devDependencies": {
     "@types/react": "~19.2.2",
     "@types/react-dom": "~19.2.0",
+    "eslint": "^9.39.5",
+    "eslint-config-expo": "^57.0.2",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.9.10",
     "typescript": "~6.0.3"
   },
   "overrides": {
@@ -43,7 +47,11 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "prebuild": "expo prebuild",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "tsc --noEmit && eslint . && prettier --check ."
   },
   "private": true
 }

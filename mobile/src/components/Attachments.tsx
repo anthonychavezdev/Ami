@@ -30,8 +30,18 @@ export function AttachmentList({ items, style }: { items: Attachment[]; style?: 
             const aspectRatio = single ? (a.width && a.height ? a.width / a.height : 4 / 3) : 1;
             const box = { width: tile, height: Math.round(tile / aspectRatio) };
             return (
-              <Pressable key={`${a.url}-${i}`} onPress={() => setOpen(i)} accessibilityRole="button" accessibilityLabel={a.type === 'video' ? 'Video' : 'Picture'} style={({ pressed }) => [styles.media, box, pressed && { opacity: 0.85 }]}>
-                {a.type === 'video' ? <Video att={a} /> : <Image source={{ uri: mediaUrl(a) }} style={StyleSheet.absoluteFill} resizeMode="cover" />}
+              <Pressable
+                key={`${a.url}-${i}`}
+                onPress={() => setOpen(i)}
+                accessibilityRole="button"
+                accessibilityLabel={a.type === 'video' ? 'Video' : 'Picture'}
+                style={({ pressed }) => [styles.media, box, pressed && { opacity: 0.85 }]}
+              >
+                {a.type === 'video' ? (
+                  <Video att={a} />
+                ) : (
+                  <Image source={{ uri: mediaUrl(a) }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+                )}
               </Pressable>
             );
           })}
@@ -81,13 +91,14 @@ function LinkCard({ url }: { url: string }) {
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  wrap: { marginTop: spacing.md, gap: spacing.sm },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
-  media: { backgroundColor: colors.bg, borderRadius: radius.md, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
-  play: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' },
-  link: { backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, gap: 2 },
-  linkHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  linkHost: { color: colors.text, fontWeight: '700' },
-  linkUrl: { color: colors.accent, fontSize: 13 },
-});
+const makeStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    wrap: { marginTop: spacing.md, gap: spacing.sm },
+    grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs },
+    media: { backgroundColor: colors.bg, borderRadius: radius.md, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
+    play: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(0,0,0,0.55)', alignItems: 'center', justifyContent: 'center' },
+    link: { backgroundColor: colors.bg, borderWidth: 1, borderColor: colors.border, borderRadius: radius.md, padding: spacing.md, gap: 2 },
+    linkHead: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    linkHost: { color: colors.text, fontWeight: '700' },
+    linkUrl: { color: colors.accent, fontSize: 13 },
+  });

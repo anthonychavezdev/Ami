@@ -6,6 +6,7 @@ import { addComment, replaceComment, thread } from './comments';
 import { toast } from './toast';
 import type { Comment, Post } from './types';
 import { socket } from './ws';
+import { errorMessage } from './errors';
 
 // A post and its comments, kept live: comments come, change and go, the
 // post's counts and reactions update, and a deleted post sends you back.
@@ -23,12 +24,16 @@ export function useComments(postId: number) {
         setPost(p);
         setComments(c);
       })
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)))
+      .catch((e) => setError(errorMessage(e)))
       .finally(() => setLoading(false));
   }, [postId]);
 
   useEffect(() => {
-    const refetch = () => void api.comments(postId).then(setComments).catch(() => {});
+    const refetch = () =>
+      void api
+        .comments(postId)
+        .then(setComments)
+        .catch(() => {});
     const offs = [
       socket.on('comment.created', (e) => e.comment.post_id === postId && setComments((list) => addComment(list, e.comment))),
       socket.on('comment.updated', (e) => e.comment.post_id === postId && setComments((list) => replaceComment(list, e.comment))),

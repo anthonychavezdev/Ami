@@ -3,6 +3,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useS
 import { api, setAuthToken } from './api';
 import type { Me } from './types';
 import { setupNotifications, teardownNotifications } from './notifications';
+import { startRealtime } from './realtime';
 import { storage } from './storage';
 import { unread } from './unread';
 import { socket } from './ws';
@@ -25,10 +26,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
 
   // Wires everything that depends on being signed in: the API token, the
-  // WebSocket, the unread badge and OS notifications.
+  // WebSocket and its listeners, the unread badge and OS notifications.
   const signIn = useCallback((token: string, u: Me) => {
     setAuthToken(token);
     unread.setUser(u.id);
+    startRealtime();
     socket.connect(token);
     setUser(u);
     void setupNotifications();

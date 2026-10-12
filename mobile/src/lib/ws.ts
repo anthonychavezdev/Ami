@@ -1,14 +1,15 @@
 import { WS_URL } from './config';
+import type { ClientMessage, Event, EventOf, EventType } from './events';
 
-export type WSEvent = { type: string } & Record<string, any>;
-type Handler = (e: WSEvent) => void;
+type Handler<T extends EventType> = (e: EventOf<T>) => void;
 
 // Small auto-reconnecting WebSocket client. Events from the server are
-// dispatched by their "type" field; "*" receives everything.
+// dispatched by their "type" field to the handlers registered with `on`
+// (see events.ts for every type and its fields).
 class SocketClient {
   private ws: WebSocket | null = null;
   private token: string | null = null;
-  private handlers = new Map<string, Set<Handler>>();
+  private handlers = new Map<string, Set<(e: Event) => void>>();
   private retry = 0;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private closedByUs = false;
@@ -31,22 +32,21 @@ class SocketClient {
     return this.ws?.readyState === WebSocket.OPEN;
   }
 
-  send(msg: Record<string, unknown>): boolean {
+  send(msg: ClientMessage): boolean {
     if (!this.connected) return false;
     this.ws!.send(JSON.stringify(msg));
     return true;
   }
 
-  on(type: string, handler: Handler): () => void {
+  on<T extends EventType>(type: T, handler: Handler<T>): () => void {
     let set = this.handlers.get(type);
     if (!set) this.handlers.set(type, (set = new Set()));
-    set.add(handler);
-    return () => set!.delete(handler);
+    set.add(handler as (e: Event) => void);
+    return () => set!.delete(handler as (e: Event) => void);
   }
 
-  private emit(e: WSEvent) {
+  private emit(e: Event) {
     this.handlers.get(e.type)?.forEach((h) => h(e));
-    this.handlers.get('*')?.forEach((h) => h(e));
   }
 
   private open() {

@@ -28,7 +28,13 @@ export function StreamView({ stream, style, fit, mirror }: StreamViewProps) {
   }, [stream]);
   return (
     <View style={style}>
-      <video ref={ref} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: fit, transform: mirror ? 'scaleX(-1)' : undefined, backgroundColor: '#000' }} />
+      <video
+        ref={ref}
+        autoPlay
+        playsInline
+        muted
+        style={{ width: '100%', height: '100%', objectFit: fit, transform: mirror ? 'scaleX(-1)' : undefined, backgroundColor: '#000' }}
+      />
     </View>
   );
 }

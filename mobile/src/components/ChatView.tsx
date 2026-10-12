@@ -13,11 +13,13 @@ import { useAuth } from '@/lib/auth';
 import { useCall } from '@/lib/call';
 import { confirmAction } from '@/lib/confirm';
 import { toast } from '@/lib/toast';
+import { groupRoomKey } from '@/lib/messages';
 import type { ChatTarget, Message } from '@/lib/types';
 import { useChat } from '@/lib/useChat';
 import { useInvertedWheel } from '@/lib/useInvertedWheel';
 import { useStyles, useTheme } from '@/lib/theme';
 import { spacing, type ThemeColors } from '@/theme';
+import { errorMessage } from '@/lib/errors';
 
 // One chat screen for both kinds of chat: with a friend (kind 'user') or in a
 // group (kind 'group'). Group chats name the author of each message, let the
@@ -34,7 +36,7 @@ export function ChatView({ kind, id }: ChatTarget) {
   const list = useRef<FlatList<Message>>(null);
   useInvertedWheel(list, chat.messages !== null);
 
-  const room = chat.isGroup ? `g:${id}` : null;
+  const room = chat.isGroup ? groupRoomKey(id) : null;
   const inThisCall = room !== null && callState.room === room && callState.status !== 'idle' && callState.status !== 'incoming';
   const isAdmin = chat.group?.my_role === 'admin';
 
@@ -51,7 +53,7 @@ export function ChatView({ kind, id }: ChatTarget) {
         setSelected(null);
         if (editing?.id === m.id) setEditing(null);
       } catch (e) {
-        toast.error(e instanceof Error ? e.message : String(e));
+        toast.error(errorMessage(e));
       }
     });
 
@@ -72,7 +74,9 @@ export function ChatView({ kind, id }: ChatTarget) {
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }} keyboardVerticalOffset={90}>
       <View style={{ flex: 1 }}>
         <Stack.Screen options={{ title, headerRight: () => <HeaderButtons isGroup={chat.isGroup} groupId={id} onCall={startCall} /> }} />
-        {chat.isGroup && <CallBanner inThisCall={inThisCall} others={chat.inCall.filter((x) => x !== me?.id).length} onPress={() => startCall(false)} />}
+        {chat.isGroup && (
+          <CallBanner inThisCall={inThisCall} others={chat.inCall.filter((x) => x !== me?.id).length} onPress={() => startCall(false)} />
+        )}
         <FlatList
           ref={list}
           data={chat.messages}
@@ -84,7 +88,7 @@ export function ChatView({ kind, id }: ChatTarget) {
               <MessageBubble
                 message={item}
                 mine={mine}
-                sender={chat.isGroup && !mine ? item.sender ?? chat.members.get(item.sender_id) : undefined}
+                sender={chat.isGroup && !mine ? (item.sender ?? chat.members.get(item.sender_id)) : undefined}
                 actions={actionsFor(item)}
                 selected={selected === item.id}
                 onToggleSelect={() => setSelected((s) => (s === item.id ? null : item.id))}
@@ -97,7 +101,14 @@ export function ChatView({ kind, id }: ChatTarget) {
           ListEmptyComponent={<Text style={styles.empty}>Say hi to {title} 👋</Text>}
           contentContainerStyle={{ padding: spacing.lg, flexGrow: 1 }}
         />
-        {editing && <EditBar icon="edit-2" text={`Editing: ${editing.body || 'picture'}`} cancelLabel="Cancel editing" onCancel={() => setEditing(null)} />}
+        {editing && (
+          <EditBar
+            icon="edit-2"
+            text={`Editing: ${editing.body || 'picture'}`}
+            cancelLabel="Cancel editing"
+            onCancel={() => setEditing(null)}
+          />
+        )}
         <Composer
           key={editing?.id ?? 'new'}
           placeholder="Message"
@@ -140,6 +151,7 @@ function HeaderButtons({ isGroup, groupId, onCall }: { isGroup: boolean; groupId
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  empty: { color: colors.muted, textAlign: 'center', transform: [{ scaleY: -1 }] },
-});
+const makeStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    empty: { color: colors.muted, textAlign: 'center', transform: [{ scaleY: -1 }] },
+  });

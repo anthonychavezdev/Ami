@@ -8,6 +8,7 @@ import { useAuth } from '@/lib/auth';
 import { setupNotifications } from '@/lib/notifications';
 import { useStyles } from '@/lib/theme';
 import { spacing, type ThemeColors } from '@/theme';
+import { errorMessage } from '@/lib/errors';
 
 export default function LoginScreen() {
   const styles = useStyles(makeStyles);
@@ -24,7 +25,7 @@ export default function LoginScreen() {
     try {
       await login(username.trim(), password);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(errorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -50,12 +51,13 @@ export default function LoginScreen() {
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  container: { flex: 1, justifyContent: 'center', padding: spacing.xl, gap: spacing.lg },
-  logo: { fontSize: 40, fontWeight: '800', color: colors.accent, textAlign: 'center' },
-  tagline: { color: colors.muted, textAlign: 'center', marginBottom: spacing.lg },
-  form: { gap: spacing.md },
-  link: { color: colors.accent, textAlign: 'center', fontWeight: '600', padding: spacing.md },
-  hint: { color: colors.muted, textAlign: 'center', fontSize: 12 },
-});
+const makeStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    safe: { flex: 1, backgroundColor: colors.bg },
+    container: { flex: 1, justifyContent: 'center', padding: spacing.xl, gap: spacing.lg },
+    logo: { fontSize: 40, fontWeight: '800', color: colors.accent, textAlign: 'center' },
+    tagline: { color: colors.muted, textAlign: 'center', marginBottom: spacing.lg },
+    form: { gap: spacing.md },
+    link: { color: colors.accent, textAlign: 'center', fontWeight: '600', padding: spacing.md },
+    hint: { color: colors.muted, textAlign: 'center', fontSize: 12 },
+  });

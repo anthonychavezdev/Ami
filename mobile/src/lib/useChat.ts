@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AppState } from 'react-native';
 
 import { api } from './api';
-import { belongsTo, prependMessage, removeMessage, replaceMessage } from './messages';
+import { errorMessage } from './errors';
+import { belongsTo, groupRoomKey, prependMessage, removeMessage, replaceMessage } from './messages';
 import type { Attachment, ChatTarget, Group, GroupMember, Message, User } from './types';
 import { unread } from './unread';
 import { socket } from './ws';
@@ -33,7 +34,7 @@ export function useChat(kind: ChatTarget['kind'], id: number) {
         setMessages(list.slice().reverse());
         void api.markRead(chat);
       })
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+      .catch((e) => setError(errorMessage(e)));
   }, [chat, id, isGroup]);
 
   // While this chat is open, new messages in it are read, not notified.
@@ -51,14 +52,14 @@ export function useChat(kind: ChatTarget['kind'], id: number) {
     const offs = [
       socket.on('message', (e) => inThisChat(e.message) && setMessages((list) => list && prependMessage(list, e.message))),
       socket.on('message.updated', (e) => inThisChat(e.message) && setMessages((list) => list && replaceMessage(list, e.message))),
-      socket.on('message.deleted', (e) => inThisChat({ group_id: e.group_id ?? null, sender_id: e.sender_id, recipient_id: e.recipient_id ?? null }) && setMessages((list) => list && removeMessage(list, e.id))),
+      socket.on('message.deleted', (e) => inThisChat(e) && setMessages((list) => list && removeMessage(list, e.id))),
     ];
     return () => offs.forEach((off) => off());
   }, [chat]);
 
   useEffect(() => {
     if (!isGroup) return;
-    const room = `g:${id}`;
+    const room = groupRoomKey(id);
     const offs = [
       socket.on('call.ring', (e) => e.room === room && setInCall([e.from_user.id])),
       socket.on('call.peer_joined', (e) => e.room === room && setInCall((ids) => (ids.includes(e.user.id) ? ids : [...ids, e.user.id]))),

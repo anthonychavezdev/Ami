@@ -5,7 +5,9 @@ import { Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { AttachmentList } from './Attachments';
 import { Composer } from './Composer';
-import { contextMenuProps, pressPoint, useContextMenu, type MenuItem } from './ContextMenu';
+import { contextMenuProps, useContextMenu } from './ContextMenu';
+import { DotsButton } from './DotsButton';
+import { deleteItem, editItem, menuItems } from './menu';
 import { ReactionButton } from './ReactionButton';
 import { Avatar } from './ui';
 import { ApiError, api } from '@/lib/api';
@@ -16,14 +18,11 @@ import { timeAgo } from '@/lib/time';
 import type { Post } from '@/lib/types';
 import { useStyles, useTheme } from '@/lib/theme';
 import { toast } from '@/lib/toast';
+import { useHovered } from '@/lib/useHovered';
 import { radius, spacing, type ThemeColors } from '@/theme';
+import { errorMessage } from '@/lib/errors';
 
 type PostActions = { edit?: () => void; remove?: () => void };
-
-const postMenuItems = ({ edit, remove }: PostActions): MenuItem[] => [
-  ...(edit ? [{ label: 'Edit', icon: 'edit-2', onPress: edit } as MenuItem] : []),
-  ...(remove ? [{ label: 'Delete', icon: 'trash-2', danger: true, onPress: remove } as MenuItem] : []),
-];
 
 // Reactions sorted by count, biggest first.
 const sortedReactions = (post: Post) => Object.entries(post.reactions).sort((a, b) => b[1] - a[1]);
@@ -48,7 +47,7 @@ export function PostCard({
   const { user } = useAuth();
   const router = useRouter();
   const [editing, setEditing] = useState(false);
-  const [hovered, setHovered] = useState(false); // web: shows the ⋯ button
+  const [hovered, hoverProps] = useHovered(); // web: shows the ⋯ button
   const { open, menu } = useContextMenu();
   const react = useReact(post, onChange, onDelete);
 
@@ -57,22 +56,16 @@ export function PostCard({
     edit: mine ? () => setEditing(true) : undefined,
     remove: mine || canDelete ? () => confirmAction('Delete post?', undefined, 'Delete', () => deletePost(post.id, onDelete)) : undefined,
   };
-  const items = postMenuItems(actions);
+  const items = menuItems(editItem(actions.edit), deleteItem(actions.remove));
   const openMenu = (x: number, y: number) => open(items, x, y);
 
   return (
-    <View style={styles.card} onPointerEnter={() => setHovered(true)} onPointerLeave={() => setHovered(false)} {...(items.length ? contextMenuProps(openMenu) : {})}>
+    <View style={styles.card} {...hoverProps} {...(items.length ? contextMenuProps(openMenu) : {})}>
       <View style={styles.header}>
         <AuthorLine post={post} showGroup={showGroup} />
         <View style={styles.headerActions}>
           {Platform.OS === 'web' ? (
-            items.length > 0 &&
-            !editing &&
-            hovered && (
-              <Pressable onPress={(e) => openMenu(pressPoint(e).x, pressPoint(e).y)} hitSlop={10} accessibilityLabel="Post options">
-                <Feather name="more-horizontal" size={20} color={colors.muted} />
-              </Pressable>
-            )
+            items.length > 0 && !editing && hovered && <DotsButton label="Post options" size={20} onOpen={openMenu} />
           ) : (
             <>
               {actions.edit && !editing && (
@@ -186,7 +179,7 @@ function useReact(post: Post, onChange: (p: Post) => void, onDelete?: (id: numbe
         toast.show('That post was deleted');
         onDelete?.(post.id);
       } else {
-        toast.error(e instanceof Error ? e.message : String(e));
+        toast.error(errorMessage(e));
       }
     } finally {
       setBusy(false);
@@ -199,22 +192,46 @@ async function deletePost(id: number, onDelete?: (id: number) => void) {
     await api.deletePost(id);
     onDelete?.(id);
   } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e));
+    toast.error(errorMessage(e));
   }
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  card: { backgroundColor: colors.card, borderRadius: radius.md, padding: spacing.lg, marginHorizontal: spacing.lg, marginBottom: spacing.md, borderWidth: 1, borderColor: colors.border },
-  header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  author: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  name: { fontWeight: '700', color: colors.text, fontSize: 15 },
-  meta: { color: colors.muted, fontSize: 13 },
-  body: { marginTop: spacing.md },
-  reactions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: spacing.md },
-  reactionPill: { backgroundColor: colors.bg, borderRadius: radius.pill, paddingHorizontal: 8, paddingVertical: 3, borderWidth: 1, borderColor: colors.border },
-  reactionMine: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
-  footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.md, borderTopWidth: 1, borderTopColor: colors.border, paddingTop: spacing.sm },
-  commentBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 12 },
-  commentText: { color: colors.muted, fontWeight: '600' },
-});
+const makeStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    card: {
+      backgroundColor: colors.card,
+      borderRadius: radius.md,
+      padding: spacing.lg,
+      marginHorizontal: spacing.lg,
+      marginBottom: spacing.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
+    headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+    author: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+    name: { fontWeight: '700', color: colors.text, fontSize: 15 },
+    meta: { color: colors.muted, fontSize: 13 },
+    body: { marginTop: spacing.md },
+    reactions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: spacing.md },
+    reactionPill: {
+      backgroundColor: colors.bg,
+      borderRadius: radius.pill,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    reactionMine: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
+    footer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginTop: spacing.md,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+      paddingTop: spacing.sm,
+    },
+    commentBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 12 },
+    commentText: { color: colors.muted, fontWeight: '600' },
+  });

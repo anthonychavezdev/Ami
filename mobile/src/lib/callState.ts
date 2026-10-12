@@ -63,19 +63,24 @@ export function updateParticipant(state: CallState, id: number, change: (p: Part
 }
 
 // A stream the participant started sending (ignored if already known).
-export const withStream = (stream: MediaStream) => (p: Participant): Participant =>
-  p.streams.some((s) => s.id === stream.id) ? p : { ...p, streams: [...p.streams, stream] };
+export const withStream =
+  (stream: MediaStream) =>
+  (p: Participant): Participant =>
+    p.streams.some((s) => s.id === stream.id) ? p : { ...p, streams: [...p.streams, stream] };
 
 // What the participant says their screen stream is; a dropped share forgets that stream.
-export const withScreen = (screenId: string | null) => (p: Participant): Participant => ({
-  ...p,
-  screenId,
-  streams: screenId ? p.streams : p.streams.filter((s) => s.id !== p.screenId),
-});
+export const withScreen =
+  (screenId: string | null) =>
+  (p: Participant): Participant => ({
+    ...p,
+    screenId,
+    streams: screenId ? p.streams : p.streams.filter((s) => s.id !== p.screenId),
+  });
 
 export const connected = (p: Participant): Participant => ({ ...p, connected: true });
 
 // The call screen's view of the state.
 export const cameraOf = (p: Participant) => p.streams.find((s) => s.id !== p.screenId && s.getVideoTracks().length > 0) ?? null;
 
-export const sharerOf = (state: CallState) => state.participants.find((p) => p.screenId && p.streams.some((s) => s.id === p.screenId)) ?? null;
+export const sharerOf = (state: CallState) =>
+  state.participants.find((p) => p.screenId && p.streams.some((s) => s.id === p.screenId)) ?? null;

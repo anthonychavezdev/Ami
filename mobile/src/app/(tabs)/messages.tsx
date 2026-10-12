@@ -1,23 +1,20 @@
-import { Feather } from '@expo/vector-icons';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { FlatList, Pressable, RefreshControl, StyleSheet } from 'react-native';
+import { FlatList, RefreshControl } from 'react-native';
 
 import { ConversationRow } from '@/components/ConversationRow';
-import { Empty, Loading } from '@/components/ui';
+import { Empty, Fab, Loading } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import type { Conversation } from '@/lib/types';
-import { socket } from '@/lib/ws';
-import { useStyles, useTheme } from '@/lib/theme';
-import { type ThemeColors, spacing } from '@/theme';
+import { useLiveLoad } from '@/lib/useLiveLoad';
+import { useTheme } from '@/lib/theme';
 
 // Events after which the list is reloaded.
-const REFRESH_ON = ['message', 'message.updated', 'message.deleted', 'messages.read', 'group.added'];
+const REFRESH_ON = ['message', 'message.updated', 'message.deleted', 'messages.read', 'group.added'] as const;
 
 // Direct chats and group chats in one list, most recent first.
 export default function MessagesScreen() {
-  const styles = useStyles(makeStyles);
   const { colors } = useTheme();
   const { user: me } = useAuth();
   const router = useRouter();
@@ -33,14 +30,7 @@ export default function MessagesScreen() {
       setRefreshing(false);
     }
   }, []);
-
-  useFocusEffect(
-    useCallback(() => {
-      void load();
-      const offs = REFRESH_ON.map((type) => socket.on(type, () => void load()));
-      return () => offs.forEach((off) => off());
-    }, [load]),
-  );
+  useLiveLoad(load, REFRESH_ON);
 
   if (!convos) return <Loading />;
   return (
@@ -49,17 +39,22 @@ export default function MessagesScreen() {
         data={convos}
         keyExtractor={(c) => (c.group ? `g${c.group.id}` : `u${c.user!.id}`)}
         renderItem={({ item }) => <ConversationRow conversation={item} me={me?.id} />}
-        ListEmptyComponent={<Empty text="No conversations yet. Open a friend's profile to message them, or start a group chat with the + button." />}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(); }} tintColor={colors.accent} />}
+        ListEmptyComponent={
+          <Empty text="No conversations yet. Open a friend's profile to message them, or start a group chat with the + button." />
+        }
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              setRefreshing(true);
+              void load();
+            }}
+            tintColor={colors.accent}
+          />
+        }
         contentContainerStyle={{ flexGrow: 1, paddingBottom: 90 }}
       />
-      <Pressable style={styles.fab} onPress={() => router.push('/new-group-chat')} accessibilityLabel="New group chat">
-        <Feather name="plus" size={28} color="#fff" />
-      </Pressable>
+      <Fab label="New group chat" onPress={() => router.push('/new-group-chat')} />
     </>
   );
 }
-
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  fab: { position: 'absolute', right: spacing.xl, bottom: spacing.xl, width: 56, height: 56, borderRadius: 28, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', elevation: 6, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
-});

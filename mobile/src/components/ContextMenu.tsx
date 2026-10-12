@@ -1,9 +1,9 @@
-import type { Feather } from '@expo/vector-icons';
 import type React from 'react';
+
+import type { MenuItem } from './menu';
 
 // Native: touch has hold-to-select and inline controls, so there is no
 // context menu. ContextMenu.web.tsx is the browser version.
-export type MenuItem = { label: string; icon: React.ComponentProps<typeof Feather>['name']; danger?: boolean; onPress: () => void };
 
 export function useContextMenu(): { open: (items: MenuItem[], x: number, y: number) => void; close: () => void; menu: React.ReactNode } {
   return { open: () => {}, close: () => {}, menu: null };

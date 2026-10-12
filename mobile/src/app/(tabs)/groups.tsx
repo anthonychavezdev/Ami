@@ -1,11 +1,13 @@
 import { Feather } from '@expo/vector-icons';
 import { useFocusEffect, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { FlatList, Modal, Pressable, StyleSheet, Switch, Text, View } from 'react-native';
+import { FlatList, Modal, StyleSheet, Switch, Text, View } from 'react-native';
 
-import { Button, Empty, Input, Loading, Segmented } from '@/components/ui';
+import { Button, Empty, Fab, Input, Loading, Row, Segmented } from '@/components/ui';
 import { api } from '@/lib/api';
+import { errorMessage } from '@/lib/errors';
 import type { Group } from '@/lib/types';
+import { useDebounced } from '@/lib/useDebounced';
 import { useStyles, useTheme } from '@/lib/theme';
 import { toast } from '@/lib/toast';
 import { radius, spacing, type ThemeColors } from '@/theme';
@@ -13,7 +15,6 @@ import { radius, spacing, type ThemeColors } from '@/theme';
 type Tab = 'mine' | 'discover';
 
 export default function GroupsScreen() {
-  const styles = useStyles(makeStyles);
   const [tab, setTab] = useState<Tab>('mine');
   const [creating, setCreating] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
@@ -28,9 +29,7 @@ export default function GroupsScreen() {
         ]}
       />
       {tab === 'mine' ? <MyGroups key={reloadKey} /> : <Discover />}
-      <Pressable style={styles.fab} onPress={() => setCreating(true)}>
-        <Feather name="plus" size={28} color="#fff" />
-      </Pressable>
+      <Fab label="New group" onPress={() => setCreating(true)} />
       <CreateGroupModal
         visible={creating}
         onClose={() => setCreating(false)}
@@ -48,21 +47,20 @@ function GroupRow({ group }: { group: Group }) {
   const { colors } = useTheme();
   const styles = useStyles(makeStyles);
   const router = useRouter();
+  const members = `${group.member_count} ${group.member_count === 1 ? 'member' : 'members'}`;
+  const subtitle = members + (group.my_role ? ` · ${group.my_role}` : '') + (group.description ? ` · ${group.description}` : '');
   return (
-    <Pressable onPress={() => router.push(`/group/${group.id}`)} style={({ pressed }) => [styles.row, pressed && { opacity: 0.7 }]}>
-      <View style={styles.groupIcon}>
-        <Feather name="users" size={22} color={colors.accent} />
-      </View>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.name}>{group.name}</Text>
-        <Text style={styles.sub} numberOfLines={1}>
-          {group.member_count} {group.member_count === 1 ? 'member' : 'members'}
-          {group.my_role ? ` · ${group.my_role}` : ''}
-          {group.description ? ` · ${group.description}` : ''}
-        </Text>
-      </View>
-      <Feather name="chevron-right" size={20} color={colors.muted} />
-    </Pressable>
+    <Row
+      left={
+        <View style={styles.groupIcon}>
+          <Feather name="users" size={22} color={colors.accent} />
+        </View>
+      }
+      title={group.name}
+      subtitle={subtitle}
+      right={<Feather name="chevron-right" size={20} color={colors.muted} />}
+      onPress={() => router.push(`/group/${group.id}`)}
+    />
   );
 }
 
@@ -70,7 +68,10 @@ function MyGroups() {
   const [groups, setGroups] = useState<Group[] | null>(null);
   useFocusEffect(
     useCallback(() => {
-      api.myGroups().then(setGroups).catch(() => setGroups([]));
+      api
+        .myGroups()
+        .then(setGroups)
+        .catch(() => setGroups([]));
     }, []),
   );
   if (!groups) return <Loading />;
@@ -87,11 +88,14 @@ function MyGroups() {
 
 function Discover() {
   const [query, setQuery] = useState('');
+  const q = useDebounced(query);
   const [groups, setGroups] = useState<Group[] | null>(null);
   useEffect(() => {
-    const t = setTimeout(() => api.discoverGroups(query).then(setGroups).catch(() => setGroups([])), 250);
-    return () => clearTimeout(t);
-  }, [query]);
+    api
+      .discoverGroups(q)
+      .then(setGroups)
+      .catch(() => setGroups([]));
+  }, [q]);
   return (
     <View style={{ flex: 1 }}>
       <View style={{ padding: spacing.lg, paddingTop: spacing.sm }}>
@@ -132,7 +136,7 @@ function CreateGroupModal({ visible, onClose, onCreated }: { visible: boolean; o
       onCreated();
       router.push(`/group/${r.group.id}`);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e));
+      toast.error(errorMessage(e));
     } finally {
       setBusy(false);
     }
@@ -142,9 +146,18 @@ function CreateGroupModal({ visible, onClose, onCreated }: { visible: boolean; o
     <Modal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
       <View style={styles.modal}>
         <Text style={styles.modalTitle}>New group</Text>
-        <Text style={styles.hint}>You'll be the owner and admin. {inviteOnly ? 'Only people you add can find it.' : 'Anyone can find and join it.'}</Text>
+        <Text style={styles.hint}>
+          You&apos;ll be the owner and admin. {inviteOnly ? 'Only people you add can find it.' : 'Anyone can find and join it.'}
+        </Text>
         <Input placeholder="Group name" value={name} onChangeText={setName} maxLength={60} />
-        <Input placeholder="Description (optional)" value={description} onChangeText={setDescription} multiline style={{ minHeight: 80, textAlignVertical: 'top' }} maxLength={500} />
+        <Input
+          placeholder="Description (optional)"
+          value={description}
+          onChangeText={setDescription}
+          multiline
+          style={{ minHeight: 80, textAlignVertical: 'top' }}
+          maxLength={500}
+        />
         <View style={styles.switchRow}>
           <Text style={styles.switchLabel}>Invite only</Text>
           <Switch value={inviteOnly} onValueChange={setInviteOnly} trackColor={{ true: colors.accent }} accessibilityLabel="Invite only" />
@@ -156,15 +169,19 @@ function CreateGroupModal({ visible, onClose, onCreated }: { visible: boolean; o
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  row: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, backgroundColor: colors.card, borderBottomWidth: 1, borderBottomColor: colors.border },
-  groupIcon: { width: 44, height: 44, borderRadius: radius.md, backgroundColor: colors.accentSoft, alignItems: 'center', justifyContent: 'center' },
-  name: { fontWeight: '700', color: colors.text, fontSize: 15 },
-  sub: { color: colors.muted, fontSize: 13 },
-  fab: { position: 'absolute', right: spacing.xl, bottom: spacing.xl, width: 56, height: 56, borderRadius: 28, backgroundColor: colors.accent, alignItems: 'center', justifyContent: 'center', elevation: 6, shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } },
-  modal: { flex: 1, padding: spacing.xl, gap: spacing.md, backgroundColor: colors.bg },
-  modalTitle: { fontSize: 24, fontWeight: '800', color: colors.text },
-  hint: { color: colors.muted, marginBottom: spacing.sm },
-  switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing.xs },
-  switchLabel: { color: colors.text, fontSize: 16 },
-});
+const makeStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    groupIcon: {
+      width: 44,
+      height: 44,
+      borderRadius: radius.md,
+      backgroundColor: colors.accentSoft,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    modal: { flex: 1, padding: spacing.xl, gap: spacing.md, backgroundColor: colors.bg },
+    modalTitle: { fontSize: 24, fontWeight: '800', color: colors.text },
+    hint: { color: colors.muted, marginBottom: spacing.sm },
+    switchRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: spacing.xs },
+    switchLabel: { color: colors.text, fontSize: 16 },
+  });

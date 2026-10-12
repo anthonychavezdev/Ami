@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from 'react';
 
+import { errorMessage } from './errors';
 import type { Post } from './types';
 import { socket } from './ws';
 
@@ -14,47 +15,45 @@ const withoutPost = (list: Post[], id: number) => list.filter((x) => x.id !== id
 // filtered through `accept` (does this post belong in this list?).
 export function usePosts(fetchPage: (before?: number) => Promise<Post[]>, accept: (p: Post) => boolean = () => true) {
   const [posts, setPosts] = useState<Post[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loadedFor, setLoadedFor] = useState<unknown>(null); // the fetchPage whose first page is in
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const cursor = useRef<number | undefined>(undefined); // id of the oldest post loaded
   const done = useRef(false); // the last page was empty
   const busy = useRef(false);
-  const acceptRef = useRef(accept);
-  acceptRef.current = accept;
 
   const load = useCallback(
     async (reset: boolean) => {
       if (busy.current || (!reset && done.current)) return;
       busy.current = true;
       try {
-        const before = reset || posts.length === 0 ? undefined : posts[posts.length - 1].id;
-        const page = await fetchPage(before);
+        const page = await fetchPage(reset ? undefined : cursor.current);
         done.current = page.length === 0;
+        if (reset || page.length) cursor.current = page[page.length - 1]?.id;
         setPosts((prev) => (reset ? page : withPage(prev, page)));
+        setLoadedFor(fetchPage);
         setError(null);
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
+        setError(errorMessage(e));
       } finally {
         busy.current = false;
-        setLoading(false);
         setRefreshing(false);
       }
     },
-    [fetchPage, posts],
+    [fetchPage],
   );
 
   useEffect(() => {
     done.current = false;
-    setLoading(true);
     void load(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [fetchPage]);
+  }, [load]);
 
   const prepend = useCallback((p: Post) => setPosts((prev) => withPost(prev, p)), []);
+  const onCreated = useEffectEvent((p: Post) => accept(p) && prepend(p)); // always the latest accept
 
   useEffect(() => {
     const offs = [
-      socket.on('post.created', (e) => acceptRef.current(e.post) && prepend(e.post)),
+      socket.on('post.created', (e) => onCreated(e.post)),
       socket.on('post.updated', (e) => setPosts((prev) => replacePost(prev, e.post))),
       socket.on('post.deleted', (e) => setPosts((prev) => withoutPost(prev, e.id))),
     ];
@@ -63,7 +62,7 @@ export function usePosts(fetchPage: (before?: number) => Promise<Post[]>, accept
 
   return {
     posts,
-    loading,
+    loading: loadedFor !== fetchPage,
     refreshing,
     error,
     refresh: () => {

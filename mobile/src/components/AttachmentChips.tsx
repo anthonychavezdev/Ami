@@ -8,7 +8,15 @@ import type { Attachment } from '@/lib/types';
 import { radius, spacing, type ThemeColors } from '@/theme';
 
 // The pictures, videos and links waiting to go out with a post or message.
-export function AttachmentChips({ items, uploading, onRemove }: { items: Attachment[]; uploading: number; onRemove: (index: number) => void }) {
+export function AttachmentChips({
+  items,
+  uploading,
+  onRemove,
+}: {
+  items: Attachment[];
+  uploading: number;
+  onRemove: (index: number) => void;
+}) {
   const styles = useStyles(makeStyles);
   const { colors } = useTheme();
   if (items.length === 0 && uploading === 0) return null;
@@ -16,7 +24,11 @@ export function AttachmentChips({ items, uploading, onRemove }: { items: Attachm
     <View style={styles.chips}>
       {items.map((a, i) => (
         <View key={`${a.url}-${i}`} style={styles.chip}>
-          {a.type === 'image' ? <Image source={{ uri: mediaUrl(a) }} style={styles.thumb} /> : <Feather name={a.type === 'video' ? 'video' : 'link'} size={16} color={colors.muted} style={styles.chipIcon} />}
+          {a.type === 'image' ? (
+            <Image source={{ uri: mediaUrl(a) }} style={styles.thumb} />
+          ) : (
+            <Feather name={a.type === 'video' ? 'video' : 'link'} size={16} color={colors.muted} style={styles.chipIcon} />
+          )}
           <Text numberOfLines={1} style={styles.chipText}>
             {a.type === 'link' ? a.url.replace(/^https?:\/\//, '') : a.type}
           </Text>
@@ -30,10 +42,23 @@ export function AttachmentChips({ items, uploading, onRemove }: { items: Attachm
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  chips: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
-  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, maxWidth: 220, paddingVertical: 4, paddingLeft: 4, paddingRight: 10, borderRadius: radius.pill, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.bg },
-  thumb: { width: 28, height: 28, borderRadius: 14 },
-  chipIcon: { paddingLeft: 6 },
-  chipText: { color: colors.text, fontSize: 13, flexShrink: 1 },
-});
+const makeStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    chips: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: spacing.sm },
+    chip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      maxWidth: 220,
+      paddingVertical: 4,
+      paddingLeft: 4,
+      paddingRight: 10,
+      borderRadius: radius.pill,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.bg,
+    },
+    thumb: { width: 28, height: 28, borderRadius: 14 },
+    chipIcon: { paddingLeft: 6 },
+    chipText: { color: colors.text, fontSize: 13, flexShrink: 1 },
+  });

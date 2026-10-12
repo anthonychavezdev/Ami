@@ -18,8 +18,16 @@ export function CallBanner({ inThisCall, others, onPress }: { inThisCall: boolea
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  banner: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, backgroundColor: colors.success },
-  text: { flex: 1, color: '#fff', fontWeight: '600' },
-  action: { color: '#fff', fontWeight: '800' },
-});
+const makeStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    banner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.sm,
+      backgroundColor: colors.success,
+    },
+    text: { flex: 1, color: '#fff', fontWeight: '600' },
+    action: { color: '#fff', fontWeight: '800' },
+  });

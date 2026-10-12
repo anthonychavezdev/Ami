@@ -13,7 +13,8 @@ import UIKit
 class SceneDelegate: ExpoAppSceneDelegate {}
 `;
 
-const START_IN_APP_DELEGATE = /#if os\(iOS\) \|\| os\(tvOS\)\n\s*window = UIWindow\(frame: UIScreen\.main\.bounds\)\n\s*factory\.startReactNative\([\s\S]*?\)\n#endif\n\n?/;
+const START_IN_APP_DELEGATE =
+  /#if os\(iOS\) \|\| os\(tvOS\)\n\s*window = UIWindow\(frame: UIScreen\.main\.bounds\)\n\s*factory\.startReactNative\([\s\S]*?\)\n#endif\n\n?/;
 
 module.exports = function withSceneLifecycle(config) {
   config = withInfoPlist(config, (c) => {
