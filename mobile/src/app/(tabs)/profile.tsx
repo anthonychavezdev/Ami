@@ -47,6 +47,7 @@ export default function ProfileScreen() {
       <View style={styles.actions}>
         <Button title="Edit profile" icon="edit-2" onPress={() => router.push('/edit-profile')} />
         <Button title="View my profile" icon="user" variant="secondary" onPress={() => router.push(`/user/${user.id}`)} />
+        <Button title="Change password" icon="lock" variant="secondary" onPress={() => router.push('/change-password')} />
         <Button title="Log out" icon="log-out" variant="danger" onPress={() => void logout()} />
       </View>
       <View style={styles.section}>

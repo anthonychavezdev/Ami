@@ -57,7 +57,7 @@ function RootNavigator() {
           contentStyle: { backgroundColor: colors.bg },
         }}
       >
-        <Stack.Protected guard={!!user}>
+        <Stack.Protected guard={!!user && !user.must_change_password}>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           {/* singular: opening a post/profile/chat that is already in the stack goes to it instead of stacking a copy */}
           <Stack.Screen name="post/[id]" options={{ title: 'Post' }} dangerouslySingular />
@@ -76,6 +76,10 @@ function RootNavigator() {
         <Stack.Protected guard={!user}>
           <Stack.Screen name="login" options={{ headerShown: false }} />
           <Stack.Screen name="register" options={{ title: 'Create account' }} />
+        </Stack.Protected>
+        {/* Last on purpose: with a temporary password every screen above is gated, so this is where the app opens. */}
+        <Stack.Protected guard={!!user}>
+          <Stack.Screen name="change-password" options={{ title: 'Change password' }} />
         </Stack.Protected>
       </Stack>
     </CallProvider>

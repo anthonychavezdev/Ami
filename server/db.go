@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS users (
 	bio           TEXT NOT NULL DEFAULT '',
 	pronouns      TEXT NOT NULL DEFAULT '',
 	avatar_crop   TEXT NOT NULL DEFAULT '',
+	must_change_password INTEGER NOT NULL DEFAULT 0, -- set by -reset-password; cleared by PUT /api/me/password
 	created_at    TEXT NOT NULL
 );
 
@@ -143,6 +144,9 @@ CREATE INDEX IF NOT EXISTS messages_group ON messages(group_id, id);
 // number is the migration's position, so nothing else needs bumping.
 var migrations = []migration{
 	{"everything up to group chats", upgradeUnversioned},
+	{"password resets", func(tx *sql.Tx) error {
+		return addColumn(tx, "users", "must_change_password", "INTEGER NOT NULL DEFAULT 0")
+	}},
 }
 
 type migration struct {
@@ -276,14 +280,19 @@ func upgradeUnversioned(tx *sql.Tx) error {
 
 func addColumns(tx *sql.Tx) error {
 	for _, c := range addedColumns {
-		if columnExists(tx, c.table, c.column) {
-			continue
-		}
-		if err := exec(tx, `ALTER TABLE `+c.table+` ADD COLUMN `+c.column+` `+c.definition); err != nil {
+		if err := addColumn(tx, c.table, c.column, c.definition); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// addColumn adds a column unless the table already has it.
+func addColumn(tx *sql.Tx, table, column, definition string) error {
+	if columnExists(tx, table, column) {
+		return nil
+	}
+	return exec(tx, `ALTER TABLE `+table+` ADD COLUMN `+column+` `+definition)
 }
 
 // rebuildMessages rebuilds a messages table from before group chats, where

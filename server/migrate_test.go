@@ -95,6 +95,9 @@ func TestMigrateFirstRelease(t *testing.T) {
 			t.Errorf("table %s missing", table)
 		}
 	}
+	if !columnExists(db, "users", "must_change_password") {
+		t.Error("migration 2 did not run after migration 1")
+	}
 	if _, err := db.Exec(`INSERT INTO messages(sender_id, group_id, body, created_at) VALUES (1, NULL, 'x', '2024-01-03T00:00:00Z')`); err != nil {
 		t.Errorf("insert after migration: %v", err)
 	}
@@ -121,5 +124,27 @@ func TestNewDatabaseIsCurrent(t *testing.T) {
 	}
 	if err := migrate(db); err != nil {
 		t.Errorf("migrate on a current database: %v", err)
+	}
+}
+
+// Later migrations are checked by taking a current database back one version.
+func TestMigrateFromVersion1(t *testing.T) {
+	db, err := openDB(filepath.Join(t.TempDir(), "v1.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec(`ALTER TABLE users DROP COLUMN must_change_password`); err != nil {
+		t.Fatal(err)
+	}
+	if err := setUserVersion(db, 1); err != nil {
+		t.Fatal(err)
+	}
+	if err := migrate(db); err != nil {
+		t.Fatalf("migrate from version 1: %v", err)
+	}
+	v, _ := userVersion(db)
+	if v != len(migrations) || !columnExists(db, "users", "must_change_password") {
+		t.Errorf("version %d, must_change_password present: %v", v, columnExists(db, "users", "must_change_password"))
 	}
 }

@@ -101,6 +101,20 @@ running here, another device just opens `http://<this machine's IP>:8081`.
   `app-store-connect` (default; upload with Transporter or TestFlight),
   `release-testing` (ad hoc, for registered devices) or `debugging`.
 
+### Forgotten passwords
+
+There is no email, so you are the recovery channel. On the machine with the
+database (the server may keep running):
+
+```sh
+./ami-server -db /var/lib/ami/ami.db -reset-password luis    # development: server -reset-password luis
+```
+
+It prints a temporary password, signs that user out of every device and exits.
+Tell them the password in person. Logging in with it only allows setting a new
+one: the app opens that screen and the API refuses everything else until it is
+done. Anyone can also change their password from the Me tab.
+
 ### Notifications
 
 A message to someone who is not looking at that chat shows an OS notification:
@@ -138,7 +152,7 @@ project id the app simply never registers a push token.
 | Posts | Markdown text, pictures, videos and links, together or on their own; tap a picture or video to view it fullscreen (arrows, thumbnails, Save to your library). Authors can edit their posts (a pencil marks edited ones). Comments thread like Reddit: reply under a comment, edit or delete your own; a deleted comment with replies stays as [deleted]. In the browser, your posts, comments and messages get a ⋯ button on hover and a right-click menu. Feed = your posts + friends' posts + posts in your groups. Profile posts are public. |
 | Reactions | Tap **React** to 👍; press-and-hold opens the emoji menu. One reaction per user per post, any emoji. |
 | Comments | On the post screen. |
-| Profile | Picture (GIFs animate), display name, pronouns, bio, and a username change that must be valid and free. |
+| Profile | Picture (GIFs animate), display name, pronouns, bio, a username change that must be valid and free, and a password change (other devices are signed out). |
 | Friends | Request → accept. Only friends can message/call each other. Pushed live over WebSocket. Every avatar carries a presence dot: green while the user has the app open, gray otherwise. "Appear offline" on the Me tab hides yours. |
 | Groups | Creator is owner + admin; others join as members. Admin can add friends, remove members, delete posts, delete the group. Every group has a chat and a call. Invite-only groups are hidden from Discover and only the admin adds people; that is what the + button on the Messages tab creates. |
 | Messages | Direct messages and group chats, with pictures and videos, delivered in real time. Group messages show who wrote them; the group admin can delete any of them. Hold one of your messages to edit or delete it. Unread badges on the Messages tab (per chat and in total) and OS notifications (browser, Android, iOS) that name the group. |
@@ -168,6 +182,7 @@ POST   /api/register  /api/login  /api/logout      GET /api/me
 PUT    /api/me {username?, display_name?, bio?, pronouns?, avatar_url?, avatar_crop?}   (avatar: a picture uploaded via /api/media, GIFs included;
        avatar_crop {x, y, w, aspect}: the square shown in the circle, as fractions of the picture)
 PUT    /api/me/presence {invisible}   appear offline to everyone
+PUT    /api/me/password {current, new}   signs out the other devices; after -reset-password it is the only call allowed
 GET    /api/users?q=   /api/users/{id}   /api/users/{id}/posts
 GET    /api/feed?before=&limit=
 POST   /api/posts {body, group_id?}    GET|PUT|DELETE /api/posts/{id}   (PUT: author, {body, attachments})
@@ -188,4 +203,4 @@ GET    /ws?token=   (every event and client message is a struct in server/events
                      mobile/src/lib/events.ts; the call protocol is described in server/calls.go)
 ```
 
-Server flags: `-addr :8080 -db ami.db -media-dir media`.
+Server flags: `-addr :8080 -db ami.db -media-dir media`; `-reset-password <username>` (see Forgotten passwords).
