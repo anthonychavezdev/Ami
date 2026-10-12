@@ -675,3 +675,38 @@ func objectsOrNumbers(v any) []float64 {
 }
 
 func contains(ids []int64, id int64) bool { return slicesContains(ids, id) }
+
+func TestPasswords(t *testing.T) {
+	ts := newTestServer(t, false)
+	tom := ts.register("tom")
+	other := ts.login("tom", testPassword) // a second device
+	change := func(token, current, next string) response {
+		return ts.put("/api/me/password", J{"current": current, "new": next}, token)
+	}
+	ts.check("a new account needs no password change", !tom.user.isTrue("must_change_password"), tom.user)
+	ts.check("wrong current password -> 400", change(tom.token, "nope-nope", "another-one").status == 400)
+	ts.check("new password too short -> 400", change(tom.token, testPassword, "short").status == 400)
+	r := change(tom.token, testPassword, "second-password")
+	ts.check("change password", r.status == 200 && !r.obj().isTrue("must_change_password"), r)
+	ts.check("the device that changed it stays signed in", ts.get("/api/me", tom.token).status == 200)
+	ts.check("other devices are signed out", ts.get("/api/me", other.token).status == 401)
+	ts.check("the old password no longer logs in", ts.post("/api/login", J{"username": "tom", "password": testPassword}, "").status == 401)
+	tom = ts.login("tom", "second-password")
+
+	_, err := resetPassword(ts.s.db, "nobody")
+	ts.check("reset for an unknown user fails", err != nil && strings.Contains(err.Error(), "nobody"), err)
+	temp, err := resetPassword(ts.s.db, "tom")
+	ts.check("reset prints a readable temporary password", err == nil && len(temp) == 14 && temp[4] == '-' && temp[9] == '-', temp, err)
+	ts.check("reset signs out every device", ts.get("/api/me", tom.token).status == 401)
+	ts.check("the previous password is gone", ts.post("/api/login", J{"username": "tom", "password": "second-password"}, "").status == 401)
+	tom = ts.login("tom", temp)
+	ts.check("logging in with the temporary password flags the account", tom.user.isTrue("must_change_password"), tom.user)
+	ts.check("me still answers", ts.get("/api/me", tom.token).obj().isTrue("must_change_password"))
+	ts.check("everything else is refused until the password changes", ts.get("/api/feed", tom.token).status == 403 && ts.put("/api/me", J{"bio": "x"}, tom.token).status == 403)
+	ts.check("the temporary password is the current one", change(tom.token, "wrong-wrong", "third-password").status == 400)
+	r = change(tom.token, temp, "third-password")
+	ts.check("setting a new password clears the flag", r.status == 200 && !r.obj().isTrue("must_change_password"), r)
+	ts.check("and opens the account again", ts.get("/api/feed", tom.token).status == 200)
+	ts.check("the temporary password works only once", ts.post("/api/login", J{"username": "tom", "password": temp}, "").status == 401)
+	ts.check("logout is allowed while flagged", ts.post("/api/logout", nil, ts.login("tom", "third-password").token).status == 204)
+}

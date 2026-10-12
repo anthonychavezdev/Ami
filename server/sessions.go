@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 	"regexp"
@@ -55,20 +56,28 @@ func bearerToken(r *http.Request) string {
 	return r.URL.Query().Get("token")
 }
 
-func (s *server) userForToken(token string) (*User, error) {
+// sessionUser is the account behind a token, and whether it is restricted to
+// setting a new password.
+type sessionUser struct {
+	*User
+	mustChangePassword bool
+}
+
+func (s *server) userForToken(token string) (sessionUser, error) {
 	if token == "" {
-		return nil, errUnauthorized
+		return sessionUser{}, errUnauthorized
 	}
-	row := s.db.QueryRow(`SELECT `+userCols+`, s.expires_at FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ?`, tokenHash(token))
+	row := s.db.QueryRow(`SELECT `+userCols+`, u.must_change_password, s.expires_at FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token = ?`, tokenHash(token))
 	var u User
+	var mustChange bool
 	var expires string
-	if err := row.Scan(fields(u.fields(), []any{&expires})...); err != nil {
-		return nil, errUnauthorized
+	if err := row.Scan(fields(u.fields(), []any{&mustChange, &expires})...); err != nil {
+		return sessionUser{}, errUnauthorized
 	}
 	if exp, err := time.Parse(time.RFC3339Nano, expires); err != nil || exp.Before(now()) {
-		return nil, errUnauthorized
+		return sessionUser{}, errUnauthorized
 	}
-	return &u, nil
+	return sessionUser{User: &u, mustChangePassword: mustChange}, nil
 }
 
 func (s *server) createSession(userID int64) (string, error) {
@@ -90,16 +99,23 @@ func (s *server) purgeSessions() {
 
 type authedHandler func(w http.ResponseWriter, r *http.Request, me *User) error
 
+// passwordChangeOnly is all a user signed in with a temporary password may do.
+var passwordChangeOnly = map[string]bool{"GET /api/me": true, "PUT /api/me/password": true, "POST /api/logout": true}
+
 // auth wraps a handler, requiring a valid session token
 // (Authorization: Bearer <token>, or ?token=<token> for WebSockets).
 func (s *server) auth(h authedHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		me, err := s.userForToken(bearerToken(r))
+		su, err := s.userForToken(bearerToken(r))
 		if err != nil {
 			writeError(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
-		respond(w, h(w, r, me))
+		if su.mustChangePassword && !passwordChangeOnly[r.Method+" "+r.URL.Path] {
+			writeError(w, http.StatusForbidden, "set a new password first")
+			return
+		}
+		respond(w, h(w, r, su.User))
 	}
 }
 
@@ -117,8 +133,8 @@ func validCredentials(c credentials) (credentials, error) {
 	switch {
 	case !usernameRe.MatchString(c.Username):
 		return c, badRequest("username must be 3-24 letters, digits or underscores")
-	case len(c.Password) < 8 || len(c.Password) > 128:
-		return c, badRequest("password must be 8-128 characters")
+	case validPassword(c.Password) != nil:
+		return c, validPassword(c.Password)
 	case len(c.DisplayName) > 50:
 		return c, badRequest("display name too long")
 	}
@@ -126,6 +142,13 @@ func validCredentials(c credentials) (credentials, error) {
 		c.DisplayName = c.Username
 	}
 	return c, nil
+}
+
+func validPassword(p string) error {
+	if len(p) < 8 || len(p) > 128 {
+		return badRequest("password must be 8-128 characters")
+	}
+	return nil
 }
 
 func (s *server) register(w http.ResponseWriter, r *http.Request) error {
@@ -161,33 +184,135 @@ func (p storedPassword) matches(password string) bool {
 	return subtle.ConstantTimeCompare(p.hash, hashPassword(password, p.salt, p.iterations)) == 1
 }
 
+// passwordOf loads a user's stored password by username or id.
+func (s *server) passwordOf(column string, key any) (storedPassword, error) {
+	var p storedPassword
+	err := s.db.QueryRow(`SELECT id, password_hash, salt, password_iterations FROM users WHERE `+column+` = ?`, key).
+		Scan(&p.id, &p.hash, &p.salt, &p.iterations)
+	return p, err
+}
+
 func (s *server) login(w http.ResponseWriter, r *http.Request) error {
 	var c credentials
 	if err := readJSON(w, r, &c); err != nil {
 		return err
 	}
-	var p storedPassword
-	err := s.db.QueryRow(`SELECT id, password_hash, salt, password_iterations FROM users WHERE username = ?`, strings.TrimSpace(c.Username)).
-		Scan(&p.id, &p.hash, &p.salt, &p.iterations)
+	p, err := s.passwordOf("username", strings.TrimSpace(c.Username))
 	if errors.Is(err, sql.ErrNoRows) || (err == nil && !p.matches(c.Password)) {
 		return fail(http.StatusUnauthorized, "invalid username or password")
 	}
 	if err != nil {
 		return err
 	}
-	if p.iterations < pbkdf2Iterations {
-		s.upgradeHash(p.id, c.Password)
+	if p.iterations < pbkdf2Iterations { // transparently re-hash a password stored with fewer rounds
+		if err := storePassword(s.db, p.id, c.Password); err != nil {
+			log.Printf("upgrade password hash: %v", err)
+		}
 	}
 	return s.issueSession(w, p.id)
 }
 
-// upgradeHash transparently re-hashes a password stored with fewer rounds.
-func (s *server) upgradeHash(id int64, password string) {
+// storePassword hashes a password with a fresh salt and the current rounds.
+func storePassword(db dbtx, userID int64, password string) error {
 	salt := randomBytes(16)
-	if _, err := s.db.Exec(`UPDATE users SET password_hash = ?, salt = ?, password_iterations = ? WHERE id = ?`,
-		hashPassword(password, salt, pbkdf2Iterations), salt, pbkdf2Iterations, id); err != nil {
-		log.Printf("upgrade password hash: %v", err)
+	_, err := db.Exec(`UPDATE users SET password_hash = ?, salt = ?, password_iterations = ? WHERE id = ?`,
+		hashPassword(password, salt, pbkdf2Iterations), salt, pbkdf2Iterations, userID)
+	return err
+}
+
+// ---- changing and resetting passwords
+
+type passwordInput struct {
+	Current string `json:"current"`
+	New     string `json:"new"`
+}
+
+// changePassword sets a new password for the caller, who must give the
+// current (or temporary) one, and signs out their other devices.
+func (s *server) changePassword(w http.ResponseWriter, r *http.Request, me *User) error {
+	var in passwordInput
+	if err := readJSON(w, r, &in); err != nil {
+		return err
 	}
+	if err := validPassword(in.New); err != nil {
+		return err
+	}
+	p, err := s.passwordOf("id", me.ID)
+	if err != nil {
+		return err
+	}
+	if !p.matches(in.Current) {
+		return badRequest("current password is wrong")
+	}
+	err = s.inTx(func(tx *sql.Tx) error {
+		if err := storePassword(tx, me.ID, in.New); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`UPDATE users SET must_change_password = 0 WHERE id = ?`, me.ID); err != nil {
+			return err
+		}
+		_, err := tx.Exec(`DELETE FROM sessions WHERE user_id = ? AND token != ?`, me.ID, tokenHash(bearerToken(r)))
+		return err
+	})
+	if err != nil {
+		return err
+	}
+	return ok(w, s.meFor(*me))
+}
+
+// resetPassword (the -reset-password flag) gives an account a temporary
+// password to pass on to its owner in person, and signs out every device.
+// Logging in with it allows nothing but setting a new password.
+func resetPassword(db *sql.DB, username string) (string, error) {
+	var id int64
+	err := db.QueryRow(`SELECT id FROM users WHERE username = ?`, strings.TrimSpace(username)).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", fmt.Errorf("no user named %q", username)
+	}
+	if err != nil {
+		return "", err
+	}
+	password := temporaryPassword()
+	err = inTx(db, func(tx *sql.Tx) error {
+		if err := storePassword(tx, id, password); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(`UPDATE users SET must_change_password = 1 WHERE id = ?`, id); err != nil {
+			return err
+		}
+		_, err := tx.Exec(`DELETE FROM sessions WHERE user_id = ?`, id)
+		return err
+	})
+	return password, err
+}
+
+// temporaryPassword is a random passphrase that is easy to read out: three
+// groups of four lowercase letters and digits, without look-alikes.
+func temporaryPassword() string {
+	const alphabet = "abcdefghjkmnpqrstuvwxyz023456789" // 32 characters: no i, l, o or 1
+	out := make([]byte, 0, 14)
+	for i, b := range randomBytes(12) {
+		if i > 0 && i%4 == 0 {
+			out = append(out, '-')
+		}
+		out = append(out, alphabet[b%32])
+	}
+	return string(out)
+}
+
+// printTemporaryPassword runs the -reset-password flag and exits the program.
+func printTemporaryPassword(cfg config) error {
+	db, err := openDB(cfg.dbPath)
+	if err != nil {
+		return fmt.Errorf("open db: %w", err)
+	}
+	defer db.Close()
+	password, err := resetPassword(db, cfg.resetPassword)
+	if err != nil {
+		return err
+	}
+	fmt.Printf("Temporary password for %s: %s\nIt only allows setting a new password at the next login; every device of this user has been signed out.\n", cfg.resetPassword, password)
+	return nil
 }
 
 // session is the answer of /api/register and /api/login.
