@@ -1,37 +1,23 @@
-import { useSyncExternalStore } from 'react';
-
+import { createStore } from './store';
 import { socket } from './ws';
 
 // Who is online right now. Seeded by the `online` flag on user objects as they
 // are rendered, kept current by presence events and the hello list.
-const known = new Map<number, boolean>();
-const listeners = new Set<() => void>();
-let version = 0;
+const online = createStore<ReadonlyMap<number, boolean>>(new Map());
 
-function changed() {
-  version++;
-  listeners.forEach((l) => l());
+socket.on('presence', (e) => online.set((known) => new Map(known).set(e.user_id, !!e.online)));
+socket.on('hello', (e) => online.set((known) => withOnlineList(known, e.online ?? [])));
+
+// Everyone we knew about is offline unless listed; everyone listed is online.
+function withOnlineList(known: ReadonlyMap<number, boolean>, ids: number[]): ReadonlyMap<number, boolean> {
+  const listed = new Set(ids);
+  const next = new Map([...known.keys()].map((id) => [id, listed.has(id)] as const));
+  ids.forEach((id) => next.set(id, true));
+  return next;
 }
 
-socket.on('presence', (e) => {
-  known.set(e.user_id, !!e.online);
-  changed();
-});
-socket.on('hello', (e) => {
-  const online = new Set<number>(e.online ?? []);
-  for (const id of known.keys()) known.set(id, online.has(id));
-  for (const id of online) known.set(id, true);
-  changed();
-});
-
-const subscribe = (l: () => void) => {
-  listeners.add(l);
-  return () => void listeners.delete(l);
-};
-const snapshot = () => version;
-
 export function useOnline(userId: number | undefined, fallback?: boolean): boolean {
-  useSyncExternalStore(subscribe, snapshot, snapshot);
+  const known = online.use();
   if (!userId) return false;
   return known.get(userId) ?? !!fallback;
 }

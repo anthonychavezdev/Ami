@@ -24,13 +24,12 @@ export function MediaViewer({ items, index, accent, onClose }: { items: Attachme
   const insets = useSafeAreaInsets();
   const [size, setSize] = useState<Size | null>(null);
   const [current, setCurrent] = useState(0);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
   const list = useRef<FlatList<Attachment>>(null);
-  const strip = useRef<ScrollView>(null);
   const visible = index !== null;
   const many = items.length > 1;
   const listHeight = size ? size.height - (many ? STRIP + insets.bottom : 0) : 0;
+  const [notice, showNotice] = useNotice();
+  const { saving, save } = useSave(items[current], showNotice);
 
   useEffect(() => {
     if (index !== null) setCurrent(index);
@@ -44,45 +43,8 @@ export function MediaViewer({ items, index, accent, onClose }: { items: Attachme
     },
     [items.length],
   );
+  useArrowKeys(visible, current, goTo);
 
-  // Keep the active thumbnail in view.
-  useEffect(() => {
-    if (!size || !many) return;
-    strip.current?.scrollTo({ x: Math.max(0, current * (THUMB + spacing.sm) - size.width / 2 + THUMB / 2), animated: true });
-  }, [current, size, many]);
-
-  // Web: arrow keys move between items.
-  useEffect(() => {
-    if (Platform.OS !== 'web' || !visible) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft') goTo(current - 1);
-      else if (e.key === 'ArrowRight') goTo(current + 1);
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [visible, current, goTo]);
-
-  // Short status inside the viewer (the app's banners sit underneath the modal).
-  useEffect(() => {
-    if (!notice) return;
-    const t = setTimeout(() => setNotice(null), 2500);
-    return () => clearTimeout(t);
-  }, [notice]);
-
-  const save = async () => {
-    const att = items[current];
-    if (!att || saving) return;
-    setSaving(true);
-    try {
-      setNotice(await saveMedia(att));
-    } catch (e) {
-      setNotice(e instanceof Error ? e.message : String(e));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const isVideo = items[current]?.type === 'video';
   return (
     <Modal visible={visible} animationType="fade" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent supportedOrientations={['portrait', 'landscape']}>
       <StatusBar style="light" />
@@ -106,25 +68,17 @@ export function MediaViewer({ items, index, accent, onClose }: { items: Attachme
         <View style={[styles.bar, { top: insets.top + spacing.sm }]}>
           <Text style={styles.counter}>{many ? `${current + 1} / ${items.length}` : ''}</Text>
           <View style={styles.barActions}>
-            <Pressable onPress={() => void save()} hitSlop={10} accessibilityLabel={isVideo ? 'Save video' : 'Save picture'} style={({ pressed }) => [styles.round, pressed && { opacity: 0.6 }]}>
+            <RoundButton label={items[current]?.type === 'video' ? 'Save video' : 'Save picture'} onPress={() => void save()}>
               {saving ? <ActivityIndicator color="#fff" /> : <Feather name="download" size={20} color="#fff" />}
-            </Pressable>
-            <Pressable onPress={onClose} hitSlop={10} accessibilityLabel="Close" style={({ pressed }) => [styles.round, pressed && { opacity: 0.6 }]}>
+            </RoundButton>
+            <RoundButton label="Close" onPress={onClose}>
               <Feather name="x" size={22} color="#fff" />
-            </Pressable>
+            </RoundButton>
           </View>
         </View>
 
-        {many && current > 0 && (
-          <Pressable onPress={() => goTo(current - 1)} hitSlop={10} accessibilityLabel="Previous" style={({ pressed }) => [styles.arrow, { left: spacing.md, top: listHeight / 2 - 22 }, pressed && { opacity: 0.6 }]}>
-            <Feather name="chevron-left" size={28} color="#fff" />
-          </Pressable>
-        )}
-        {many && current < items.length - 1 && (
-          <Pressable onPress={() => goTo(current + 1)} hitSlop={10} accessibilityLabel="Next" style={({ pressed }) => [styles.arrow, { right: spacing.md, top: listHeight / 2 - 22 }, pressed && { opacity: 0.6 }]}>
-            <Feather name="chevron-right" size={28} color="#fff" />
-          </Pressable>
-        )}
+        {many && current > 0 && <Arrow side="left" top={listHeight / 2 - 22} onPress={() => goTo(current - 1)} />}
+        {many && current < items.length - 1 && <Arrow side="right" top={listHeight / 2 - 22} onPress={() => goTo(current + 1)} />}
 
         {notice && (
           <View style={[styles.notice, { bottom: (many ? STRIP : 0) + insets.bottom + spacing.lg }]}>
@@ -132,25 +86,91 @@ export function MediaViewer({ items, index, accent, onClose }: { items: Attachme
           </View>
         )}
 
-        {many && (
-          <View style={[styles.strip, { height: STRIP + insets.bottom, paddingBottom: insets.bottom }]}>
-            <ScrollView ref={strip} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stripContent}>
-              {items.map((a, i) => (
-                <Pressable key={`${a.url}-${i}`} onPress={() => goTo(i)} accessibilityLabel={`${a.type === 'video' ? 'Video' : 'Picture'} ${i + 1}`} style={[styles.thumb, i === current && { borderColor: accent, opacity: 1 }]}>
-                  {a.type === 'video' ? (
-                    <View style={styles.thumbVideo}>
-                      <Feather name="play" size={18} color="#fff" />
-                    </View>
-                  ) : (
-                    <Image source={{ uri: mediaUrl(a) }} style={StyleSheet.absoluteFill} resizeMode="cover" />
-                  )}
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
-        )}
+        {many && size && <ThumbnailStrip items={items} current={current} width={size.width} accent={accent} bottomInset={insets.bottom} onPick={goTo} />}
       </View>
     </Modal>
+  );
+}
+
+// Web: arrow keys move between items.
+function useArrowKeys(active: boolean, current: number, goTo: (i: number) => void) {
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !active) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft') goTo(current - 1);
+      else if (e.key === 'ArrowRight') goTo(current + 1);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [active, current, goTo]);
+}
+
+// A short status inside the viewer (the app's banners sit underneath the modal).
+function useNotice(): [string | null, (text: string) => void] {
+  const [notice, setNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (!notice) return;
+    const t = setTimeout(() => setNotice(null), 2500);
+    return () => clearTimeout(t);
+  }, [notice]);
+  return [notice, setNotice];
+}
+
+// Saves the current item to the library, reporting the outcome as a notice.
+function useSave(att: Attachment | undefined, report: (text: string) => void) {
+  const [saving, setSaving] = useState(false);
+  const save = async () => {
+    if (!att || saving) return;
+    setSaving(true);
+    try {
+      report(await saveMedia(att));
+    } catch (e) {
+      report(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  };
+  return { saving, save };
+}
+
+function RoundButton({ label, onPress, children }: { label: string; onPress: () => void; children: React.ReactNode }) {
+  return (
+    <Pressable onPress={onPress} hitSlop={10} accessibilityLabel={label} style={({ pressed }) => [styles.round, pressed && { opacity: 0.6 }]}>
+      {children}
+    </Pressable>
+  );
+}
+
+function Arrow({ side, top, onPress }: { side: 'left' | 'right'; top: number; onPress: () => void }) {
+  return (
+    <Pressable onPress={onPress} hitSlop={10} accessibilityLabel={side === 'left' ? 'Previous' : 'Next'} style={({ pressed }) => [styles.arrow, { [side]: spacing.md, top }, pressed && { opacity: 0.6 }]}>
+      <Feather name={side === 'left' ? 'chevron-left' : 'chevron-right'} size={28} color="#fff" />
+    </Pressable>
+  );
+}
+
+// Small pictures along the bottom; the active one is kept in view.
+function ThumbnailStrip({ items, current, width, accent, bottomInset, onPick }: { items: Attachment[]; current: number; width: number; accent: string; bottomInset: number; onPick: (i: number) => void }) {
+  const strip = useRef<ScrollView>(null);
+  useEffect(() => {
+    strip.current?.scrollTo({ x: Math.max(0, current * (THUMB + spacing.sm) - width / 2 + THUMB / 2), animated: true });
+  }, [current, width]);
+  return (
+    <View style={[styles.strip, { height: STRIP + bottomInset, paddingBottom: bottomInset }]}>
+      <ScrollView ref={strip} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stripContent}>
+        {items.map((a, i) => (
+          <Pressable key={`${a.url}-${i}`} onPress={() => onPick(i)} accessibilityLabel={`${a.type === 'video' ? 'Video' : 'Picture'} ${i + 1}`} style={[styles.thumb, i === current && { borderColor: accent, opacity: 1 }]}>
+            {a.type === 'video' ? (
+              <View style={styles.thumbVideo}>
+                <Feather name="play" size={18} color="#fff" />
+              </View>
+            ) : (
+              <Image source={{ uri: mediaUrl(a) }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+            )}
+          </Pressable>
+        ))}
+      </ScrollView>
+    </View>
   );
 }
 

@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 import { api, setAuthToken } from './api';
-import type { Me, User } from './types';
+import type { Me } from './types';
 import { setupNotifications, teardownNotifications } from './notifications';
 import { storage } from './storage';
 import { unread } from './unread';
@@ -24,35 +24,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<Me | null>(null);
   const [ready, setReady] = useState(false);
 
-  const establish = useCallback(async (token: string, u: Me) => {
+  // Wires everything that depends on being signed in: the API token, the
+  // WebSocket, the unread badge and OS notifications.
+  const signIn = useCallback((token: string, u: Me) => {
     setAuthToken(token);
-    await storage.set(TOKEN_KEY, token);
     unread.setUser(u.id);
     socket.connect(token);
     setUser(u);
     void setupNotifications();
   }, []);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const token = await storage.get(TOKEN_KEY);
-        if (token) {
-          setAuthToken(token);
-          const u = await api.me();
-          unread.setUser(u.id);
-          socket.connect(token);
-          setUser(u);
-          void setupNotifications();
-        }
-      } catch {
-        setAuthToken(null);
-        await storage.remove(TOKEN_KEY).catch(() => {});
-      } finally {
-        setReady(true);
-      }
-    })();
+  const signOut = useCallback(async () => {
+    unread.setUser(null);
+    socket.disconnect();
+    setAuthToken(null);
+    await storage.remove(TOKEN_KEY).catch(() => {});
+    setUser(null);
   }, []);
+
+  // On start, resume the stored session if it is still valid.
+  useEffect(() => {
+    storage
+      .get(TOKEN_KEY)
+      .then(async (token) => {
+        if (!token) return;
+        setAuthToken(token);
+        signIn(token, await api.me());
+      })
+      .catch(signOut)
+      .finally(() => setReady(true));
+  }, [signIn, signOut]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -61,23 +62,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       update: (patch) => setUser((u) => (u ? { ...u, ...patch } : u)),
       login: async (username, password) => {
         const r = await api.login(username, password);
-        await establish(r.token, r.user);
+        await storage.set(TOKEN_KEY, r.token);
+        signIn(r.token, r.user);
       },
       register: async (username, password, displayName) => {
         const r = await api.register(username, password, displayName);
-        await establish(r.token, r.user);
+        await storage.set(TOKEN_KEY, r.token);
+        signIn(r.token, r.user);
       },
       logout: async () => {
         await teardownNotifications().catch(() => {});
         await api.logout().catch(() => {});
-        unread.setUser(null);
-        socket.disconnect();
-        setAuthToken(null);
-        await storage.remove(TOKEN_KEY).catch(() => {});
-        setUser(null);
+        await signOut();
       },
     }),
-    [user, ready, establish],
+    [user, ready, signIn, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -6,133 +6,47 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Avatar, GroupAvatar } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
-import { type Participant, useCall } from '@/lib/call';
+import { type CallState, useCall } from '@/lib/call';
+import { type Layout, type Tile, callLayout, callSubtitle, gridColumns, localVideoOf } from '@/lib/callLayout';
 import { type MediaStream, RemoteAudio, ScreenCapturePicker, StreamView, canFlipCamera } from '@/lib/webrtc';
 import { useStyles } from '@/lib/theme';
 import { toast } from '@/lib/toast';
-import type { User } from '@/lib/types';
 import { radius, spacing, type ThemeColors } from '@/theme';
-
-// What one tile of the call shows: a person's camera, or their avatar.
-type Tile = { key: string; user: User; stream: MediaStream | null; mirror?: boolean; label: string };
 
 export default function CallScreen() {
   const styles = useStyles(makeStyles);
   const { state, call } = useCall();
   const { user: me } = useAuth();
-  const router = useRouter();
   const pickerRef = useRef<any>(null);
-
-  // Register the iOS screen-capture picker so the manager can show it.
-  useEffect(() => {
-    if (Platform.OS === 'ios' && pickerRef.current) call.pickerHandle = findNodeHandle(pickerRef.current);
-    return () => {
-      call.pickerHandle = null;
-    };
-  }, [call]);
-
-  // Leave the screen (once) when the call ends; the reason shows as a banner.
-  const left = useRef(false);
-  useEffect(() => {
-    if (state.status !== 'idle') return;
-    if (left.current) return;
-    left.current = true;
-    const reason = state.error;
-    if (reason) call.clearError();
-    if (router.canGoBack()) router.back();
-    else router.replace('/');
-    // After this modal has slid away, so the banner is not hidden behind it.
-    if (reason) setTimeout(() => toast.show(reason), 400);
-  }, [state.status, state.error, call, router]);
+  useScreenCapturePicker(pickerRef);
+  useLeaveWhenOver(state);
 
   if (state.status === 'idle' || !me) return <View style={styles.root} />;
-
-  const { participants, group, peer } = state;
-  const cameraOf = (p: Participant) => p.streams.find((s) => s.id !== p.screenId && s.getVideoTracks().length > 0) ?? null;
-  const localVideo = state.cameraOn && state.localStream?.getVideoTracks().length ? state.localStream : null;
-  const sharer = participants.find((p) => p.screenId && p.streams.some((s) => s.id === p.screenId));
-  // A shared screen takes the stage: someone else's first, otherwise our own.
-  const stage = sharer ? sharer.streams.find((s) => s.id === sharer.screenId)! : state.localScreen;
-  const title = group?.name ?? peer?.display_name ?? '';
+  const layout = callLayout(state, me);
   const ringing = state.status === 'incoming';
-
-  const subtitle = {
-    incoming: group ? `${peer?.display_name ?? 'Someone'} is calling · ${state.video ? 'video' : 'voice'}` : `Incoming ${state.video ? 'video' : 'voice'} call`,
-    outgoing: 'Calling…',
-    connecting: 'Connecting…',
-    active: state.sharing
-      ? 'You are sharing your screen'
-      : sharer
-        ? `${sharer.user.display_name} is sharing their screen`
-        : group
-          ? participants.length === 0
-            ? 'Waiting for others to join…'
-            : `${participants.length + 1} in the call`
-          : state.video || state.cameraOn
-            ? 'Video call'
-            : 'Voice call',
-    idle: '',
-  }[state.status];
-
-  const tiles: Tile[] = participants.map((p) => ({ key: String(p.user.id), user: p.user, stream: cameraOf(p), label: p.user.display_name }));
-  const localTile: Tile = { key: 'me', user: me, stream: localVideo, mirror: true, label: 'You' };
-
-  // Behind everything: one person full screen (one-to-one), or a big avatar.
-  // Between the header and the controls: the shared screen with a strip of
-  // people, or a grid of everyone (group calls).
-  let backdrop: React.ReactNode = null;
-  let middle: React.ReactNode = null;
-  if (ringing || participants.length === 0) {
-    backdrop = (
-      <View style={styles.center}>
-        {group && !ringing ? <GroupAvatar name={group.name} size={120} /> : peer ? <Avatar user={peer} size={120} status={false} /> : null}
-      </View>
-    );
-  } else if (stage) {
-    middle = (
-      <View style={{ flex: 1 }}>
-        <Video stream={stage} style={styles.stage} fit="contain" version={state.version} muted={stage === state.localScreen} />
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.stripScroll} contentContainerStyle={styles.strip}>
-          {[...tiles, localTile].map((t) => (
-            <TileView key={t.key} tile={t} width={110} height={140} version={state.version} />
-          ))}
-        </ScrollView>
-      </View>
-    );
-  } else if (participants.length === 1) {
-    const t = tiles[0];
-    backdrop = t.stream ? (
-      <Video stream={t.stream} style={StyleSheet.absoluteFill} fit="cover" version={state.version} />
-    ) : (
-      <View style={styles.center}>
-        <Avatar user={t.user} size={120} status={false} />
-      </View>
-    );
-  } else {
-    middle = <Grid tiles={[...tiles, localTile]} version={state.version} />;
-  }
-
-  const showLocalPip = !ringing && !stage && participants.length <= 1 && localVideo;
+  const localVideo = localVideoOf(state);
 
   return (
     <View style={styles.root}>
-      {backdrop}
+      <Backdrop layout={layout} state={state} />
 
       <SafeAreaView style={styles.overlay} pointerEvents="box-none">
         <View style={styles.top}>
-          <Text style={styles.name}>{title}</Text>
-          <Text style={styles.subtitle}>{subtitle}</Text>
+          <Text style={styles.name}>{state.group?.name ?? state.peer?.display_name ?? ''}</Text>
+          <Text style={styles.subtitle}>{callSubtitle(state)}</Text>
           {state.error && (
             <Pressable onPress={() => call.clearError()}>
               <Text style={styles.error}>{state.error}</Text>
             </Pressable>
           )}
         </View>
-        <View style={{ flex: 1 }}>{middle}</View>
+        <View style={{ flex: 1 }}>
+          <Middle layout={layout} version={state.version} localScreen={state.localScreen} />
+        </View>
 
-        {showLocalPip && (
+        {layout.kind !== 'stage' && !ringing && state.participants.length <= 1 && localVideo && (
           <View style={styles.pips} pointerEvents="none">
-            <Video stream={localVideo!} style={styles.pip} fit="cover" mirror muted version={state.version} zOrder={2} />
+            <Video stream={localVideo} style={styles.pip} fit="cover" mirror muted version={state.version} zOrder={2} />
           </View>
         )}
 
@@ -142,47 +56,108 @@ export default function CallScreen() {
             <Control label="Accept" icon="check" success onPress={() => void call.accept()} />
           </View>
         ) : (
-          <View style={styles.controls}>
-            <Control label={state.muted ? 'Unmute' : 'Mute'} icon={state.muted ? 'mic-off' : 'mic'} active={state.muted} onPress={() => call.toggleMute()} />
-            <Control label={state.cameraOn ? 'Camera off' : 'Camera'} icon={state.cameraOn ? 'camera' : 'camera-off'} active={state.cameraOn} onPress={() => void call.toggleCamera()} />
-            {canFlipCamera && <Control label="Flip" icon="refresh-cw" disabled={!state.cameraOn} onPress={() => void call.flipCamera()} />}
-            <Control label={state.sharing ? 'Stop share' : 'Share screen'} icon="monitor" active={state.sharing} disabled={state.status !== 'active'} onPress={() => void call.toggleScreenShare()} />
-            <Control label={group ? 'Leave' : 'End'} icon="phone-off" danger onPress={() => call.hangup()} />
-          </View>
+          <CallControls state={state} />
         )}
       </SafeAreaView>
 
       {Platform.OS === 'ios' && <ScreenCapturePicker ref={pickerRef} style={{ width: 0, height: 0 }} />}
-      <RemoteAudio streams={participants.flatMap((p) => p.streams)} />
+      <RemoteAudio streams={state.participants.flatMap((p) => p.streams)} />
     </View>
   );
 }
 
-// Everyone in equal tiles: 2 columns up to four people, 3 beyond.
+// iOS: register the screen-capture picker so the manager can show it.
+function useScreenCapturePicker(pickerRef: React.RefObject<any>) {
+  const { call } = useCall();
+  useEffect(() => {
+    if (Platform.OS === 'ios' && pickerRef.current) call.pickerHandle = findNodeHandle(pickerRef.current);
+    return () => {
+      call.pickerHandle = null;
+    };
+  }, [call, pickerRef]);
+}
+
+// Leaves the screen (once) when the call ends; the reason shows as a banner
+// after this modal has slid away, so it is not hidden behind it.
+function useLeaveWhenOver(state: CallState) {
+  const { call } = useCall();
+  const router = useRouter();
+  const left = useRef(false);
+  useEffect(() => {
+    if (state.status !== 'idle' || left.current) return;
+    left.current = true;
+    const reason = state.error;
+    if (reason) call.clearError();
+    if (router.canGoBack()) router.back();
+    else router.replace('/');
+    if (reason) setTimeout(() => toast.show(reason), 400);
+  }, [state.status, state.error, call, router]);
+}
+
+// Behind everything: one person full screen (one-to-one), or a big avatar.
+function Backdrop({ layout, state }: { layout: Layout; state: CallState }) {
+  const styles = useStyles(makeStyles);
+  if (layout.kind === 'one') {
+    if (layout.tile.stream) return <Video stream={layout.tile.stream} style={StyleSheet.absoluteFill} fit="cover" version={state.version} />;
+    return (
+      <View style={styles.center}>
+        <Avatar user={layout.tile.user} size={120} status={false} />
+      </View>
+    );
+  }
+  if (layout.kind !== 'portrait') return null;
+  return (
+    <View style={styles.center}>
+      {state.group && state.status !== 'incoming' ? <GroupAvatar name={state.group.name} size={120} /> : state.peer ? <Avatar user={state.peer} size={120} status={false} /> : null}
+    </View>
+  );
+}
+
+// Between the header and the controls: the shared screen with a strip of
+// people, or a grid of everyone (group calls).
+function Middle({ layout, version, localScreen }: { layout: Layout; version: number; localScreen: MediaStream | null }) {
+  const styles = useStyles(makeStyles);
+  if (layout.kind === 'stage') {
+    return (
+      <View style={{ flex: 1 }}>
+        <Video stream={layout.stage} style={styles.stage} fit="contain" version={version} muted={layout.stage === localScreen} />
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.stripScroll} contentContainerStyle={styles.strip}>
+          {layout.tiles.map((t) => (
+            <TileView key={t.key} tile={t} width={110} height={140} version={version} />
+          ))}
+        </ScrollView>
+      </View>
+    );
+  }
+  if (layout.kind === 'grid') return <Grid tiles={layout.tiles} version={version} />;
+  return null;
+}
+
+// Everyone in equal tiles.
 function Grid({ tiles, version }: { tiles: Tile[]; version: number }) {
   const [size, setSize] = useState({ width: 0, height: 0 });
-  const cols = tiles.length <= 1 ? 1 : tiles.length <= 4 ? 2 : 3;
+  const cols = gridColumns(tiles.length);
   const rows = Math.ceil(tiles.length / cols);
   return (
-    <View style={styles.grid} onLayout={(e) => setSize(e.nativeEvent.layout)}>
+    <View style={gridStyle} onLayout={(e) => setSize(e.nativeEvent.layout)}>
       {size.width > 0 && tiles.map((t) => <TileView key={t.key} tile={t} width={size.width / cols} height={size.height / rows} version={version} />)}
     </View>
   );
 }
 
 function TileView({ tile, width, height, version }: { tile: Tile; width: number; height: number; version: number }) {
-  const s = useStyles(makeStyles);
+  const styles = useStyles(makeStyles);
   return (
     <View style={{ width, height, padding: 3 }}>
-      <View style={s.tile} accessibilityLabel={`${tile.label} tile`}>
+      <View style={styles.tile} accessibilityLabel={`${tile.label} tile`}>
         {tile.stream ? (
           <Video stream={tile.stream} style={StyleSheet.absoluteFill} fit="cover" mirror={tile.mirror} muted={tile.mirror} version={version} />
         ) : (
-          <View style={s.tileCenter}>
+          <View style={styles.tileCenter}>
             <Avatar user={tile.user} size={Math.max(40, Math.min(width, height) * 0.4)} status={false} />
           </View>
         )}
-        <Text style={s.tileLabel} numberOfLines={1}>
+        <Text style={styles.tileLabel} numberOfLines={1}>
           {tile.label}
         </Text>
       </View>
@@ -190,44 +165,26 @@ function TileView({ tile, width, height, version }: { tile: Tile; width: number;
   );
 }
 
-function Video({
-  stream,
-  style,
-  fit,
-  mirror,
-  muted,
-  version,
-  zOrder,
-}: {
-  stream: MediaStream;
-  style: any;
-  fit: 'cover' | 'contain';
-  mirror?: boolean;
-  muted?: boolean;
-  version: number;
-  zOrder?: number;
-}) {
-  // Remount when tracks change so the view picks up a newly added video track.
+// Remounts when tracks change so the view picks up a newly added video track.
+function Video({ stream, style, fit, mirror, muted, version, zOrder }: { stream: MediaStream; style: any; fit: 'cover' | 'contain'; mirror?: boolean; muted?: boolean; version: number; zOrder?: number }) {
   return <StreamView key={`${stream.id}:${stream.getVideoTracks().length}:${version}`} stream={stream} style={style} fit={fit} mirror={mirror} muted={muted} zOrder={zOrder} />;
 }
 
-function Control({
-  label,
-  icon,
-  onPress,
-  active,
-  danger,
-  success,
-  disabled,
-}: {
-  label: string;
-  icon: React.ComponentProps<typeof Feather>['name'];
-  onPress: () => void;
-  active?: boolean;
-  danger?: boolean;
-  success?: boolean;
-  disabled?: boolean;
-}) {
+function CallControls({ state }: { state: CallState }) {
+  const styles = useStyles(makeStyles);
+  const { call } = useCall();
+  return (
+    <View style={styles.controls}>
+      <Control label={state.muted ? 'Unmute' : 'Mute'} icon={state.muted ? 'mic-off' : 'mic'} active={state.muted} onPress={() => call.toggleMute()} />
+      <Control label={state.cameraOn ? 'Camera off' : 'Camera'} icon={state.cameraOn ? 'camera' : 'camera-off'} active={state.cameraOn} onPress={() => void call.toggleCamera()} />
+      {canFlipCamera && <Control label="Flip" icon="refresh-cw" disabled={!state.cameraOn} onPress={() => void call.flipCamera()} />}
+      <Control label={state.sharing ? 'Stop share' : 'Share screen'} icon="monitor" active={state.sharing} disabled={state.status !== 'active'} onPress={() => void call.toggleScreenShare()} />
+      <Control label={state.group ? 'Leave' : 'End'} icon="phone-off" danger onPress={() => call.hangup()} />
+    </View>
+  );
+}
+
+function Control({ label, icon, onPress, active, danger, success, disabled }: { label: string; icon: React.ComponentProps<typeof Feather>['name']; onPress: () => void; active?: boolean; danger?: boolean; success?: boolean; disabled?: boolean }) {
   const styles = useStyles(makeStyles);
   return (
     <Pressable onPress={onPress} disabled={disabled} style={({ pressed }) => [styles.control, pressed && { opacity: 0.7 }, disabled && { opacity: 0.35 }]}>
@@ -239,9 +196,7 @@ function Control({
   );
 }
 
-const styles = StyleSheet.create({
-  grid: { flex: 1, flexDirection: 'row', flexWrap: 'wrap', alignContent: 'center' },
-});
+const gridStyle = { flex: 1, flexDirection: 'row', flexWrap: 'wrap', alignContent: 'center' } as const;
 
 const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.dark },

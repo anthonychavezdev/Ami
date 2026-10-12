@@ -1,143 +1,64 @@
-import { Feather } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { FlatList, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 
+import { CommentRow, type CommentActions } from '@/components/CommentRow';
 import { Composer } from '@/components/Composer';
-import { contextMenuProps, pressPoint, useContextMenu, type MenuItem } from '@/components/ContextMenu';
+import { useContextMenu } from '@/components/ContextMenu';
+import { EditBar } from '@/components/EditBar';
 import { PostCard } from '@/components/PostCard';
-import { Avatar, Empty, ErrorBanner, Loading } from '@/components/ui';
-import { api } from '@/lib/api';
+import { Empty, ErrorBanner, Loading } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
 import { confirmAction } from '@/lib/confirm';
-import { timeAgo } from '@/lib/time';
 import { toast } from '@/lib/toast';
-import type { Comment, Post } from '@/lib/types';
-import { socket } from '@/lib/ws';
-import { useStyles, useTheme } from '@/lib/theme';
-import { radius, spacing, type ThemeColors } from '@/theme';
+import type { Comment } from '@/lib/types';
+import { useComments } from '@/lib/useComments';
+import { useStyles } from '@/lib/theme';
+import { spacing, type ThemeColors } from '@/theme';
 
-type Threaded = Comment & { depth: number };
-
-// Replies go under their parent, oldest first, like Reddit.
-function thread(comments: Comment[]): Threaded[] {
-  const children = new Map<number | null, Comment[]>();
-  for (const c of comments) {
-    const key = c.parent_id ?? null;
-    if (!children.has(key)) children.set(key, []);
-    children.get(key)!.push(c);
-  }
-  const out: Threaded[] = [];
-  const walk = (parent: number | null, depth: number) => {
-    for (const c of children.get(parent) ?? []) {
-      out.push({ ...c, depth });
-      walk(c.id, depth + 1);
-    }
-  };
-  walk(null, 0);
-  return out;
-}
+// The composer is writing a new comment, a reply, or an edit.
+type Mode = { kind: 'new' } | { kind: 'reply'; to: Comment } | { kind: 'edit'; comment: Comment };
 
 export default function PostScreen() {
   const styles = useStyles(makeStyles);
-  const { colors } = useTheme();
   const { id } = useLocalSearchParams<{ id: string }>();
   const postId = Number(id);
   const router = useRouter();
   const { user: me } = useAuth();
+  const { post, setPost, threaded, error, loading, add, edit, remove } = useComments(postId);
   const commentInput = useRef<TextInput>(null);
-  const [post, setPost] = useState<Post | null>(null);
-  const [comments, setComments] = useState<Comment[]>([]);
-  const [replyTo, setReplyTo] = useState<Comment | null>(null);
-  const [editing, setEditing] = useState<Comment | null>(null);
-  const [hoveredId, setHoveredId] = useState<number | null>(null); // web: comment showing the ⋯ button
+  const [mode, setMode] = useState<Mode>({ kind: 'new' });
   const { open: openMenu, menu } = useContextMenu();
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const threaded = useMemo(() => thread(comments), [comments]);
 
-  const load = useCallback(async () => {
-    try {
-      const [p, c] = await Promise.all([api.post(postId), api.comments(postId)]);
-      setPost(p);
-      setComments(c);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, [postId]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  // Live: comments come, change and go; reaction/count changes; deletion of this post.
-  useEffect(() => {
-    const refetch = () => void api.comments(postId).then(setComments).catch(() => {});
-    const offs = [
-      socket.on('comment.created', (e) => {
-        const c: Comment = e.comment;
-        if (c.post_id === postId) setComments((prev) => (prev.some((x) => x.id === c.id) ? prev : [...prev, c]));
-      }),
-      socket.on('comment.updated', (e) => {
-        const c: Comment = e.comment;
-        if (c.post_id === postId) setComments((prev) => prev.map((x) => (x.id === c.id ? c : x)));
-      }),
-      socket.on('comment.deleted', (e) => {
-        if (e.post_id === postId) refetch(); // the server decides what stays as [deleted]
-      }),
-      socket.on('post.updated', (e) => {
-        if (e.post.id === postId) setPost(e.post);
-      }),
-      socket.on('post.deleted', (e) => {
-        if (e.id === postId) {
-          toast.show('This post was deleted');
-          router.back();
-        }
-      }),
-    ];
-    return () => offs.forEach((off) => off());
-  }, [postId, router]);
-
-  const startReply = (c: Comment) => {
-    setEditing(null);
-    setReplyTo(c);
-  };
-  const startEdit = (c: Comment) => {
-    setReplyTo(null);
-    setEditing(c);
-  };
-  const remove = (c: Comment) =>
+  const confirmRemove = (c: Comment) =>
     confirmAction('Delete comment?', c.body, 'Delete', async () => {
       try {
-        await api.deleteComment(c.id);
-        setComments(await api.comments(postId));
-        if (editing?.id === c.id) setEditing(null);
-        if (replyTo?.id === c.id) setReplyTo(null);
+        await remove(c);
+        if (mode.kind !== 'new' && ('to' in mode ? mode.to : mode.comment).id === c.id) setMode({ kind: 'new' });
       } catch (e) {
         toast.error(e instanceof Error ? e.message : String(e));
       }
     });
 
-  // Web menu (right-click or ⋯): Reply, plus Edit and Delete on your own comments.
-  const commentMenu = (c: Comment): MenuItem[] =>
-    c.deleted
-      ? []
-      : [
-          { label: 'Reply', icon: 'corner-down-right', onPress: () => startReply(c) },
-          ...(c.author.id === me?.id
-            ? [
-                { label: 'Edit', icon: 'edit-2', onPress: () => startEdit(c) } as MenuItem,
-                { label: 'Delete', icon: 'trash-2', danger: true, onPress: () => remove(c) } as MenuItem,
-              ]
-            : []),
-        ];
+  const actionsFor = (c: Comment): CommentActions | null => {
+    if (c.deleted) return null;
+    const mine = c.author.id === me?.id;
+    return {
+      reply: () => setMode({ kind: 'reply', to: c }),
+      edit: mine ? () => setMode({ kind: 'edit', comment: c }) : undefined,
+      remove: mine ? () => confirmRemove(c) : undefined,
+    };
+  };
+
+  const submit = async (body: string) => {
+    if (mode.kind === 'edit') await edit(mode.comment, body);
+    else await add(body, mode.kind === 'reply' ? mode.to.id : undefined);
+    setMode({ kind: 'new' });
+  };
 
   if (loading) return <Loading />;
   if (!post) return <Empty text={error ?? 'Post not found'} />;
 
-  const mode = editing ? 'edit' : replyTo ? 'reply' : 'new';
   return (
     <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }} keyboardVerticalOffset={90}>
       <FlatList
@@ -150,104 +71,22 @@ export default function PostScreen() {
             <Text style={styles.heading}>Comments</Text>
           </View>
         }
-        renderItem={({ item }) => {
-          const mine = !item.deleted && item.author.id === me?.id;
-          return (
-            <View
-              style={[styles.comment, { marginLeft: spacing.lg + Math.min(item.depth, 6) * 14 }, item.depth > 0 && styles.nested]}
-              onPointerEnter={() => setHoveredId(item.id)}
-              onPointerLeave={() => setHoveredId((h) => (h === item.id ? null : h))}
-              {...(item.deleted ? {} : contextMenuProps((x, y) => openMenu(commentMenu(item), x, y)))}
-            >
-              {item.deleted ? (
-                <View style={styles.deletedAvatar}>
-                  <Feather name="user" size={16} color={colors.muted} />
-                </View>
-              ) : (
-                <Avatar user={item.author} size={32} />
-              )}
-              <View style={{ flex: 1 }}>
-                <Text style={[styles.meta, { paddingRight: 24 }]}>
-                  <Text style={[styles.name, item.deleted && styles.deletedText]}>{item.author.display_name}</Text> · {timeAgo(item.created_at)}
-                  {item.edited_at ? (
-                    <Text accessibilityLabel="edited">
-                      {' · '}
-                      <Feather name="edit-2" size={10} color={colors.muted} /> edited
-                    </Text>
-                  ) : null}
-                </Text>
-                <Text style={[styles.body, item.deleted && styles.deletedText]}>{item.body}</Text>
-                {Platform.OS === 'web' && !item.deleted && hoveredId === item.id && (
-                  <Pressable onPress={(e) => openMenu(commentMenu(item), pressPoint(e).x, pressPoint(e).y)} hitSlop={8} style={styles.dots} accessibilityLabel="Comment options">
-                    <Feather name="more-horizontal" size={18} color={colors.muted} />
-                  </Pressable>
-                )}
-                {!item.deleted && (
-                  <View style={styles.actions}>
-                    <Pressable onPress={() => startReply(item)} hitSlop={6} style={styles.action} accessibilityLabel="Reply">
-                      <Feather name="corner-down-right" size={13} color={colors.muted} />
-                      <Text style={styles.actionText}>Reply</Text>
-                    </Pressable>
-                    {mine && (
-                      <Pressable onPress={() => startEdit(item)} hitSlop={6} style={styles.action} accessibilityLabel="Edit comment">
-                        <Feather name="edit-2" size={13} color={colors.muted} />
-                        <Text style={styles.actionText}>Edit</Text>
-                      </Pressable>
-                    )}
-                    {mine && (
-                      <Pressable onPress={() => remove(item)} hitSlop={6} style={styles.action} accessibilityLabel="Delete comment">
-                        <Feather name="trash-2" size={13} color={colors.muted} />
-                        <Text style={styles.actionText}>Delete</Text>
-                      </Pressable>
-                    )}
-                  </View>
-                )}
-              </View>
-            </View>
-          );
-        }}
+        renderItem={({ item }) => <CommentRow comment={item} actions={actionsFor(item)} onOpenMenu={openMenu} />}
         ListEmptyComponent={<Text style={styles.empty}>Be the first to comment.</Text>}
         contentContainerStyle={{ paddingBottom: spacing.lg }}
       />
-      {mode !== 'new' && (
-        <View style={styles.bar}>
-          <Feather name={mode === 'edit' ? 'edit-2' : 'corner-down-right'} size={14} color={colors.accent} />
-          <Text style={styles.barText} numberOfLines={1}>
-            {mode === 'edit' ? `Editing: ${editing!.body}` : `Replying to ${replyTo!.author.display_name}`}
-          </Text>
-          <Pressable
-            onPress={() => {
-              setEditing(null);
-              setReplyTo(null);
-            }}
-            hitSlop={8}
-            accessibilityLabel="Cancel"
-          >
-            <Feather name="x" size={18} color={colors.muted} />
-          </Pressable>
-        </View>
-      )}
+      {mode.kind === 'edit' && <EditBar icon="edit-2" text={`Editing: ${mode.comment.body}`} onCancel={() => setMode({ kind: 'new' })} />}
+      {mode.kind === 'reply' && <EditBar icon="corner-down-right" text={`Replying to ${mode.to.author.display_name}`} onCancel={() => setMode({ kind: 'new' })} />}
       <Composer
-        key={mode === 'edit' ? `edit-${editing!.id}` : mode === 'reply' ? `reply-${replyTo!.id}` : 'new'}
+        key={mode.kind === 'edit' ? `edit-${mode.comment.id}` : mode.kind === 'reply' ? `reply-${mode.to.id}` : 'new'}
         inputRef={commentInput}
-        placeholder={mode === 'reply' ? 'Write a reply…' : 'Write a comment…'}
-        buttonTitle={mode === 'edit' ? 'Save' : 'Send'}
-        initialText={editing?.body}
-        autoFocus={mode !== 'new'}
+        placeholder={mode.kind === 'reply' ? 'Write a reply…' : 'Write a comment…'}
+        buttonTitle={mode.kind === 'edit' ? 'Save' : 'Send'}
+        initialText={mode.kind === 'edit' ? mode.comment.body : undefined}
+        autoFocus={mode.kind !== 'new'}
         multiline={false}
         compact
-        onSubmit={async (body) => {
-          if (editing) {
-            const c = await api.updateComment(editing.id, body);
-            setComments((prev) => prev.map((x) => (x.id === c.id ? c : x)));
-            setEditing(null);
-            return;
-          }
-          const c = await api.addComment(postId, body, replyTo?.id);
-          setComments((prev) => (prev.some((x) => x.id === c.id) ? prev : [...prev, c]));
-          setPost((p) => (p ? { ...p, comment_count: p.comment_count + 1 } : p));
-          setReplyTo(null);
-        }}
+        onSubmit={submit}
       />
       {menu}
     </KeyboardAvoidingView>
@@ -256,18 +95,5 @@ export default function PostScreen() {
 
 const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   heading: { fontWeight: '700', color: colors.text, fontSize: 16, paddingHorizontal: spacing.lg, marginTop: spacing.sm, marginBottom: spacing.sm },
-  comment: { flexDirection: 'row', gap: spacing.md, paddingRight: spacing.lg, paddingVertical: spacing.sm },
-  nested: { borderLeftWidth: 2, borderLeftColor: colors.border, paddingLeft: spacing.sm },
-  name: { fontWeight: '700', color: colors.text },
-  meta: { color: colors.muted, fontSize: 13 },
-  body: { color: colors.text, fontSize: 15, lineHeight: 20 },
-  deletedText: { color: colors.muted, fontStyle: 'italic', fontWeight: '400' },
-  deletedAvatar: { width: 32, height: 32, borderRadius: 16, backgroundColor: colors.border, alignItems: 'center', justifyContent: 'center' },
-  actions: { flexDirection: 'row', gap: spacing.lg, marginTop: 4 },
-  dots: { position: 'absolute', right: 0, top: 0 },
-  action: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  actionText: { color: colors.muted, fontSize: 12, fontWeight: '600' },
-  bar: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, backgroundColor: colors.card, borderTopWidth: 1, borderTopColor: colors.border, borderRadius: radius.sm },
-  barText: { flex: 1, color: colors.text, fontSize: 13 },
   empty: { color: colors.muted, paddingHorizontal: spacing.lg },
 });

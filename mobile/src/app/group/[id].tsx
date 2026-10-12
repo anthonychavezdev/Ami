@@ -1,8 +1,9 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
-import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { FlatList, RefreshControl, View } from 'react-native';
 
 import { Composer } from '@/components/Composer';
+import { GroupHeader } from '@/components/GroupHeader';
 import { PostCard } from '@/components/PostCard';
 import { UserRow } from '@/components/UserRow';
 import { Button, Empty, ErrorBanner, Loading, Segmented } from '@/components/ui';
@@ -11,52 +12,27 @@ import { confirmAction } from '@/lib/confirm';
 import { useAuth } from '@/lib/auth';
 import { useCall } from '@/lib/call';
 import { toast } from '@/lib/toast';
-import type { Group, GroupMember, Post } from '@/lib/types';
+import type { Post } from '@/lib/types';
+import { useGroup } from '@/lib/useGroup';
 import { usePosts } from '@/lib/usePosts';
-import { useStyles, useTheme } from '@/lib/theme';
-import { spacing, type ThemeColors } from '@/theme';
+import { useTheme } from '@/lib/theme';
+import { spacing } from '@/theme';
 
 type Tab = 'posts' | 'members';
 
 export default function GroupScreen() {
   const { colors } = useTheme();
-  const styles = useStyles(makeStyles);
   const { id } = useLocalSearchParams<{ id: string }>();
   const groupId = Number(id);
   const { user: me } = useAuth();
   const { call } = useCall();
   const router = useRouter();
-  const [group, setGroup] = useState<Group | null>(null);
-  const [members, setMembers] = useState<GroupMember[]>([]);
-  const [error, setError] = useState<string | null>(null);
+  const { group, members, error, reload, change } = useGroup(groupId);
   const [tab, setTab] = useState<Tab>('posts');
 
   const fetchPage = useCallback((before?: number) => api.groupPosts(groupId, before), [groupId]);
   const accept = useCallback((p: Post) => p.group_id === groupId, [groupId]);
   const { posts, loading, refreshing, refresh, loadMore, update, remove, prepend } = usePosts(fetchPage, accept);
-
-  const apply = (r: { group: Group; members: GroupMember[] }) => {
-    setGroup(r.group);
-    setMembers(r.members);
-  };
-  const load = useCallback(async () => {
-    try {
-      apply(await api.group(groupId));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  }, [groupId]);
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const run = async (fn: () => Promise<{ group: Group; members: GroupMember[] }>) => {
-    try {
-      apply(await fn());
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e));
-    }
-  };
 
   const deleteGroup = () =>
     confirmAction('Delete group?', 'All its posts will be removed.', 'Delete', async () => {
@@ -68,7 +44,6 @@ export default function GroupScreen() {
       }
     });
 
-  // Start (or join) the group's call.
   const startCall = (video: boolean) => {
     if (!group) return;
     void call.joinGroupCall({ id: group.id, name: group.name }, video);
@@ -81,24 +56,7 @@ export default function GroupScreen() {
 
   const header = (
     <View>
-      <View style={styles.header}>
-        <Text style={styles.name}>{group.name}</Text>
-        {!!group.description && <Text style={styles.desc}>{group.description}</Text>}
-        <Text style={styles.meta}>
-          {group.member_count} {group.member_count === 1 ? 'member' : 'members'}
-          {group.private ? ' · invite only' : ''}
-          {isAdmin ? ' · you are the admin' : isMember ? ' · member' : ''}
-        </Text>
-        <View style={styles.actions}>
-          {!isMember && !group.private && <Button title="Join group" onPress={() => run(() => api.joinGroup(groupId))} />}
-          {isMember && <Button title="Chat" icon="message-circle" variant="secondary" onPress={() => router.push(`/chat/group/${groupId}`)} />}
-          {isMember && <Button title="Call" icon="phone" variant="secondary" onPress={() => startCall(false)} />}
-          {isMember && <Button title="Video" icon="video" variant="secondary" onPress={() => startCall(true)} />}
-          {isAdmin && <Button title="Add members" icon="user-plus" variant="secondary" onPress={() => router.push(`/new-group-chat?group=${groupId}`)} />}
-          {isMember && !isAdmin && <Button title="Leave" variant="secondary" onPress={() => run(() => api.leaveGroup(groupId))} />}
-          {isAdmin && <Button title="Delete group" variant="danger" onPress={deleteGroup} />}
-        </View>
-      </View>
+      <GroupHeader group={group} onJoin={() => change(() => api.joinGroup(groupId))} onLeave={() => change(() => api.leaveGroup(groupId))} onDelete={deleteGroup} onCall={startCall} />
       <ErrorBanner error={error} />
       <Segmented
         value={tab}
@@ -130,14 +88,7 @@ export default function GroupScreen() {
               subtitle={item.role === 'admin' ? 'Admin (owner)' : `@${item.username}`}
               right={
                 isAdmin && item.id !== me?.id ? (
-                  <Button
-                    title="Remove"
-                    small
-                    variant="secondary"
-                    onPress={() =>
-                      confirmAction('Remove member?', item.display_name, 'Remove', () => run(() => api.removeGroupMember(groupId, item.id)))
-                    }
-                  />
+                  <Button title="Remove" small variant="secondary" onPress={() => confirmAction('Remove member?', item.display_name, 'Remove', () => change(() => api.removeGroupMember(groupId, item.id)))} />
                 ) : null
               }
             />
@@ -156,7 +107,7 @@ export default function GroupScreen() {
         ListHeaderComponent={header}
         renderItem={({ item }) => <PostCard post={item} onChange={update} onDelete={remove} canDelete={isAdmin} showGroup={false} />}
         ListEmptyComponent={loading ? <Loading /> : <Empty text={isMember ? 'No posts yet. Start the conversation.' : 'No posts yet.'} />}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { refresh(); void load(); }} tintColor={colors.accent} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { refresh(); void reload(); }} tintColor={colors.accent} />}
         onEndReached={loadMore}
         onEndReachedThreshold={0.4}
         contentContainerStyle={{ paddingBottom: spacing.xl, flexGrow: 1 }}
@@ -164,11 +115,3 @@ export default function GroupScreen() {
     </>
   );
 }
-
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  header: { padding: spacing.xl, paddingBottom: spacing.sm, gap: spacing.xs },
-  name: { fontSize: 24, fontWeight: '800', color: colors.text },
-  desc: { color: colors.text, fontSize: 15, lineHeight: 21 },
-  meta: { color: colors.muted },
-  actions: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.md },
-});
