@@ -1,7 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 
 import { api, setAuthToken } from './api';
-import type { User } from './types';
+import type { Me, User } from './types';
 import { setupNotifications, teardownNotifications } from './notifications';
 import { storage } from './storage';
 import { unread } from './unread';
@@ -10,8 +10,9 @@ import { socket } from './ws';
 const TOKEN_KEY = 'ami.token';
 
 interface AuthContextValue {
-  user: User | null;
+  user: Me | null;
   ready: boolean;
+  update: (patch: Partial<Me>) => void; // local settings changes (e.g. appear offline)
   login: (username: string, password: string) => Promise<void>;
   register: (username: string, password: string, displayName: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -20,10 +21,10 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<Me | null>(null);
   const [ready, setReady] = useState(false);
 
-  const establish = useCallback(async (token: string, u: User) => {
+  const establish = useCallback(async (token: string, u: Me) => {
     setAuthToken(token);
     await storage.set(TOKEN_KEY, token);
     unread.setUser(u.id);
@@ -57,6 +58,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     () => ({
       user,
       ready,
+      update: (patch) => setUser((u) => (u ? { ...u, ...patch } : u)),
       login: async (username, password) => {
         const r = await api.login(username, password);
         await establish(r.token, r.user);

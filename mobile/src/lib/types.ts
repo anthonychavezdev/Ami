@@ -6,6 +6,11 @@ export interface User {
   online?: boolean; // as of when the object was fetched; presence events keep it current
 }
 
+// The signed-in user with private settings.
+export interface Me extends User {
+  invisible: boolean; // appear offline to everyone
+}
+
 export type FriendStatus = 'self' | 'none' | 'friends' | 'outgoing' | 'incoming';
 
 export interface UserProfile extends User {

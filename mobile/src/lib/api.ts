@@ -1,6 +1,6 @@
 import { API_URL } from './config';
 import { fileBlob } from './upload';
-import type { Attachment, Comment, Conversation, Group, GroupMember, Message, Post, User, UserProfile } from './types';
+import type { Attachment, Comment, Conversation, Group, GroupMember, Me, Message, Post, User, UserProfile } from './types';
 
 let authToken: string | null = null;
 export function setAuthToken(token: string | null) {
@@ -65,10 +65,11 @@ const q = (params: Record<string, string | number | undefined>) => {
 export const api = {
   // auth
   register: (username: string, password: string, display_name: string) =>
-    post<{ token: string; user: User }>('/api/register', { username, password, display_name }),
-  login: (username: string, password: string) => post<{ token: string; user: User }>('/api/login', { username, password }),
+    post<{ token: string; user: Me }>('/api/register', { username, password, display_name }),
+  login: (username: string, password: string) => post<{ token: string; user: Me }>('/api/login', { username, password }),
   logout: () => post<void>('/api/logout'),
-  me: () => get<User>('/api/me'),
+  me: () => get<Me>('/api/me'),
+  setInvisible: (invisible: boolean) => put<{ invisible: boolean }>('/api/me/presence', { invisible }),
 
   // users
   searchUsers: (query: string) => get<UserProfile[]>(`/api/users${q({ q: query })}`),
