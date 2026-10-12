@@ -1,4 +1,5 @@
 import { Stack, useRouter } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
@@ -40,6 +41,7 @@ function RootNavigator() {
 
   return (
     <CallProvider onIncoming={onIncoming}>
+      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       <Stack
         screenLayout={({ children }) => (
           <>
@@ -48,9 +50,6 @@ function RootNavigator() {
           </>
         )}
         screenOptions={{
-          // The status bar is styled per screen by react-native-screens (iOS: UIViewControllerBasedStatusBarAppearance in app.json),
-          // so it follows the theme the user picked, not just the system one.
-          statusBarStyle: scheme === 'dark' ? 'light' : 'dark',
           headerTintColor: colors.accent,
           headerTitleStyle: { color: colors.text },
           headerStyle: { backgroundColor: colors.card },
@@ -70,7 +69,7 @@ function RootNavigator() {
           <Stack.Screen name="new-group-chat" options={{ title: 'New group chat' }} dangerouslySingular />
           <Stack.Screen
             name="call"
-            options={{ headerShown: false, presentation: 'fullScreenModal', gestureEnabled: false, statusBarStyle: 'light' }}
+            options={{ headerShown: false, presentation: 'fullScreenModal', gestureEnabled: false }}
             dangerouslySingular
           />
         </Stack.Protected>
