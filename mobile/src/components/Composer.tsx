@@ -24,6 +24,10 @@ export function Composer({
   rich = false,
   media = false,
   inputRef,
+  initialText = '',
+  initialAttachments,
+  onCancel,
+  autoFocus = false,
 }: {
   placeholder: string;
   buttonTitle?: string;
@@ -33,14 +37,18 @@ export function Composer({
   rich?: boolean;
   media?: boolean;
   inputRef?: React.RefObject<TextInput | null>; // lets a parent focus the box
+  initialText?: string; // editing: start from the existing text
+  initialAttachments?: Attachment[];
+  onCancel?: () => void; // editing: shows a Cancel button
+  autoFocus?: boolean;
 }) {
   const allowMedia = rich || media;
   const styles = useStyles(makeStyles);
   const { colors } = useTheme();
   const input = useRef<TextInput>(null);
-  const [text, setText] = useState('');
-  const [selection, setSelection] = useState<Selection>({ start: 0, end: 0 });
-  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [text, setText] = useState(initialText);
+  const [selection, setSelection] = useState<Selection>({ start: initialText.length, end: initialText.length }); // caret at the end when editing
+  const [attachments, setAttachments] = useState<Attachment[]>(initialAttachments ?? []);
   const [uploading, setUploading] = useState(0);
   const [linkDraft, setLinkDraft] = useState<string | null>(null); // null = link field hidden
   const [busy, setBusy] = useState(false);
@@ -160,6 +168,7 @@ export function Composer({
           onChangeText={setText}
           placeholder={placeholder}
           multiline={multiline}
+          autoFocus={autoFocus}
           style={[compact ? styles.inputRow : styles.input, rich && styles.inputRich]}
           onSubmitEditing={multiline ? undefined : submit}
           returnKeyType={multiline ? 'default' : 'send'}
@@ -173,7 +182,14 @@ export function Composer({
           </View>
         )}
         {!compact && chips}
-        <Button title={buttonTitle} onPress={submit} loading={busy} disabled={!canSubmit} small style={compact ? undefined : styles.btn} />
+        {onCancel && !compact ? (
+          <View style={styles.actions}>
+            <Button title="Cancel" variant="secondary" small onPress={onCancel} />
+            <Button title={buttonTitle} onPress={submit} loading={busy} disabled={!canSubmit} small />
+          </View>
+        ) : (
+          <Button title={buttonTitle} onPress={submit} loading={busy} disabled={!canSubmit} small style={compact ? undefined : styles.btn} />
+        )}
       </View>
     </View>
   );
@@ -202,6 +218,7 @@ const makeStyles = (colors: ThemeColors) => StyleSheet.create({
   inputRich: { minHeight: 90 },
   inputRow: { flex: 1, maxHeight: 120 },
   btn: { alignSelf: 'flex-end' },
+  actions: { flexDirection: 'row', justifyContent: 'flex-end', gap: spacing.sm },
   toolbar: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 2 },
   tool: { minWidth: 32, height: 32, paddingHorizontal: 6, borderRadius: radius.sm, alignItems: 'center', justifyContent: 'center', backgroundColor: colors.bg },
   toolActive: { backgroundColor: colors.accentSoft },
