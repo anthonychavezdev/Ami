@@ -1,6 +1,5 @@
-import { File } from 'expo-file-system';
-
 import { API_URL } from './config';
+import { fileBlob } from './upload';
 import type { Attachment, Comment, Conversation, Group, GroupMember, Message, Post, User, UserProfile } from './types';
 
 let authToken: string | null = null;
@@ -30,11 +29,10 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return data as T;
 }
 
-// Multipart upload of a picked file. Expo's fetch wants a Blob, and a
-// File from expo-file-system is one (its MIME type comes from the extension).
+// Multipart upload of a picked file.
 async function upload<T>(path: string, file: { uri: string; name: string; type: string }): Promise<T> {
   const form = new FormData();
-  form.append('file', new File(file.uri), file.name);
+  form.append('file', await fileBlob(file.uri), file.name);
   const headers: Record<string, string> = {};
   if (authToken) headers.Authorization = `Bearer ${authToken}`;
   let res: Response;

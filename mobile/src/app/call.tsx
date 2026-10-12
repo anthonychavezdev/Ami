@@ -3,12 +3,10 @@ import { useRouter } from 'expo-router';
 import React, { useEffect, useRef } from 'react';
 import { Platform, Pressable, StyleSheet, Text, View, findNodeHandle } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { type MediaStream, RTCView, ScreenCapturePickerView } from 'react-native-webrtc';
-
-const Picker = ScreenCapturePickerView as React.ComponentType<any>;
 
 import { Avatar } from '@/components/ui';
 import { useCall } from '@/lib/call';
+import { type MediaStream, RemoteAudio, ScreenCapturePicker, StreamView, canFlipCamera } from '@/lib/webrtc';
 import { useStyles } from '@/lib/theme';
 import { toast } from '@/lib/toast';
 import { radius, spacing, type ThemeColors } from '@/theme';
@@ -85,7 +83,7 @@ export default function CallScreen() {
 
         <View style={styles.pips} pointerEvents="none">
           {pip && <Video stream={pip} style={styles.pip} fit="cover" version={state.version} />}
-          {localVideo && <Video stream={localVideo} style={styles.pip} fit="cover" mirror version={state.version} zOrder={2} />}
+          {localVideo && <Video stream={localVideo} style={styles.pip} fit="cover" mirror muted version={state.version} zOrder={2} />}
         </View>
 
         {state.status === 'incoming' ? (
@@ -97,14 +95,15 @@ export default function CallScreen() {
           <View style={styles.controls}>
             <Control label={state.muted ? 'Unmute' : 'Mute'} icon={state.muted ? 'mic-off' : 'mic'} active={state.muted} onPress={() => call.toggleMute()} />
             <Control label={state.cameraOn ? 'Camera off' : 'Camera'} icon={state.cameraOn ? 'camera' : 'camera-off'} active={state.cameraOn} onPress={() => void call.toggleCamera()} />
-            <Control label="Flip" icon="refresh-cw" disabled={!state.cameraOn} onPress={() => void call.flipCamera()} />
+            {canFlipCamera && <Control label="Flip" icon="refresh-cw" disabled={!state.cameraOn} onPress={() => void call.flipCamera()} />}
             <Control label={state.sharing ? 'Stop share' : 'Share screen'} icon="monitor" active={state.sharing} disabled={state.status !== 'active'} onPress={() => void call.toggleScreenShare()} />
             <Control label="End" icon="phone-off" danger onPress={() => call.hangup()} />
           </View>
         )}
       </SafeAreaView>
 
-      {Platform.OS === 'ios' && <Picker ref={pickerRef} style={{ width: 0, height: 0 }} />}
+      {Platform.OS === 'ios' && <ScreenCapturePicker ref={pickerRef} style={{ width: 0, height: 0 }} />}
+      <RemoteAudio streams={state.remoteStreams} />
     </View>
   );
 }
@@ -114,6 +113,7 @@ function Video({
   style,
   fit,
   mirror,
+  muted,
   version,
   zOrder,
 }: {
@@ -121,11 +121,12 @@ function Video({
   style: any;
   fit: 'cover' | 'contain';
   mirror?: boolean;
+  muted?: boolean;
   version: number;
   zOrder?: number;
 }) {
-  // Remount when tracks change so the native view picks up a newly added video track.
-  return <RTCView key={`${stream.id}:${stream.getVideoTracks().length}:${version}`} streamURL={stream.toURL()} style={style} objectFit={fit} mirror={mirror} zOrder={zOrder} />;
+  // Remount when tracks change so the view picks up a newly added video track.
+  return <StreamView key={`${stream.id}:${stream.getVideoTracks().length}:${version}`} stream={stream} style={style} fit={fit} mirror={mirror} muted={muted} zOrder={zOrder} />;
 }
 
 function Control({

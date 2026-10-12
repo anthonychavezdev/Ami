@@ -1,9 +1,9 @@
-import * as SecureStore from 'expo-secure-store';
 import * as SystemUI from 'expo-system-ui';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { StyleSheet, useColorScheme } from 'react-native';
 
 import { darkColors, lightColors, type ThemeColors } from '@/theme';
+import { storage } from './storage';
 
 export type ThemePreference = 'light' | 'dark' | 'system';
 export type ColorScheme = 'light' | 'dark';
@@ -28,7 +28,8 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [preference, setPreferenceState] = useState<ThemePreference>('system');
 
   useEffect(() => {
-    SecureStore.getItemAsync(PREFERENCE_KEY)
+    storage
+      .get(PREFERENCE_KEY)
       .then((v) => {
         if (isPreference(v)) setPreferenceState(v);
       })
@@ -37,7 +38,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const setPreference = useCallback((p: ThemePreference) => {
     setPreferenceState(p);
-    SecureStore.setItemAsync(PREFERENCE_KEY, p).catch(() => {});
+    storage.set(PREFERENCE_KEY, p).catch(() => {});
   }, []);
 
   const scheme: ColorScheme = preference === 'system' ? (system === 'dark' ? 'dark' : 'light') : preference;

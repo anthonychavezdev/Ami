@@ -1,12 +1,13 @@
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
 import { Composer } from '@/components/Composer';
 import { PostCard } from '@/components/PostCard';
 import { UserRow } from '@/components/UserRow';
 import { Button, Empty, ErrorBanner, Loading, Segmented } from '@/components/ui';
 import { api } from '@/lib/api';
+import { confirmAction } from '@/lib/confirm';
 import { useAuth } from '@/lib/auth';
 import { toast } from '@/lib/toast';
 import type { Group, GroupMember, Post } from '@/lib/types';
@@ -56,21 +57,14 @@ export default function GroupScreen() {
   };
 
   const deleteGroup = () =>
-    Alert.alert('Delete group?', 'All its posts will be removed.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: async () => {
-          try {
-            await api.deleteGroup(groupId);
-            router.back();
-          } catch (e) {
-            toast.error(e instanceof Error ? e.message : String(e));
-          }
-        },
-      },
-    ]);
+    confirmAction('Delete group?', 'All its posts will be removed.', 'Delete', async () => {
+      try {
+        await api.deleteGroup(groupId);
+        router.back();
+      } catch (e) {
+        toast.error(e instanceof Error ? e.message : String(e));
+      }
+    });
 
   if (!group) return error ? <Empty text={error} /> : <Loading />;
   const isAdmin = group.my_role === 'admin';
@@ -127,10 +121,7 @@ export default function GroupScreen() {
                     small
                     variant="secondary"
                     onPress={() =>
-                      Alert.alert('Remove member?', item.display_name, [
-                        { text: 'Cancel', style: 'cancel' },
-                        { text: 'Remove', style: 'destructive', onPress: () => run(() => api.removeGroupMember(groupId, item.id)) },
-                      ])
+                      confirmAction('Remove member?', item.display_name, 'Remove', () => run(() => api.removeGroupMember(groupId, item.id)))
                     }
                   />
                 ) : null
