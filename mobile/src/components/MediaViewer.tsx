@@ -1,5 +1,4 @@
 import { Feather } from '@expo/vector-icons';
-import { StatusBar } from 'expo-status-bar';
 import { VideoView, useVideoPlayer } from 'expo-video';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -68,7 +67,6 @@ export function MediaViewer({
       navigationBarTranslucent
       supportedOrientations={['portrait', 'landscape']}
     >
-      <StatusBar style="light" />
       <View style={styles.backdrop} onLayout={(e) => setSize({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}>
         {visible && size && (
           <FlatList
