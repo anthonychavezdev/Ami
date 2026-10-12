@@ -64,7 +64,7 @@ ships no secrets.
 
 | Area | Notes |
 |---|---|
-| Posts | Markdown text, pictures, videos and links, together or on their own. Feed = your posts + friends' posts + posts in your groups. Profile posts are public. |
+| Posts | Markdown text, pictures, videos and links, together or on their own; tap a picture or video to view it fullscreen. Feed = your posts + friends' posts + posts in your groups. Profile posts are public. |
 | Reactions | Tap **React** to 👍; press-and-hold opens the emoji menu. One reaction per user per post, any emoji. |
 | Comments | On the post screen. |
 | Friends | Request → accept. Only friends can message/call each other. Pushed live over WebSocket. |
