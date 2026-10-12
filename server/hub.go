@@ -129,7 +129,8 @@ func (s *server) handleWS(w http.ResponseWriter, r *http.Request) {
 		close(c.done)
 		ws.Close()
 	}()
-	s.hub.sendTo(me.ID, map[string]any{"type": "hello", "user": me})
+	unread, _ := s.unreadMessages(me.ID)
+	s.hub.sendTo(me.ID, map[string]any{"type": "hello", "user": me, "unread": unread})
 	for {
 		ws.SetReadDeadline(time.Now().Add(90 * time.Second))
 		_, data, err := ws.ReadMessage()

@@ -18,6 +18,7 @@ type Message struct {
 type Conversation struct {
 	User        User    `json:"user"`
 	LastMessage Message `json:"last_message"`
+	Unread      int     `json:"unread"` // messages from User not read yet
 }
 
 const messageCols = "m.id, m.sender_id, m.recipient_id, m.body, m.attachments, m.created_at"
@@ -32,7 +33,9 @@ func decodeAttachments(raw string) []Attachment {
 // listConversations returns one entry per chat partner, newest activity first.
 func (s *server) listConversations(w http.ResponseWriter, r *http.Request, me *User) {
 	rows, err := s.db.Query(`
-		SELECT `+messageCols+`, `+userCols+`
+		SELECT `+messageCols+`, `+userCols+`,
+			(SELECT COUNT(*) FROM messages x WHERE x.sender_id = u.id AND x.recipient_id = ?1
+				AND x.id > COALESCE((SELECT last_read_id FROM conversation_reads r WHERE r.user_id = ?1 AND r.peer_id = u.id), 0))
 		FROM messages m
 		JOIN users u ON u.id = CASE WHEN m.sender_id = ?1 THEN m.recipient_id ELSE m.sender_id END
 		WHERE m.id IN (
@@ -49,7 +52,7 @@ func (s *server) listConversations(w http.ResponseWriter, r *http.Request, me *U
 		var c Conversation
 		var atts string
 		if err := rows.Scan(&c.LastMessage.ID, &c.LastMessage.SenderID, &c.LastMessage.RecipientID, &c.LastMessage.Body, &atts, &c.LastMessage.CreatedAt,
-			&c.User.ID, &c.User.Username, &c.User.DisplayName, &c.User.CreatedAt); err != nil {
+			&c.User.ID, &c.User.Username, &c.User.DisplayName, &c.User.CreatedAt, &c.Unread); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
@@ -136,8 +139,40 @@ func (s *server) sendMessage(w http.ResponseWriter, r *http.Request, me *User) {
 		return
 	}
 	m.ID, _ = res.LastInsertId()
-	event := map[string]any{"type": "message", "message": m, "sender": me}
-	s.hub.sendTo(other, event)
-	s.hub.sendTo(me.ID, event) // keep the sender's other devices in sync
+	s.hub.sendTo(me.ID, map[string]any{"type": "message", "message": m, "sender": me}) // the sender's other devices
+	unread, _ := s.unreadMessages(other)
+	if !s.hub.sendTo(other, map[string]any{"type": "message", "message": m, "sender": me, "unread": unread}) {
+		go s.pushMessage(other, me, m, unread) // nothing connected: notify through the OS
+	}
 	writeJSON(w, http.StatusCreated, m)
+}
+
+// unreadMessages counts messages to a user past each chat's read marker.
+func (s *server) unreadMessages(userID int64) (int, error) {
+	var n int
+	err := s.db.QueryRow(`SELECT COUNT(*) FROM messages x WHERE x.recipient_id = ?1
+		AND x.id > COALESCE((SELECT last_read_id FROM conversation_reads r WHERE r.user_id = ?1 AND r.peer_id = x.sender_id), 0)`, userID).Scan(&n)
+	return n, err
+}
+
+// markRead moves the read marker of one chat to its latest message and tells
+// the user's other devices so their badges drop too.
+func (s *server) markRead(w http.ResponseWriter, r *http.Request, me *User) {
+	other, ok := pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	if _, err := s.db.Exec(`INSERT INTO conversation_reads(user_id, peer_id, last_read_id)
+		VALUES (?1, ?2, COALESCE((SELECT MAX(id) FROM messages WHERE sender_id = ?2 AND recipient_id = ?1), 0))
+		ON CONFLICT(user_id, peer_id) DO UPDATE SET last_read_id = excluded.last_read_id`, me.ID, other); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	unread, err := s.unreadMessages(me.ID)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.hub.sendTo(me.ID, map[string]any{"type": "messages.read", "peer_id": other, "unread": unread})
+	writeJSON(w, http.StatusOK, map[string]int{"unread": unread})
 }

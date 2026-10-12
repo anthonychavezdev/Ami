@@ -227,6 +227,16 @@ func (s *server) seedIfEmpty() error {
 			return err
 		}
 	}
+	// Everything is read except Luis's latest message to Ana, so her Messages tab shows a badge.
+	if _, err := tx.Exec(`INSERT INTO conversation_reads(user_id, peer_id, last_read_id)
+		SELECT recipient_id, sender_id, MAX(id) FROM messages GROUP BY recipient_id, sender_id`); err != nil {
+		return err
+	}
+	if _, err := tx.Exec(`UPDATE conversation_reads SET last_read_id =
+		(SELECT id FROM messages WHERE sender_id = ?2 AND recipient_id = ?1 ORDER BY id DESC LIMIT 1 OFFSET 1)
+		WHERE user_id = ?1 AND peer_id = ?2`, users["ana"], users["luis"]); err != nil {
+		return err
+	}
 	if err := tx.Commit(); err != nil {
 		return err
 	}

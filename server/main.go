@@ -134,6 +134,9 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/conversations", s.auth(s.listConversations))
 	mux.HandleFunc("GET /api/messages/{id}", s.auth(s.listMessages))
 	mux.HandleFunc("POST /api/messages/{id}", s.auth(s.sendMessage))
+	mux.HandleFunc("POST /api/messages/{id}/read", s.auth(s.markRead))
+	mux.HandleFunc("PUT /api/push-token", s.auth(s.setPushToken))
+	mux.HandleFunc("DELETE /api/push-token", s.auth(s.deletePushToken))
 
 	// realtime: events + call signaling
 	mux.HandleFunc("GET /ws", s.handleWS)
