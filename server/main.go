@@ -129,6 +129,8 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("DELETE /api/posts/{id}", s.auth(s.deletePost))
 	mux.HandleFunc("GET /api/posts/{id}/comments", s.auth(s.listComments))
 	mux.HandleFunc("POST /api/posts/{id}/comments", s.auth(s.createComment))
+	mux.HandleFunc("PUT /api/comments/{id}", s.auth(s.updateComment))
+	mux.HandleFunc("DELETE /api/comments/{id}", s.auth(s.deleteComment))
 	mux.HandleFunc("PUT /api/posts/{id}/reaction", s.auth(s.setReaction))
 	mux.HandleFunc("DELETE /api/posts/{id}/reaction", s.auth(s.deleteReaction))
 	mux.HandleFunc("POST /api/media", s.auth(s.uploadMedia))

@@ -56,8 +56,11 @@ CREATE TABLE IF NOT EXISTS comments (
 	id         INTEGER PRIMARY KEY,
 	post_id    INTEGER NOT NULL REFERENCES posts(id) ON DELETE CASCADE,
 	author_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	parent_id  INTEGER REFERENCES comments(id),
 	body       TEXT NOT NULL,
-	created_at TEXT NOT NULL
+	created_at TEXT NOT NULL,
+	edited_at  TEXT,
+	deleted_at TEXT
 );
 CREATE INDEX IF NOT EXISTS comments_post ON comments(post_id, id);
 
@@ -129,6 +132,17 @@ func openDB(path string) (*sql.DB, error) {
 		}
 	}
 	if err := addColumn(db, "users", "password_iterations", "INTEGER NOT NULL DEFAULT 210000"); err != nil {
+		db.Close()
+		return nil, err
+	}
+	for _, col := range [][2]string{{"parent_id", "INTEGER"}, {"edited_at", "TEXT"}, {"deleted_at", "TEXT"}} {
+		if err := addColumn(db, "comments", col[0], col[1]); err != nil {
+			db.Close()
+			return nil, err
+		}
+	}
+	// Only after the column exists on older databases.
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS comments_parent ON comments(parent_id)`); err != nil {
 		db.Close()
 		return nil, err
 	}
