@@ -69,6 +69,7 @@ export const api = {
   login: (username: string, password: string) => post<{ token: string; user: Me }>('/api/login', { username, password }),
   logout: () => post<void>('/api/logout'),
   me: () => get<Me>('/api/me'),
+  updateMe: (patch: Partial<Pick<Me, 'username' | 'display_name' | 'bio' | 'pronouns' | 'avatar_url'>>) => put<Me>('/api/me', patch),
   setInvisible: (invisible: boolean) => put<{ invisible: boolean }>('/api/me/presence', { invisible }),
 
   // users

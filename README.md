@@ -100,6 +100,7 @@ project id the app simply never registers a push token.
 | Posts | Markdown text, pictures, videos and links, together or on their own; tap a picture or video to view it fullscreen (arrows, thumbnails, Save to your library). Authors can edit their posts (a pencil marks edited ones). Comments thread like Reddit: reply under a comment, edit or delete your own; a deleted comment with replies stays as [deleted]. In the browser, your posts, comments and messages get a ⋯ button on hover and a right-click menu. Feed = your posts + friends' posts + posts in your groups. Profile posts are public. |
 | Reactions | Tap **React** to 👍; press-and-hold opens the emoji menu. One reaction per user per post, any emoji. |
 | Comments | On the post screen. |
+| Profile | Picture (GIFs animate), display name, pronouns, bio, and a username change that must be valid and free. |
 | Friends | Request → accept. Only friends can message/call each other. Pushed live over WebSocket. Every avatar carries a presence dot: green while the user has the app open, gray otherwise. "Appear offline" on the Me tab hides yours. |
 | Groups | Creator is owner + admin; others join as members. Admin can remove members, delete posts, delete the group. |
 | Messages | Direct messages with pictures and videos, delivered in real time. Hold one of your messages to edit or delete it. Unread badge on the Messages tab and OS notifications (browser, Android, iOS). |
@@ -126,6 +127,7 @@ All JSON. `Authorization: Bearer <token>` after `/api/register` or `/api/login`.
 
 ```
 POST   /api/register  /api/login  /api/logout      GET /api/me
+PUT    /api/me {username?, display_name?, bio?, pronouns?, avatar_url?}   (avatar: a picture uploaded via /api/media, GIFs included)
 PUT    /api/me/presence {invisible}   appear offline to everyone
 GET    /api/users?q=   /api/users/{id}   /api/users/{id}/posts
 GET    /api/feed?before=&limit=
