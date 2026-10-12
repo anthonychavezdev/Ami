@@ -67,6 +67,7 @@ in
     pkgs.sqlite   # `sqlite3 server/ami.db` to poke at the database
     pkgs.watchman # faster Metro file watching
     pkgs.cocoapods # iOS native builds (Xcode itself must come from the App Store)
+    pkgs.python3 # the end-to-end scripts in mobile/e2e (standard library only)
   ];
 
   # Ports and addresses. The defaults live here; override them in a gitignored
@@ -111,6 +112,15 @@ in
   scripts.setup.exec = ''
     (cd "$DEVENV_ROOT/server" && go mod tidy)
     (cd "$DEVENV_ROOT/mobile" && npm install)
+  '';
+  # Everything that must pass before a commit: gofmt, go vet and the Go tests;
+  # TypeScript, ESLint and Prettier for the app.
+  scripts.test.exec = ''
+    set -e
+    cd "$DEVENV_ROOT/server"
+    if [ -n "$(gofmt -l .)" ]; then echo "gofmt: these files need formatting:" >&2; gofmt -l . >&2; exit 1; fi
+    go vet ./... && go test ./...
+    cd "$DEVENV_ROOT/mobile" && { [ -d node_modules ] || npm install; } && npm test
   '';
   scripts.server.exec = ''
     cd "$DEVENV_ROOT/server" && go run . -dev -addr ":$AMI_PORT" "$@"
