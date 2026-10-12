@@ -105,6 +105,7 @@ GET|DELETE /api/groups/{id}        POST /api/groups/{id}/join | /leave
 GET    /api/groups/{id}/posts      DELETE /api/groups/{id}/members/{uid}
 GET    /api/conversations          GET|POST /api/messages/{userId}
 GET    /ws?token=   (events: hello, message, friend.request, friend.accepted,
+                     post.created/updated/deleted, comment.created,
                      call.offer/answer/ice/streams/hangup/reject/busy/unavailable)
 ```
 

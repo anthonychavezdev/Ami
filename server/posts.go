@@ -81,6 +81,50 @@ func (s *server) getPost(viewer, id int64) (Post, error) {
 	return scanPost(s.db.QueryRow(postSelect+`WHERE p.id = ?`, viewer, id))
 }
 
+// postAudience lists who sees a post in their feed: the author and their
+// friends for profile posts, every member for group posts.
+func (s *server) postAudience(authorID int64, groupID *int64) []int64 {
+	var rows *sql.Rows
+	var err error
+	if groupID != nil {
+		rows, err = s.db.Query(`SELECT user_id FROM group_members WHERE group_id = ?`, *groupID)
+	} else {
+		rows, err = s.db.Query(`SELECT CASE WHEN from_id = ?1 THEN to_id ELSE from_id END FROM friendships
+			WHERE status = 'accepted' AND (from_id = ?1 OR to_id = ?1)`, authorID)
+	}
+	ids := []int64{authorID}
+	if err != nil {
+		return ids
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id int64
+		if rows.Scan(&id) == nil && id != authorID {
+			ids = append(ids, id)
+		}
+	}
+	return ids
+}
+
+// broadcastPost pushes a post's current state to everyone who sees it, each
+// with their own reaction filled in, so feeds update without a refresh.
+func (s *server) broadcastPost(typ string, id int64) {
+	base, err := s.getPost(0, id)
+	if err != nil {
+		return
+	}
+	for _, uid := range s.postAudience(base.Author.ID, base.GroupID) {
+		if !s.hub.online(uid) {
+			continue
+		}
+		p, err := s.getPost(uid, id)
+		if err != nil {
+			continue
+		}
+		s.hub.sendTo(uid, map[string]any{"type": typ, "post": p})
+	}
+}
+
 // feed: my own posts, friends' profile posts, and posts in groups I belong to.
 func (s *server) feed(w http.ResponseWriter, r *http.Request, me *User) {
 	before, limit := pagination(r)
@@ -138,6 +182,7 @@ func (s *server) createPost(w http.ResponseWriter, r *http.Request, me *User) {
 		return
 	}
 	id, _ := res.LastInsertId()
+	s.broadcastPost("post.created", id)
 	s.respondPost(w, http.StatusCreated, me.ID, id)
 }
 
@@ -188,10 +233,12 @@ func (s *server) deletePost(w http.ResponseWriter, r *http.Request, me *User) {
 		writeError(w, http.StatusForbidden, "not allowed")
 		return
 	}
+	audience := s.postAudience(author, groupID)
 	if _, err := s.db.Exec(`DELETE FROM posts WHERE id = ?`, id); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.hub.sendToMany(audience, map[string]any{"type": "post.deleted", "id": id, "group_id": groupID})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -238,8 +285,9 @@ func (s *server) createComment(w http.ResponseWriter, r *http.Request, me *User)
 		writeError(w, http.StatusBadRequest, "body must be 1-2000 characters")
 		return
 	}
-	var exists int
-	if err := s.db.QueryRow(`SELECT 1 FROM posts WHERE id = ?`, id).Scan(&exists); err != nil {
+	var author int64
+	var groupID *int64
+	if err := s.db.QueryRow(`SELECT author_id, group_id FROM posts WHERE id = ?`, id).Scan(&author, &groupID); err != nil {
 		writeError(w, http.StatusNotFound, "post not found")
 		return
 	}
@@ -251,7 +299,10 @@ func (s *server) createComment(w http.ResponseWriter, r *http.Request, me *User)
 		return
 	}
 	cid, _ := res.LastInsertId()
-	writeJSON(w, http.StatusCreated, Comment{ID: cid, PostID: id, Author: *me, Body: in.Body, CreatedAt: createdAt})
+	c := Comment{ID: cid, PostID: id, Author: *me, Body: in.Body, CreatedAt: createdAt}
+	s.hub.sendToMany(s.postAudience(author, groupID), map[string]any{"type": "comment.created", "comment": c})
+	s.broadcastPost("post.updated", id)
+	writeJSON(w, http.StatusCreated, c)
 }
 
 // setReaction upserts the caller's single reaction on a post. Any emoji works.
@@ -282,6 +333,7 @@ func (s *server) setReaction(w http.ResponseWriter, r *http.Request, me *User) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.broadcastPost("post.updated", id)
 	s.respondPost(w, http.StatusOK, me.ID, id)
 }
 
@@ -294,5 +346,6 @@ func (s *server) deleteReaction(w http.ResponseWriter, r *http.Request, me *User
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	s.broadcastPost("post.updated", id)
 	s.respondPost(w, http.StatusOK, me.ID, id)
 }

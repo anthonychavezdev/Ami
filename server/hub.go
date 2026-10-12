@@ -71,6 +71,24 @@ func (h *hub) sendTo(userID int64, v any) bool {
 	return len(set) > 0
 }
 
+// sendToMany fans an event out to several users.
+func (h *hub) sendToMany(userIDs []int64, v any) {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for _, id := range userIDs {
+		for c := range h.users[id] {
+			select {
+			case c.send <- data:
+			default:
+			}
+		}
+	}
+}
+
 func (c *client) writeLoop() {
 	ticker := time.NewTicker(30 * time.Second)
 	defer ticker.Stop()
