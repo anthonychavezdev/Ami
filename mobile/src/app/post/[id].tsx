@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useCallback, useEffect, useState } from 'react';
-import { FlatList, KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { FlatList, KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, View } from 'react-native';
 
 import { Composer } from '@/components/Composer';
 import { PostCard } from '@/components/PostCard';
@@ -18,6 +18,7 @@ export default function PostScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const postId = Number(id);
   const router = useRouter();
+  const commentInput = useRef<TextInput>(null);
   const [post, setPost] = useState<Post | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -69,7 +70,7 @@ export default function PostScreen() {
         keyExtractor={(c) => String(c.id)}
         ListHeaderComponent={
           <View style={{ paddingTop: spacing.lg }}>
-            <PostCard post={post} onChange={setPost} onDelete={() => router.back()} />
+            <PostCard post={post} onChange={setPost} onDelete={() => router.back()} onComment={() => commentInput.current?.focus()} />
             <ErrorBanner error={error} />
             <Text style={styles.heading}>Comments</Text>
           </View>
@@ -89,6 +90,7 @@ export default function PostScreen() {
         contentContainerStyle={{ paddingBottom: spacing.lg }}
       />
       <Composer
+        inputRef={commentInput}
         placeholder="Write a comment…"
         buttonTitle="Send"
         multiline={false}

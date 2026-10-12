@@ -58,11 +58,12 @@ function RootNavigator() {
       >
         <Stack.Protected guard={!!user}>
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="post/[id]" options={{ title: 'Post' }} />
-          <Stack.Screen name="user/[id]" options={{ title: 'Profile' }} />
-          <Stack.Screen name="group/[id]" options={{ title: 'Group' }} />
-          <Stack.Screen name="chat/[id]" options={{ title: 'Chat' }} />
-          <Stack.Screen name="call" options={{ headerShown: false, presentation: 'fullScreenModal', gestureEnabled: false }} />
+          {/* singular: opening a post/profile/chat that is already in the stack goes to it instead of stacking a copy */}
+          <Stack.Screen name="post/[id]" options={{ title: 'Post' }} dangerouslySingular />
+          <Stack.Screen name="user/[id]" options={{ title: 'Profile' }} dangerouslySingular />
+          <Stack.Screen name="group/[id]" options={{ title: 'Group' }} dangerouslySingular />
+          <Stack.Screen name="chat/[id]" options={{ title: 'Chat' }} dangerouslySingular />
+          <Stack.Screen name="call" options={{ headerShown: false, presentation: 'fullScreenModal', gestureEnabled: false }} dangerouslySingular />
         </Stack.Protected>
         <Stack.Protected guard={!user}>
           <Stack.Screen name="login" options={{ headerShown: false }} />
