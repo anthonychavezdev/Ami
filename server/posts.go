@@ -17,6 +17,7 @@ type Post struct {
 	Body         string         `json:"body"`
 	Attachments  []Attachment   `json:"attachments"`
 	CreatedAt    string         `json:"created_at"`
+	EditedAt     *string        `json:"edited_at"` // null until the author edits it
 	CommentCount int            `json:"comment_count"`
 	Reactions    map[string]int `json:"reactions"`   // emoji -> count
 	MyReaction   string         `json:"my_reaction"` // "" if none
@@ -32,7 +33,7 @@ type Comment struct {
 
 // postSelect expects the viewer's user id as its first bound parameter.
 const postSelect = `
-SELECT p.id, p.body, p.attachments, p.created_at, p.group_id, COALESCE(g.name, ''),
+SELECT p.id, p.body, p.attachments, p.created_at, p.edited_at, p.group_id, COALESCE(g.name, ''),
        ` + userCols + `,
        (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id),
        COALESCE((SELECT json_group_object(emoji, n) FROM
@@ -46,7 +47,7 @@ LEFT JOIN groups g ON g.id = p.group_id
 func scanPost(sc interface{ Scan(...any) error }) (Post, error) {
 	var p Post
 	var reactions, attachments string
-	err := sc.Scan(&p.ID, &p.Body, &attachments, &p.CreatedAt, &p.GroupID, &p.GroupName,
+	err := sc.Scan(&p.ID, &p.Body, &attachments, &p.CreatedAt, &p.EditedAt, &p.GroupID, &p.GroupName,
 		&p.Author.ID, &p.Author.Username, &p.Author.DisplayName, &p.Author.CreatedAt,
 		&p.CommentCount, &reactions, &p.MyReaction)
 	if err != nil {
@@ -348,4 +349,62 @@ func (s *server) deleteReaction(w http.ResponseWriter, r *http.Request, me *User
 	}
 	s.broadcastPost("post.updated", id)
 	s.respondPost(w, http.StatusOK, me.ID, id)
+}
+
+// updatePost lets the author change a post's text and attachments; everyone
+// who can see it gets a post.updated event.
+func (s *server) updatePost(w http.ResponseWriter, r *http.Request, me *User) {
+	id, ok := pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	var in struct {
+		Body        string       `json:"body"`
+		Attachments []Attachment `json:"attachments"`
+	}
+	if !readJSON(w, r, &in) {
+		return
+	}
+	in.Body = strings.TrimSpace(in.Body)
+	if in.Body == "" && len(in.Attachments) == 0 {
+		writeError(w, http.StatusBadRequest, "a post needs text or an attachment")
+		return
+	}
+	if len(in.Body) > 5000 {
+		writeError(w, http.StatusBadRequest, "body must be at most 5000 characters")
+		return
+	}
+	if in.Attachments == nil {
+		in.Attachments = []Attachment{}
+	}
+	if err := s.validateAttachments(in.Attachments); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	var author int64
+	err := s.db.QueryRow(`SELECT author_id FROM posts WHERE id = ?`, id).Scan(&author)
+	if errors.Is(err, sql.ErrNoRows) {
+		writeError(w, http.StatusNotFound, "post not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if author != me.ID {
+		writeError(w, http.StatusForbidden, "only the author can edit a post")
+		return
+	}
+	attachments, _ := json.Marshal(in.Attachments)
+	if _, err := s.db.Exec(`UPDATE posts SET body = ?, attachments = ?, edited_at = ? WHERE id = ?`, in.Body, string(attachments), nowString(), id); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	p, err := s.getPost(me.ID, id)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.broadcastPost("post.updated", id)
+	writeJSON(w, http.StatusOK, p)
 }
