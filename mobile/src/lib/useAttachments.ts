@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { api } from './api';
 import { toast } from './toast';
 import type { Attachment } from './types';
+import { errorMessage } from './errors';
 
 const MAX_ATTACHMENTS = 10;
 
@@ -27,7 +28,7 @@ export function useAttachments(initial: Attachment[] = []) {
         const uploaded = await api.uploadMedia(uploadOf(asset));
         setAttachments((prev) => [...prev, uploaded]);
       } catch (e) {
-        toast.error(`Upload failed: ${e instanceof Error ? e.message : String(e)}`);
+        toast.error(`Upload failed: ${errorMessage(e)}`);
       } finally {
         setUploading((n) => n - 1);
       }
@@ -44,5 +45,9 @@ export function useAttachments(initial: Attachment[] = []) {
 // What to upload for a picked asset, with sensible names for assets without one.
 function uploadOf(asset: ImagePicker.ImagePickerAsset) {
   const video = asset.type === 'video';
-  return { uri: asset.uri, name: asset.fileName ?? (video ? 'video.mp4' : 'photo.jpg'), type: asset.mimeType ?? (video ? 'video/mp4' : 'image/jpeg') };
+  return {
+    uri: asset.uri,
+    name: asset.fileName ?? (video ? 'video.mp4' : 'photo.jpg'),
+    type: asset.mimeType ?? (video ? 'video/mp4' : 'image/jpeg'),
+  };
 }

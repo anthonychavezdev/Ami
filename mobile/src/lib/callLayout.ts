@@ -41,7 +41,8 @@ export function callSubtitle(state: CallState): string {
     case 'active':
       if (state.sharing) return 'You are sharing your screen';
       if (sharer) return `${sharer.user.display_name} is sharing their screen`;
-      if (state.group) return state.participants.length === 0 ? 'Waiting for others to join…' : `${state.participants.length + 1} in the call`;
+      if (state.group)
+        return state.participants.length === 0 ? 'Waiting for others to join…' : `${state.participants.length + 1} in the call`;
       return state.video || state.cameraOn ? 'Video call' : 'Voice call';
     default:
       return '';

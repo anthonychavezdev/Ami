@@ -67,7 +67,11 @@ function RootNavigator() {
           <Stack.Screen name="chat/[id]" options={{ title: 'Chat' }} dangerouslySingular />
           <Stack.Screen name="chat/group/[id]" options={{ title: 'Group chat' }} dangerouslySingular />
           <Stack.Screen name="new-group-chat" options={{ title: 'New group chat' }} dangerouslySingular />
-          <Stack.Screen name="call" options={{ headerShown: false, presentation: 'fullScreenModal', gestureEnabled: false }} dangerouslySingular />
+          <Stack.Screen
+            name="call"
+            options={{ headerShown: false, presentation: 'fullScreenModal', gestureEnabled: false }}
+            dangerouslySingular
+          />
         </Stack.Protected>
         <Stack.Protected guard={!user}>
           <Stack.Screen name="login" options={{ headerShown: false }} />

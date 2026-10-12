@@ -1,7 +1,18 @@
 import { Feather } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import React from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, TextInputProps, View, ViewStyle } from 'react-native';
+import {
+  ActivityIndicator,
+  Pressable,
+  StyleProp,
+  StyleSheet,
+  Text,
+  TextInput,
+  TextInputProps,
+  TextStyle,
+  View,
+  ViewStyle,
+} from 'react-native';
 
 import { API_URL } from '@/lib/config';
 import { useOnline } from '@/lib/presence';
@@ -58,8 +69,13 @@ export function Button({
 export function Input({ ref, ...props }: TextInputProps & { ref?: React.Ref<TextInput> }) {
   const { colors, scheme } = useTheme();
   const styles = useStyles(makeStyles);
-  return <TextInput ref={ref} placeholderTextColor={colors.muted} keyboardAppearance={scheme} {...props} style={[styles.input, props.style]} />;
+  return (
+    <TextInput ref={ref} placeholderTextColor={colors.muted} keyboardAppearance={scheme} {...props} style={[styles.input, props.style]} />
+  );
 }
+
+// A hue from a name, so the same name always gets the same colour.
+export const nameHue = (name: string) => [...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 0);
 
 // Places the picture so that its chosen square fills a circle of `size`.
 function cropStyle(crop: AvatarCrop | undefined, size: number) {
@@ -71,17 +87,38 @@ function cropStyle(crop: AvatarCrop | undefined, size: number) {
 
 // Initials on a colored disc, with a presence dot (green online, gray offline)
 // at the bottom right like Teams. `status={false}` hides the dot.
-export function Avatar({ user, size = 40, status = true }: { user: Pick<User, 'display_name' | 'username'> & { id?: number; online?: boolean; avatar_url?: string; avatar_crop?: AvatarCrop }; size?: number; status?: boolean }) {
+export function Avatar({
+  user,
+  size = 40,
+  status = true,
+}: {
+  user: Pick<User, 'display_name' | 'username'> & { id?: number; online?: boolean; avatar_url?: string; avatar_crop?: AvatarCrop };
+  size?: number;
+  status?: boolean;
+}) {
   const { colors } = useTheme();
   const online = useOnline(user.id, user.online);
   const initials = (user.display_name || user.username).trim().slice(0, 2).toUpperCase();
-  const hue = [...user.username].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 0);
   const dot = Math.max(10, Math.round(size * 0.3));
   return (
-    <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: `hsl(${hue}, 55%, 45%)`, alignItems: 'center', justifyContent: 'center' }}>
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        backgroundColor: `hsl(${nameHue(user.username)}, 55%, 45%)`,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
       {user.avatar_url ? (
         <View style={{ width: size, height: size, borderRadius: size / 2, overflow: 'hidden' }}>
-          <Image source={{ uri: API_URL + user.avatar_url }} style={cropStyle(user.avatar_crop, size)} contentFit={user.avatar_crop?.w ? 'fill' : 'cover'} accessibilityLabel="Profile picture" />
+          <Image
+            source={{ uri: API_URL + user.avatar_url }}
+            style={cropStyle(user.avatar_crop, size)}
+            contentFit={user.avatar_crop?.w ? 'fill' : 'cover'}
+            accessibilityLabel="Profile picture"
+          />
         </View>
       ) : (
         <Text style={{ color: '#fff', fontWeight: '700', fontSize: size * 0.38 }}>{initials}</Text>
@@ -89,7 +126,17 @@ export function Avatar({ user, size = 40, status = true }: { user: Pick<User, 'd
       {status && !!user.id && (
         <View
           accessibilityLabel={online ? 'Online' : 'Offline'}
-          style={{ position: 'absolute', right: -1, bottom: -1, width: dot, height: dot, borderRadius: dot / 2, backgroundColor: online ? '#22c55e' : colors.muted, borderWidth: 2, borderColor: colors.card }}
+          style={{
+            position: 'absolute',
+            right: -1,
+            bottom: -1,
+            width: dot,
+            height: dot,
+            borderRadius: dot / 2,
+            backgroundColor: online ? '#22c55e' : colors.muted,
+            borderWidth: 2,
+            borderColor: colors.card,
+          }}
         />
       )}
     </View>
@@ -98,12 +145,68 @@ export function Avatar({ user, size = 40, status = true }: { user: Pick<User, 'd
 
 // A group's icon: a disc coloured from its name.
 export function GroupAvatar({ name, size = 40 }: { name: string; size?: number }) {
-  const hue = [...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 0);
   return (
-    <View accessibilityLabel="Group" style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: `hsl(${hue}, 45%, 45%)`, alignItems: 'center', justifyContent: 'center' }}>
+    <View
+      accessibilityLabel="Group"
+      style={{
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        backgroundColor: `hsl(${nameHue(name)}, 45%, 45%)`,
+        alignItems: 'center',
+        justifyContent: 'center',
+      }}
+    >
       <Feather name="users" size={Math.round(size * 0.5)} color="#fff" />
     </View>
   );
+}
+
+// A list row: something on the left, a title with a subtitle, something on the right.
+export function Row({
+  left,
+  title,
+  subtitle,
+  right,
+  onPress,
+}: {
+  left: React.ReactNode;
+  title: string;
+  subtitle?: string;
+  right?: React.ReactNode;
+  onPress?: () => void;
+}) {
+  const styles = useStyles(makeStyles);
+  return (
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.row, pressed && { opacity: 0.7 }]}>
+      {left}
+      <View style={{ flex: 1 }}>
+        <Text style={styles.rowTitle}>{title}</Text>
+        {subtitle !== undefined && (
+          <Text style={styles.rowSub} numberOfLines={1}>
+            {subtitle}
+          </Text>
+        )}
+      </View>
+      {right}
+    </Pressable>
+  );
+}
+
+// The round button in a tab's bottom corner.
+export function Fab({ label, onPress }: { label: string; onPress: () => void }) {
+  const styles = useStyles(makeStyles);
+  return (
+    <Pressable style={styles.fab} onPress={onPress} accessibilityLabel={label}>
+      <Feather name="plus" size={28} color="#fff" />
+    </Pressable>
+  );
+}
+
+// A small uppercase heading above a form field, a list section or a group of settings.
+export function SectionLabel({ children, style }: { children: React.ReactNode; style?: StyleProp<TextStyle> }) {
+  const styles = useStyles(makeStyles);
+  return <Text style={[styles.sectionLabel, style]}>{children}</Text>;
 }
 
 export function Loading() {
@@ -140,7 +243,15 @@ export function Card({ children, style }: { children: React.ReactNode; style?: V
   return <View style={[styles.card, style]}>{children}</View>;
 }
 
-export function Segmented<T extends string>({ options, value, onChange }: { options: { key: T; label: string }[]; value: T; onChange: (v: T) => void }) {
+export function Segmented<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: { key: T; label: string }[];
+  value: T;
+  onChange: (v: T) => void;
+}) {
   const styles = useStyles(makeStyles);
   return (
     <View style={styles.segment}>
@@ -153,32 +264,65 @@ export function Segmented<T extends string>({ options, value, onChange }: { opti
   );
 }
 
-export function useErrorMessage(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
-}
-
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  btn: { paddingVertical: 12, paddingHorizontal: 18, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
-  btnSmall: { paddingVertical: 7, paddingHorizontal: 12, borderRadius: radius.pill },
-  btnContent: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  btnText: { fontWeight: '600', fontSize: 16 },
-  btnTextSmall: { fontSize: 14 },
-  input: {
-    backgroundColor: colors.card,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: 10,
-    fontSize: 16,
-    color: colors.text,
-  },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
-  muted: { color: colors.muted, textAlign: 'center' },
-  error: { backgroundColor: colors.danger, padding: spacing.md },
-  card: { backgroundColor: colors.card, borderRadius: radius.md, padding: spacing.lg, borderWidth: 1, borderColor: colors.border },
-  segment: { flexDirection: 'row', backgroundColor: colors.accentSoft, borderRadius: radius.pill, padding: 3, margin: spacing.lg, marginBottom: spacing.sm },
-  segmentItem: { flex: 1, paddingVertical: 8, borderRadius: radius.pill, alignItems: 'center' },
-  segmentActive: { backgroundColor: colors.accent },
-  segmentText: { color: colors.accent, fontWeight: '600' },
-});
+const makeStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    btn: { paddingVertical: 12, paddingHorizontal: 18, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
+    btnSmall: { paddingVertical: 7, paddingHorizontal: 12, borderRadius: radius.pill },
+    btnContent: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+    btnText: { fontWeight: '600', fontSize: 16 },
+    btnTextSmall: { fontSize: 14 },
+    input: {
+      backgroundColor: colors.card,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.md,
+      paddingVertical: 10,
+      fontSize: 16,
+      color: colors.text,
+    },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.md,
+      backgroundColor: colors.card,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    rowTitle: { fontWeight: '700', color: colors.text, fontSize: 15 },
+    rowSub: { color: colors.muted, fontSize: 13 },
+    fab: {
+      position: 'absolute',
+      right: spacing.xl,
+      bottom: spacing.xl,
+      width: 56,
+      height: 56,
+      borderRadius: 28,
+      backgroundColor: colors.accent,
+      alignItems: 'center',
+      justifyContent: 'center',
+      elevation: 6,
+      shadowColor: '#000',
+      shadowOpacity: 0.2,
+      shadowRadius: 8,
+      shadowOffset: { width: 0, height: 4 },
+    },
+    sectionLabel: { color: colors.muted, fontWeight: '700', fontSize: 13, textTransform: 'uppercase' },
+    center: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
+    muted: { color: colors.muted, textAlign: 'center' },
+    error: { backgroundColor: colors.danger, padding: spacing.md },
+    card: { backgroundColor: colors.card, borderRadius: radius.md, padding: spacing.lg, borderWidth: 1, borderColor: colors.border },
+    segment: {
+      flexDirection: 'row',
+      backgroundColor: colors.accentSoft,
+      borderRadius: radius.pill,
+      padding: 3,
+      margin: spacing.lg,
+      marginBottom: spacing.sm,
+    },
+    segmentItem: { flex: 1, paddingVertical: 8, borderRadius: radius.pill, alignItems: 'center' },
+    segmentActive: { backgroundColor: colors.accent },
+    segmentText: { color: colors.accent, fontWeight: '600' },
+  });

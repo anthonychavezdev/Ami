@@ -9,7 +9,19 @@ import { useStyles, useTheme } from '@/lib/theme';
 import type { ThemeColors } from '@/theme';
 
 // A list of friends with a check mark on each one selected.
-export function FriendPicker({ friends, selected, onToggle, header, empty }: { friends: User[]; selected: ReadonlySet<number>; onToggle: (id: number) => void; header: React.ReactElement; empty: string }) {
+export function FriendPicker({
+  friends,
+  selected,
+  onToggle,
+  header,
+  empty,
+}: {
+  friends: User[];
+  selected: ReadonlySet<number>;
+  onToggle: (id: number) => void;
+  header: React.ReactElement;
+  empty: string;
+}) {
   const styles = useStyles(makeStyles);
   const { colors } = useTheme();
   return (
@@ -25,7 +37,10 @@ export function FriendPicker({ friends, selected, onToggle, header, empty }: { f
             user={item}
             onPress={() => onToggle(item.id)}
             right={
-              <View style={[styles.check, on && { backgroundColor: colors.accent, borderColor: colors.accent }]} accessibilityLabel={on ? `${item.display_name} selected` : `${item.display_name} not selected`}>
+              <View
+                style={[styles.check, on && { backgroundColor: colors.accent, borderColor: colors.accent }]}
+                accessibilityLabel={on ? `${item.display_name} selected` : `${item.display_name} not selected`}
+              >
                 {on && <Feather name="check" size={16} color="#fff" />}
               </View>
             }
@@ -46,6 +61,15 @@ export const toggled = (set: ReadonlySet<number>, id: number): ReadonlySet<numbe
   return next;
 };
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  check: { width: 26, height: 26, borderRadius: 13, borderWidth: 2, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
-});
+const makeStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    check: {
+      width: 26,
+      height: 26,
+      borderRadius: 13,
+      borderWidth: 2,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+  });

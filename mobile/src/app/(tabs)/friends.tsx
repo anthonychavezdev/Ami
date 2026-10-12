@@ -1,16 +1,17 @@
 import { Feather } from '@expo/vector-icons';
-import { useFocusEffect } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
-import { FlatList, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { FlatList, RefreshControl, Text, View } from 'react-native';
 
 import { UserRow } from '@/components/UserRow';
-import { Button, Empty, Input, Loading, Segmented } from '@/components/ui';
+import { Button, Empty, Input, Loading, SectionLabel, Segmented } from '@/components/ui';
 import { api } from '@/lib/api';
+import { errorMessage } from '@/lib/errors';
 import type { User, UserProfile } from '@/lib/types';
-import { socket } from '@/lib/ws';
-import { useStyles, useTheme } from '@/lib/theme';
+import { useDebounced } from '@/lib/useDebounced';
+import { useLiveLoad } from '@/lib/useLiveLoad';
+import { useTheme } from '@/lib/theme';
 import { toast } from '@/lib/toast';
-import { spacing, type ThemeColors } from '@/theme';
+import { spacing } from '@/theme';
 
 type Tab = 'friends' | 'requests' | 'find';
 
@@ -34,19 +35,8 @@ export default function FriendsScreen() {
   );
 }
 
-// Loads something whenever the screen is focused or one of the events fires.
-function useLiveLoad(load: () => Promise<void>, events: string[]) {
-  useFocusEffect(
-    useCallback(() => {
-      void load();
-      const offs = events.map((type) => socket.on(type, () => void load()));
-      return () => offs.forEach((off) => off());
-    }, [load, events]),
-  );
-}
-
-const FRIEND_EVENTS = ['friend.accepted'];
-const REQUEST_EVENTS = ['friend.request', 'friend.accepted'];
+const FRIEND_EVENTS = ['friend.accepted'] as const;
+const REQUEST_EVENTS = ['friend.request', 'friend.accepted'] as const;
 
 function FriendList() {
   const { colors } = useTheme();
@@ -67,7 +57,16 @@ function FriendList() {
       keyExtractor={(u) => String(u.id)}
       renderItem={({ item }) => <UserRow user={item} />}
       ListEmptyComponent={<Empty text="No friends yet. Find people and send a request." />}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); void load(); }} tintColor={colors.accent} />}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={() => {
+            setRefreshing(true);
+            void load();
+          }}
+          tintColor={colors.accent}
+        />
+      }
       contentContainerStyle={{ flexGrow: 1 }}
     />
   );
@@ -80,10 +79,12 @@ const requestRows = (data: { incoming: User[]; outgoing: User[] }): RequestItem[
   [
     { title: 'Incoming', users: data.incoming, incoming: true },
     { title: 'Sent', users: data.outgoing, incoming: false },
-  ].flatMap((s) => [{ header: s.title, key: `h-${s.title}` }, ...s.users.map((u) => ({ user: u, incoming: s.incoming, key: `${s.title}-${u.id}` }))]);
+  ].flatMap((s) => [
+    { header: s.title, key: `h-${s.title}` },
+    ...s.users.map((u) => ({ user: u, incoming: s.incoming, key: `${s.title}-${u.id}` })),
+  ]);
 
 function Requests() {
-  const styles = useStyles(makeStyles);
   const [data, setData] = useState<{ incoming: User[]; outgoing: User[] } | null>(null);
   const load = useCallback(async () => setData(await api.friendRequests()), []);
   useLiveLoad(load, REQUEST_EVENTS);
@@ -94,7 +95,7 @@ function Requests() {
       await fn();
       await load();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e));
+      toast.error(errorMessage(e));
     }
   };
 
@@ -104,7 +105,9 @@ function Requests() {
       keyExtractor={(i) => i.key}
       renderItem={({ item }) =>
         'header' in item ? (
-          <Text style={styles.sectionHeader}>{item.header}</Text>
+          <SectionLabel style={{ paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.sm }}>
+            {item.header}
+          </SectionLabel>
         ) : (
           <UserRow
             user={item.user}
@@ -129,21 +132,21 @@ function Requests() {
 
 // Search results that follow the query after a short pause.
 function useUserSearch(query: string) {
-  const [results, setResults] = useState<UserProfile[]>([]);
-  const [loading, setLoading] = useState(false);
+  const q = useDebounced(query);
+  const [found, setFound] = useState<{ q: string | null; list: UserProfile[] }>({ q: null, list: [] }); // results and the query they answer
   useEffect(() => {
-    const t = setTimeout(async () => {
-      setLoading(true);
-      try {
-        setResults(await api.searchUsers(query));
-      } finally {
-        setLoading(false);
-      }
-    }, 250);
-    return () => clearTimeout(t);
-  }, [query]);
-  const setStatus = (id: number, friend_status: UserProfile['friend_status']) => setResults((prev) => prev.map((u) => (u.id === id ? { ...u, friend_status } : u)));
-  return { results, loading, setStatus };
+    let current = true;
+    api
+      .searchUsers(q)
+      .then((list) => current && setFound({ q, list }))
+      .catch(() => {});
+    return () => {
+      current = false;
+    };
+  }, [q]);
+  const setStatus = (id: number, friend_status: UserProfile['friend_status']) =>
+    setFound((f) => ({ ...f, list: f.list.map((u) => (u.id === id ? { ...u, friend_status } : u)) }));
+  return { results: found.list, loading: found.q !== q, setStatus };
 }
 
 function Find() {
@@ -160,7 +163,9 @@ function Find() {
         <FlatList
           data={results}
           keyExtractor={(u) => String(u.id)}
-          renderItem={({ item }) => <UserRow user={item} right={<FriendStatusButton user={item} onStatus={(s) => setStatus(item.id, s)} />} />}
+          renderItem={({ item }) => (
+            <UserRow user={item} right={<FriendStatusButton user={item} onStatus={(s) => setStatus(item.id, s)} />} />
+          )}
           ListEmptyComponent={<Empty text={query ? 'No one found.' : 'Search for people to add.'} />}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ flexGrow: 1 }}
@@ -177,7 +182,7 @@ function FriendStatusButton({ user, onStatus }: { user: UserProfile; onStatus: (
     try {
       onStatus((await fn()).friend_status as UserProfile['friend_status']);
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e));
+      toast.error(errorMessage(e));
     }
   };
   switch (user.friend_status) {
@@ -198,7 +203,3 @@ function FriendStatusButton({ user, onStatus }: { user: UserProfile; onStatus: (
       return null;
   }
 }
-
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  sectionHeader: { color: colors.muted, fontWeight: '700', fontSize: 13, textTransform: 'uppercase', paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.sm },
-});

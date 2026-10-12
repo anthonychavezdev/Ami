@@ -9,6 +9,7 @@ import { mediaUrl } from '@/lib/api';
 import { saveMedia } from '@/lib/save';
 import type { Attachment } from '@/lib/types';
 import { radius, spacing } from '@/theme';
+import { errorMessage } from '@/lib/errors';
 
 type Size = { width: number; height: number };
 const THUMB = 56;
@@ -20,10 +21,21 @@ const STRIP = THUMB + spacing.md * 2;
 // in as a prop on purpose: on react-native-web, subscribing to the theme
 // context from here kept the attachment grid next to it from ever measuring
 // its width.
-export function MediaViewer({ items, index, accent, onClose }: { items: Attachment[]; index: number | null; accent: string; onClose: () => void }) {
+export function MediaViewer({
+  items,
+  index,
+  accent,
+  onClose,
+}: {
+  items: Attachment[];
+  index: number | null;
+  accent: string;
+  onClose: () => void;
+}) {
   const insets = useSafeAreaInsets();
   const [size, setSize] = useState<Size | null>(null);
-  const [current, setCurrent] = useState(0);
+  const [current, setCurrent] = useState(index ?? 0);
+  const [shownIndex, setShownIndex] = useState(index); // the `index` current was last reset to
   const list = useRef<FlatList<Attachment>>(null);
   const visible = index !== null;
   const many = items.length > 1;
@@ -31,9 +43,11 @@ export function MediaViewer({ items, index, accent, onClose }: { items: Attachme
   const [notice, showNotice] = useNotice();
   const { saving, save } = useSave(items[current], showNotice);
 
-  useEffect(() => {
+  if (index !== shownIndex) {
+    // Opened on another item: start there (state reset during render, per the React docs).
+    setShownIndex(index);
     if (index !== null) setCurrent(index);
-  }, [index]);
+  }
 
   const goTo = useCallback(
     (i: number) => {
@@ -46,7 +60,14 @@ export function MediaViewer({ items, index, accent, onClose }: { items: Attachme
   useArrowKeys(visible, current, goTo);
 
   return (
-    <Modal visible={visible} animationType="fade" onRequestClose={onClose} statusBarTranslucent navigationBarTranslucent supportedOrientations={['portrait', 'landscape']}>
+    <Modal
+      visible={visible}
+      animationType="fade"
+      onRequestClose={onClose}
+      statusBarTranslucent
+      navigationBarTranslucent
+      supportedOrientations={['portrait', 'landscape']}
+    >
       <StatusBar style="light" />
       <View style={styles.backdrop} onLayout={(e) => setSize({ width: e.nativeEvent.layout.width, height: e.nativeEvent.layout.height })}>
         {visible && size && (
@@ -86,7 +107,9 @@ export function MediaViewer({ items, index, accent, onClose }: { items: Attachme
           </View>
         )}
 
-        {many && size && <ThumbnailStrip items={items} current={current} width={size.width} accent={accent} bottomInset={insets.bottom} onPick={goTo} />}
+        {many && size && (
+          <ThumbnailStrip items={items} current={current} width={size.width} accent={accent} bottomInset={insets.bottom} onPick={goTo} />
+        )}
       </View>
     </Modal>
   );
@@ -125,7 +148,7 @@ function useSave(att: Attachment | undefined, report: (text: string) => void) {
     try {
       report(await saveMedia(att));
     } catch (e) {
-      report(e instanceof Error ? e.message : String(e));
+      report(errorMessage(e));
     } finally {
       setSaving(false);
     }
@@ -135,7 +158,12 @@ function useSave(att: Attachment | undefined, report: (text: string) => void) {
 
 function RoundButton({ label, onPress, children }: { label: string; onPress: () => void; children: React.ReactNode }) {
   return (
-    <Pressable onPress={onPress} hitSlop={10} accessibilityLabel={label} style={({ pressed }) => [styles.round, pressed && { opacity: 0.6 }]}>
+    <Pressable
+      onPress={onPress}
+      hitSlop={10}
+      accessibilityLabel={label}
+      style={({ pressed }) => [styles.round, pressed && { opacity: 0.6 }]}
+    >
       {children}
     </Pressable>
   );
@@ -143,14 +171,33 @@ function RoundButton({ label, onPress, children }: { label: string; onPress: () 
 
 function Arrow({ side, top, onPress }: { side: 'left' | 'right'; top: number; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} hitSlop={10} accessibilityLabel={side === 'left' ? 'Previous' : 'Next'} style={({ pressed }) => [styles.arrow, { [side]: spacing.md, top }, pressed && { opacity: 0.6 }]}>
+    <Pressable
+      onPress={onPress}
+      hitSlop={10}
+      accessibilityLabel={side === 'left' ? 'Previous' : 'Next'}
+      style={({ pressed }) => [styles.arrow, { [side]: spacing.md, top }, pressed && { opacity: 0.6 }]}
+    >
       <Feather name={side === 'left' ? 'chevron-left' : 'chevron-right'} size={28} color="#fff" />
     </Pressable>
   );
 }
 
 // Small pictures along the bottom; the active one is kept in view.
-function ThumbnailStrip({ items, current, width, accent, bottomInset, onPick }: { items: Attachment[]; current: number; width: number; accent: string; bottomInset: number; onPick: (i: number) => void }) {
+function ThumbnailStrip({
+  items,
+  current,
+  width,
+  accent,
+  bottomInset,
+  onPick,
+}: {
+  items: Attachment[];
+  current: number;
+  width: number;
+  accent: string;
+  bottomInset: number;
+  onPick: (i: number) => void;
+}) {
   const strip = useRef<ScrollView>(null);
   useEffect(() => {
     strip.current?.scrollTo({ x: Math.max(0, current * (THUMB + spacing.sm) - width / 2 + THUMB / 2), animated: true });
@@ -159,7 +206,12 @@ function ThumbnailStrip({ items, current, width, accent, bottomInset, onPick }: 
     <View style={[styles.strip, { height: STRIP + bottomInset, paddingBottom: bottomInset }]}>
       <ScrollView ref={strip} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.stripContent}>
         {items.map((a, i) => (
-          <Pressable key={`${a.url}-${i}`} onPress={() => onPick(i)} accessibilityLabel={`${a.type === 'video' ? 'Video' : 'Picture'} ${i + 1}`} style={[styles.thumb, i === current && { borderColor: accent, opacity: 1 }]}>
+          <Pressable
+            key={`${a.url}-${i}`}
+            onPress={() => onPick(i)}
+            accessibilityLabel={`${a.type === 'video' ? 'Video' : 'Picture'} ${i + 1}`}
+            style={[styles.thumb, i === current && { borderColor: accent, opacity: 1 }]}
+          >
             {a.type === 'video' ? (
               <View style={styles.thumbVideo}>
                 <Feather name="play" size={18} color="#fff" />
@@ -178,7 +230,16 @@ function Page({ att, size, active }: { att: Attachment; size: Size; active: bool
   if (att.type === 'video') return <VideoPage att={att} size={size} active={active} />;
   // Pinch to zoom is native on iOS; Android shows the picture fit to the screen.
   return (
-    <ScrollView style={size} contentContainerStyle={size} maximumZoomScale={4} minimumZoomScale={1} bouncesZoom centerContent showsVerticalScrollIndicator={false} showsHorizontalScrollIndicator={false}>
+    <ScrollView
+      style={size}
+      contentContainerStyle={size}
+      maximumZoomScale={4}
+      minimumZoomScale={1}
+      bouncesZoom
+      centerContent
+      showsVerticalScrollIndicator={false}
+      showsHorizontalScrollIndicator={false}
+    >
       <Image source={{ uri: mediaUrl(att) }} style={size} resizeMode="contain" accessibilityLabel="Fullscreen picture" />
     </ScrollView>
   );
@@ -195,15 +256,53 @@ function VideoPage({ att, size, active }: { att: Attachment; size: Size; active:
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: '#000' },
-  bar: { position: 'absolute', left: spacing.lg, right: spacing.lg, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  bar: {
+    position: 'absolute',
+    left: spacing.lg,
+    right: spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   barActions: { flexDirection: 'row', gap: spacing.sm },
   counter: { color: '#fff', fontSize: 15, fontWeight: '600', textShadowColor: 'rgba(0,0,0,0.8)', textShadowRadius: 4 },
-  round: { width: 40, height: 40, borderRadius: radius.pill, backgroundColor: 'rgba(0,0,0,0.5)', alignItems: 'center', justifyContent: 'center' },
-  arrow: { position: 'absolute', width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.45)', alignItems: 'center', justifyContent: 'center' },
-  notice: { position: 'absolute', alignSelf: 'center', backgroundColor: 'rgba(0,0,0,0.75)', paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderRadius: radius.pill },
+  round: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.pill,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  arrow: {
+    position: 'absolute',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notice: {
+    position: 'absolute',
+    alignSelf: 'center',
+    backgroundColor: 'rgba(0,0,0,0.75)',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+  },
   noticeText: { color: '#fff', fontSize: 14, fontWeight: '600' },
   strip: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', paddingTop: spacing.md },
   stripContent: { paddingHorizontal: spacing.lg, gap: spacing.sm, alignItems: 'center' },
-  thumb: { width: THUMB, height: THUMB, borderRadius: radius.sm, overflow: 'hidden', borderWidth: 2, borderColor: 'transparent', opacity: 0.6, backgroundColor: '#222' },
+  thumb: {
+    width: THUMB,
+    height: THUMB,
+    borderRadius: radius.sm,
+    overflow: 'hidden',
+    borderWidth: 2,
+    borderColor: 'transparent',
+    opacity: 0.6,
+    backgroundColor: '#222',
+  },
   thumbVideo: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#333' },
 });

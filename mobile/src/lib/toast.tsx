@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 // expo-router vendors React Navigation; this is the context its native stack provides.
 import { HeaderHeightContext } from 'expo-router/build/react-navigation/elements';
-import React, { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useState } from 'react';
 import { Animated, Easing, Pressable, StyleSheet, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -35,18 +35,10 @@ const DURATION = 2200;
 // pushed native-stack screen paints over root-level overlays, so the banner
 // has to live in the topmost screen itself. Each instance shows the banner.
 export function ToastHost() {
-  const styles = useStyles(makeStyles);
-  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const headerHeight = useContext(HeaderHeightContext) ?? 0; // > 0 when the screen has a native header above its content
   const top = (headerHeight > 0 ? 0 : insets.top) + spacing.sm;
   const [current, setCurrent] = useState<Toast | null>(null);
-  // A fresh value per banner, so the previous fade-out cannot leave this one invisible.
-  const opacity = useMemo(() => new Animated.Value(1), [current]);
-
-  const hide = useCallback(() => {
-    Animated.timing(opacity, { toValue: 0, duration: 200, easing: Easing.out(Easing.quad), useNativeDriver: false }).start(({ finished }) => finished && setCurrent(null));
-  }, [opacity]);
 
   useEffect(() => {
     const on = (t: Toast) => setCurrent(t);
@@ -54,50 +46,66 @@ export function ToastHost() {
     return () => void listeners.delete(on);
   }, []);
 
-  // Shown as soon as it renders (a screen under a closing modal may render it
-  // late), then fades out. No entry transform: a transform animated while the
-  // screen is frozen never reaches the native view.
+  if (!current) return null;
+  // Keyed by id: each banner is a fresh component with its own opacity, so the
+  // previous fade-out cannot leave this one invisible.
+  return <Banner key={current.id} toast={current} top={top} onHidden={() => setCurrent(null)} />;
+}
+
+// Shown as soon as it renders (a screen under a closing modal may render it
+// late), then fades out. No entry transform: a transform animated while the
+// screen is frozen never reaches the native view.
+function Banner({ toast: t, top, onHidden }: { toast: Toast; top: number; onHidden: () => void }) {
+  const styles = useStyles(makeStyles);
+  const { colors } = useTheme();
+  const [opacity] = useState(() => new Animated.Value(1));
+
+  const hide = useCallback(() => {
+    Animated.timing(opacity, { toValue: 0, duration: 200, easing: Easing.out(Easing.quad), useNativeDriver: false }).start(
+      ({ finished }) => finished && onHidden(),
+    );
+  }, [opacity, onHidden]);
+
   useEffect(() => {
-    if (!current) return;
     const timer = setTimeout(hide, DURATION);
     return () => clearTimeout(timer);
-  }, [current, hide]);
+  }, [hide]);
 
-  if (!current) return null;
-  const icon = ({ info: 'info', success: 'check-circle', error: 'alert-circle' } as const)[current.kind];
-  const tint = { info: colors.accent, success: colors.success, error: colors.danger }[current.kind];
+  const icon = ({ info: 'info', success: 'check-circle', error: 'alert-circle' } as const)[t.kind];
+  const tint = { info: colors.accent, success: colors.success, error: colors.danger }[t.kind];
   return (
     <Animated.View pointerEvents="box-none" style={[styles.wrap, { top, opacity }]}>
       <Pressable onPress={hide} style={[styles.banner, { borderLeftColor: tint }]}>
         <Feather name={icon} size={18} color={tint} />
         <Text style={styles.text} numberOfLines={2}>
-          {current.message}
+          {t.message}
         </Text>
       </Pressable>
     </Animated.View>
   );
 }
 
-const makeStyles = (colors: ThemeColors) => StyleSheet.create({
-  wrap: { position: 'absolute', left: spacing.lg, right: spacing.lg, zIndex: 1000, elevation: 20, alignItems: 'center' },
-  banner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-    width: '100%',
-    maxWidth: 520,
-    backgroundColor: colors.card,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderLeftWidth: 4,
-    paddingVertical: 10,
-    paddingHorizontal: spacing.md,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
-  },
-  text: { color: colors.text, fontWeight: '600', flexShrink: 1 },
-});
+const makeStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    wrap: { position: 'absolute', left: spacing.lg, right: spacing.lg, zIndex: 1000, elevation: 20, alignItems: 'center' },
+    banner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      width: '100%',
+      maxWidth: 520,
+      backgroundColor: colors.card,
+      borderRadius: radius.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderLeftWidth: 4,
+      paddingVertical: 10,
+      paddingHorizontal: spacing.md,
+      shadowColor: '#000',
+      shadowOpacity: 0.15,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 4 },
+      elevation: 6,
+    },
+    text: { color: colors.text, fontWeight: '600', flexShrink: 1 },
+  });

@@ -3,9 +3,24 @@ import { NativeModules, Platform } from 'react-native';
 import { type MediaStream, type MediaStreamTrack, mediaDevices, switchCamera } from './webrtc';
 
 import { Peer } from './callPeer';
-import { IDLE, type CallState, type CallStatus, connected, inCall, participantOf, updateParticipant, withParticipant, withScreen, withStream, withoutParticipant } from './callState';
+import {
+  IDLE,
+  type CallState,
+  type CallStatus,
+  connected,
+  inCall,
+  participantOf,
+  updateParticipant,
+  withParticipant,
+  withScreen,
+  withStream,
+  withoutParticipant,
+} from './callState';
+import { errorMessage } from './errors';
+import type { CallJoin, CallSignal, EventOf, SDP } from './events';
+import { groupRoomKey } from './messages';
 import type { CallGroup, User } from './types';
-import { socket, type WSEvent } from './ws';
+import { socket } from './ws';
 
 export type { CallState, CallStatus, Participant } from './callState';
 export { cameraOf, sharerOf } from './callState';
@@ -32,8 +47,9 @@ class CallManager {
   /** Set by the UI so an incoming call can open the call screen. */
   onIncoming: (() => void) | null = null;
 
-  constructor() {
-    socket.on('hello', (e) => void (this.myId = e.user?.id ?? 0));
+  /** Follows the call events (called once by startRealtime). */
+  listen() {
+    socket.on('hello', (e) => void (this.myId = e.user.id));
     socket.on('call.ring', (e) => this.onRing(e));
     socket.on('call.joined', (e) => this.onJoined(e));
     socket.on('call.peer_joined', (e) => this.onPeerJoined(e));
@@ -45,7 +61,7 @@ class CallManager {
     socket.on('call.answer', (e) => void this.peerIn(e)?.acceptAnswer(e.sdp));
     socket.on('call.ice', (e) => this.onIce(e));
     socket.on('call.streams', (e) => this.onStreams(e));
-    socket.on('error', (e) => this.status() !== 'idle' && this.end(String(e.error ?? 'Call failed'), false));
+    socket.on('error', (e) => this.status() !== 'idle' && this.end(e.error || 'Call failed', false));
     socket.on('close', () => this.onSocketClosed());
     socket.on('open', () => this.onSocketOpened());
   }
@@ -84,7 +100,7 @@ class CallManager {
 
   /** Start a group's call, or join the one in progress. */
   async joinGroupCall(group: CallGroup, video: boolean) {
-    const room = `g:${group.id}`;
+    const room = groupRoomKey(group.id);
     const ringingForIt = this.status() === 'incoming' && this.state.room === room;
     if (this.status() !== 'idle' && !ringingForIt) return; // already in it, or busy
     this.set({ ...IDLE, status: 'connecting', room, group, video, version: this.state.version });
@@ -150,7 +166,7 @@ class CallManager {
   // ---- local media
 
   /** Gets the microphone (and camera) and sends the join; a hang-up meanwhile is honoured. */
-  private async joinWith(video: boolean, expected: CallStatus, join: Record<string, unknown>): Promise<boolean> {
+  private async joinWith(video: boolean, expected: CallStatus, join: CallJoin): Promise<boolean> {
     try {
       const stream = await mediaDevices.getUserMedia({ audio: true, video: video ? { facingMode: this.facing } : false });
       if (this.status() !== expected) {
@@ -161,7 +177,7 @@ class CallManager {
       if (!socket.send({ type: 'call.join', ...join })) throw new Error('Not connected');
       return true;
     } catch (e) {
-      this.end(errorText(e), true);
+      this.end(errorMessage(e), true);
       return false;
     }
   }
@@ -175,7 +191,7 @@ class CallManager {
       this.set({ cameraOn: true });
       this.bump();
     } catch (e) {
-      this.set({ error: errorText(e) });
+      this.set({ error: errorMessage(e) });
     }
   }
 
@@ -194,7 +210,7 @@ class CallManager {
       this.set({ localScreen: screen, sharing: true });
       this.announceStreams();
     } catch (e) {
-      this.set({ error: errorText(e) });
+      this.set({ error: errorMessage(e) });
     }
   }
 
@@ -220,8 +236,8 @@ class CallManager {
 
   private peerEvents(user: User) {
     return {
-      onOffer: (sdp: unknown) => this.signal(user.id, { type: 'call.offer', sdp }),
-      onAnswer: (sdp: unknown) => this.signal(user.id, { type: 'call.answer', sdp }),
+      onOffer: (sdp: SDP) => this.signal(user.id, { type: 'call.offer', sdp }),
+      onAnswer: (sdp: SDP) => this.signal(user.id, { type: 'call.answer', sdp }),
       onCandidate: (candidate: unknown) => this.signal(user.id, { type: 'call.ice', candidate }),
       onStream: (stream: MediaStream) => {
         this.update((s) => updateParticipant(s, user.id, withStream(stream)));
@@ -258,27 +274,31 @@ class CallManager {
   }
 
   /** The connection a signaling event is for, if it belongs to our room. */
-  private peerIn(e: WSEvent) {
+  private peerIn(e: { room: string; from: number }) {
     return e.room === this.state.room ? this.peers.get(e.from) : undefined;
   }
 
-  private signal(to: number, msg: Record<string, unknown>) {
+  private signal(to: number, msg: CallSignal) {
     if (this.state.room) socket.send({ ...msg, room: this.state.room, to });
   }
 
   /** Tells participants which of our streams is the camera and which the screen. */
   private announceStreams(to?: number) {
-    const msg = { type: 'call.streams', camera: this.state.localStream?.id ?? null, screen: this.state.localScreen?.id ?? null };
+    const msg: CallSignal = {
+      type: 'call.streams',
+      camera: this.state.localStream?.id ?? null,
+      screen: this.state.localScreen?.id ?? null,
+    };
     if (to != null) this.signal(to, msg);
     else this.peers.forEach((_, id) => this.signal(id, msg));
   }
 
   // ---- room events
 
-  private onRing(e: WSEvent) {
+  private onRing(e: EventOf<'call.ring'>) {
     const { room, from_user, video, group } = e;
     if (this.status() === 'idle') {
-      this.set({ ...IDLE, status: 'incoming', room, peer: from_user, group: group ?? null, video: !!video, version: this.state.version });
+      this.set({ ...IDLE, status: 'incoming', room, peer: from_user, group: group ?? null, video, version: this.state.version });
       this.onIncoming?.();
       return;
     }
@@ -287,19 +307,18 @@ class CallManager {
 
   // Answers our join. After a reconnect it also answers a re-join: drop
   // whoever left meanwhile, keep the connections we still have, offer to anyone new.
-  private onJoined(e: WSEvent) {
+  private onJoined(e: EventOf<'call.joined'>) {
     const { room, participants, video, group } = e;
     if (this.status() === 'idle') {
       socket.send({ type: 'call.leave', room }); // hung up before the server answered
       return;
     }
-    this.set({ room, video: !!video, group: group ?? this.state.group });
-    const others: User[] = participants ?? [];
-    const present = new Set(others.map((u) => u.id));
+    this.set({ room, video, group: group ?? this.state.group });
+    const present = new Set(participants.map((u) => u.id));
     this.state.participants.filter((p) => !present.has(p.user.id)).forEach((p) => this.dropPeer(p.user.id, null));
     if (this.status() === 'idle') return; // a one-to-one call ends without the other person
-    const fresh = others.filter((u) => !this.peerIs(u.id));
-    if (!others.length) {
+    const fresh = participants.filter((u) => !this.peerIs(u.id));
+    if (!participants.length) {
       if (this.state.group && this.status() !== 'active') this.set({ status: 'active' }); // alone for now; the call screen says so
       return; // one-to-one: keep ringing until the friend joins
     }
@@ -310,7 +329,7 @@ class CallManager {
     });
   }
 
-  private onPeerJoined(e: WSEvent) {
+  private onPeerJoined(e: EventOf<'call.peer_joined'>) {
     if (e.room !== this.state.room || this.status() === 'idle') return;
     if (e.user.id === this.myId) {
       if (this.status() === 'incoming') this.teardown(null); // picked up on another of our devices
@@ -324,21 +343,21 @@ class CallManager {
     }
   }
 
-  private onPeerLeft(e: WSEvent) {
+  private onPeerLeft(e: EventOf<'call.peer_left'>) {
     if (e.room !== this.state.room || !inCall(this.status()) || e.user_id === this.myId) return;
     if (participantOf(this.state, e.user_id)) this.dropPeer(e.user_id, null);
   }
 
-  private onDeclined(e: WSEvent) {
+  private onDeclined(e: EventOf<'call.declined'>) {
     if (e.room !== this.state.room || this.status() === 'idle' || this.state.group) return;
     this.end(e.reason === 'busy' ? 'User is on another call' : 'Call declined', true);
   }
 
-  private onEnded(e: WSEvent) {
+  private onEnded(e: EventOf<'call.ended'>) {
     if (e.room === this.state.room && this.status() === 'incoming') this.teardown(null); // they hung up before we answered
   }
 
-  private onUnavailable(e: WSEvent) {
+  private onUnavailable(e: EventOf<'call.unavailable'>) {
     if (e.room === this.state.room && this.status() === 'outgoing') this.teardown('User is offline');
   }
 
@@ -360,7 +379,7 @@ class CallManager {
 
   // ---- WebRTC signaling
 
-  private async onOffer(e: WSEvent) {
+  private async onOffer(e: EventOf<'call.offer'>) {
     const { room, from, from_user, sdp } = e;
     if (room !== this.state.room || !inCall(this.status()) || !from_user) return;
     const known = this.peers.get(from);
@@ -370,23 +389,24 @@ class CallManager {
     await peer.acceptOffer(sdp, () => this.sendLocalStreams(peer)); // ride on their transceivers in the answer
   }
 
-  private onIce(e: WSEvent) {
+  private onIce(e: EventOf<'call.ice'>) {
     if (e.room !== this.state.room) return;
     const peer = this.peers.get(e.from);
     if (peer) void peer.addCandidate(e.candidate);
     else this.early.set(e.from, [...(this.early.get(e.from) ?? []), e.candidate]);
   }
 
-  private onStreams(e: WSEvent) {
+  private onStreams(e: EventOf<'call.streams'>) {
     if (e.room !== this.state.room) return;
-    this.update((s) => updateParticipant(s, e.from, withScreen(e.screen ?? null)));
+    this.update((s) => updateParticipant(s, e.from, withScreen(e.screen)));
     this.bump();
   }
 
   // ---- ending
 
   private end(reason: string | null, tellServer: boolean) {
-    if (tellServer && this.state.room) socket.send({ type: this.status() === 'incoming' ? 'call.decline' : 'call.leave', room: this.state.room });
+    if (tellServer && this.state.room)
+      socket.send({ type: this.status() === 'incoming' ? 'call.decline' : 'call.leave', room: this.state.room });
     this.teardown(reason);
   }
 
@@ -406,10 +426,6 @@ class CallManager {
 
 function stopAll(stream: MediaStream) {
   stream.getTracks().forEach((t) => t.stop());
-}
-
-function errorText(e: unknown): string {
-  return e instanceof Error ? e.message : String(e);
 }
 
 export const callManager = new CallManager();
