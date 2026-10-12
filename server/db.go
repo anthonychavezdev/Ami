@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS users (
 	avatar_url    TEXT NOT NULL DEFAULT '',
 	bio           TEXT NOT NULL DEFAULT '',
 	pronouns      TEXT NOT NULL DEFAULT '',
+	avatar_crop   TEXT NOT NULL DEFAULT '',
 	created_at    TEXT NOT NULL
 );
 
@@ -143,7 +144,7 @@ func openDB(path string) (*sql.DB, error) {
 		db.Close()
 		return nil, err
 	}
-	for _, col := range []string{"avatar_url", "bio", "pronouns"} {
+	for _, col := range []string{"avatar_url", "bio", "pronouns", "avatar_crop"} {
 		if err := addColumn(db, "users", col, "TEXT NOT NULL DEFAULT ''"); err != nil {
 			db.Close()
 			return nil, err

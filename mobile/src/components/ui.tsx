@@ -7,7 +7,7 @@ import { API_URL } from '@/lib/config';
 import { useOnline } from '@/lib/presence';
 import { useStyles, useTheme } from '@/lib/theme';
 import { radius, spacing, type ThemeColors } from '@/theme';
-import type { User } from '@/lib/types';
+import type { AvatarCrop, User } from '@/lib/types';
 
 export function Button({
   title,
@@ -61,9 +61,17 @@ export function Input({ ref, ...props }: TextInputProps & { ref?: React.Ref<Text
   return <TextInput ref={ref} placeholderTextColor={colors.muted} keyboardAppearance={scheme} {...props} style={[styles.input, props.style]} />;
 }
 
+// Places the picture so that its chosen square fills a circle of `size`.
+function cropStyle(crop: AvatarCrop | undefined, size: number) {
+  if (!crop?.w) return { width: size, height: size };
+  const width = size / crop.w;
+  const height = width / crop.aspect;
+  return { position: 'absolute' as const, left: -crop.x * width, top: -crop.y * height, width, height };
+}
+
 // Initials on a colored disc, with a presence dot (green online, gray offline)
 // at the bottom right like Teams. `status={false}` hides the dot.
-export function Avatar({ user, size = 40, status = true }: { user: Pick<User, 'display_name' | 'username'> & { id?: number; online?: boolean; avatar_url?: string }; size?: number; status?: boolean }) {
+export function Avatar({ user, size = 40, status = true }: { user: Pick<User, 'display_name' | 'username'> & { id?: number; online?: boolean; avatar_url?: string; avatar_crop?: AvatarCrop }; size?: number; status?: boolean }) {
   const { colors } = useTheme();
   const online = useOnline(user.id, user.online);
   const initials = (user.display_name || user.username).trim().slice(0, 2).toUpperCase();
@@ -72,7 +80,9 @@ export function Avatar({ user, size = 40, status = true }: { user: Pick<User, 'd
   return (
     <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: `hsl(${hue}, 55%, 45%)`, alignItems: 'center', justifyContent: 'center' }}>
       {user.avatar_url ? (
-        <Image source={{ uri: API_URL + user.avatar_url }} style={{ width: size, height: size, borderRadius: size / 2 }} contentFit="cover" accessibilityLabel="Profile picture" />
+        <View style={{ width: size, height: size, borderRadius: size / 2, overflow: 'hidden' }}>
+          <Image source={{ uri: API_URL + user.avatar_url }} style={cropStyle(user.avatar_crop, size)} contentFit={user.avatar_crop?.w ? 'fill' : 'cover'} accessibilityLabel="Profile picture" />
+        </View>
       ) : (
         <Text style={{ color: '#fff', fontWeight: '700', fontSize: size * 0.38 }}>{initials}</Text>
       )}

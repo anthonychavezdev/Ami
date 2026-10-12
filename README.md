@@ -127,7 +127,8 @@ All JSON. `Authorization: Bearer <token>` after `/api/register` or `/api/login`.
 
 ```
 POST   /api/register  /api/login  /api/logout      GET /api/me
-PUT    /api/me {username?, display_name?, bio?, pronouns?, avatar_url?}   (avatar: a picture uploaded via /api/media, GIFs included)
+PUT    /api/me {username?, display_name?, bio?, pronouns?, avatar_url?, avatar_crop?}   (avatar: a picture uploaded via /api/media, GIFs included;
+       avatar_crop {x, y, w, aspect}: the square shown in the circle, as fractions of the picture)
 PUT    /api/me/presence {invisible}   appear offline to everyone
 GET    /api/users?q=   /api/users/{id}   /api/users/{id}/posts
 GET    /api/feed?before=&limit=
