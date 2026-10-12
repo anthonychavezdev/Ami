@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"time"
@@ -19,7 +20,13 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 	_ = json.NewEncoder(w).Encode(v)
 }
 
+// writeError sends {"error": msg}. Server-side failures are logged and
+// replaced by a generic message so internals never reach clients.
 func writeError(w http.ResponseWriter, code int, msg string) {
+	if code >= 500 {
+		log.Printf("error %d: %s", code, msg)
+		msg = "internal error"
+	}
 	writeJSON(w, code, map[string]string{"error": msg})
 }
 

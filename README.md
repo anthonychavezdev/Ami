@@ -74,9 +74,24 @@ service to devices that have no live connection. That needs an EAS project:
 `eas credentials` to upload FCM (Android) and APNs (iOS) keys. Without a
 project id the app simply never registers a push token.
 
-The server stores session tokens hashed, rate-limits login/register per IP and
-sends `no-store`/`nosniff` headers. The app keeps its token in SecureStore and
-ships no secrets.
+### Security
+
+- Passwords: PBKDF2-HMAC-SHA256, 600,000 rounds, per-user salt; older hashes
+  are upgraded on login. Session tokens are random, stored hashed, expire after
+  30 days and are purged hourly.
+- Browser origins: CORS and the WebSocket upgrade accept the page's own origin
+  (`-web-dir`), the `-allowed-origins` list, and requests without an Origin
+  (the native app). `-dev` allows any origin unless a list is given.
+- Rate limits: 10 login/register attempts per minute per IP, 600 API requests
+  per minute per IP (`-api-rate`, 0 disables), 30 uploads per minute per user,
+  300 WebSocket messages per 10 s per connection.
+- Headers: `nosniff`, `no-store`, `no-referrer`, `X-Frame-Options: DENY`, a
+  strict `Content-Security-Policy` (relaxed only for the web build and media),
+  `Permissions-Policy`, `Cross-Origin-Opener-Policy`, and HSTS when serving TLS
+  or behind a proxy with `-trust-proxy`.
+- Limits: 1 MB JSON bodies, 64 MB uploads (content sniffed, random names, no
+  SVG), 64 KB WebSocket messages, 64 KB headers, read/write/idle timeouts,
+  TLS 1.2+. Internal errors are logged, never returned to clients.
 
 ## Features
 

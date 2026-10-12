@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -37,6 +38,11 @@ var mediaExt = map[string]string{
 // uploadMedia stores one picture or video under a random name and returns the
 // attachment to put on a post.
 func (s *server) uploadMedia(w http.ResponseWriter, r *http.Request, me *User) {
+	if !s.uploadLimiter.allow(strconv.FormatInt(me.ID, 10)) {
+		w.Header().Set("Retry-After", "60")
+		writeError(w, http.StatusTooManyRequests, "too many uploads, try again in a minute")
+		return
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes)
 	file, header, err := r.FormFile("file")
 	if err != nil {
@@ -115,6 +121,8 @@ func (s *server) serveMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	// Uploads are only ever images and videos; if one is opened as a page it cannot run anything.
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; sandbox")
 	http.ServeFile(w, r, filepath.Join(s.mediaDir, name))
 }
 

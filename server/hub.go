@@ -121,7 +121,7 @@ func (s *server) handleWS(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return
 	}
-	ws, err := wsUpgrade(w, r)
+	ws, err := s.wsUpgrade(w, r)
 	if err != nil {
 		return
 	}
@@ -136,11 +136,18 @@ func (s *server) handleWS(w http.ResponseWriter, r *http.Request) {
 	}()
 	unread, _ := s.unreadMessages(me.ID)
 	s.hub.sendTo(me.ID, map[string]any{"type": "hello", "user": me, "unread": unread})
+	burst, window := 0, time.Now()
 	for {
 		_ = ws.SetReadDeadline(time.Now().Add(wsPongWait))
 		_, data, err := ws.ReadMessage()
 		if err != nil {
 			return
+		}
+		if t := time.Now(); t.Sub(window) > 10*time.Second {
+			burst, window = 0, t
+		}
+		if burst++; burst > wsMaxBurst {
+			return // flooding
 		}
 		s.handleWSMessage(c, data)
 	}

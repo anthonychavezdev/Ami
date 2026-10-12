@@ -8,25 +8,20 @@ import (
 )
 
 // WebSocket transport on top of gorilla/websocket. Connections authenticate
-// with the session token (?token= or Authorization header), so any Origin is
-// accepted: a page cannot open a socket without knowing the token.
+// with the session token and must come from an allowed browser origin (see
+// server.originAllowed); native apps send no Origin.
 const (
 	wsMaxMessage = 64 << 10
+	wsMaxBurst   = 300 // inbound messages per 10 s before a flooding peer is dropped
 	wsPingEvery  = 30 * time.Second
 	wsPongWait   = 90 * time.Second // peers that stop answering pings are dropped
 	wsWriteWait  = 10 * time.Second
 )
 
-var upgrader = websocket.Upgrader{
-	ReadBufferSize:  4096,
-	WriteBufferSize: 4096,
-	CheckOrigin:     func(*http.Request) bool { return true },
-}
-
 // wsUpgrade performs the opening handshake. On failure it has already written
-// an HTTP error response.
-func wsUpgrade(w http.ResponseWriter, r *http.Request) (*websocket.Conn, error) {
-	ws, err := upgrader.Upgrade(w, r, nil)
+// an HTTP error response (403 for a disallowed origin).
+func (s *server) wsUpgrade(w http.ResponseWriter, r *http.Request) (*websocket.Conn, error) {
+	ws, err := s.upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return nil, err
 	}
