@@ -11,7 +11,7 @@ import (
 	"crypto/tls"
 	"database/sql"
 	"flag"
-	"github.com/gorilla/websocket"
+	"fmt"
 	"log"
 	"net"
 	"net/http"
@@ -20,6 +20,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 type server struct {
@@ -35,64 +37,104 @@ type server struct {
 	calls         *callRooms // who is in which call
 }
 
-func main() {
-	addr := flag.String("addr", ":8080", "listen address")
-	dbPath := flag.String("db", "ami.db", "sqlite database path")
-	mediaDir := flag.String("media-dir", "media", "directory for uploaded pictures and videos")
-	dev := flag.Bool("dev", false, "development mode: seed demo data into an empty database and allow any CORS origin")
-	origins := flag.String("allowed-origins", "", "comma-separated browser origins allowed to call the API (CORS); empty disables CORS")
-	trustProxy := flag.Bool("trust-proxy", false, "take client IPs from X-Forwarded-For (only behind a trusted reverse proxy)")
-	tlsCert := flag.String("tls-cert", "", "serve HTTPS with this certificate file (needs -tls-key)")
-	tlsKey := flag.String("tls-key", "", "private key for -tls-cert")
-	webDir := flag.String("web-dir", "", "serve the browser build from this directory (see `build web`)")
-	apiRate := flag.Int("api-rate", 600, "requests per minute allowed per client IP on /api (0 disables)")
+// config is everything the command-line flags decide.
+type config struct {
+	addr, dbPath, mediaDir, origins, tlsCert, tlsKey, webDir string
+	dev, trustProxy                                          bool
+	apiRate                                                  int
+}
+
+func parseFlags() config {
+	var c config
+	flag.StringVar(&c.addr, "addr", ":8080", "listen address")
+	flag.StringVar(&c.dbPath, "db", "ami.db", "sqlite database path")
+	flag.StringVar(&c.mediaDir, "media-dir", "media", "directory for uploaded pictures and videos")
+	flag.BoolVar(&c.dev, "dev", false, "development mode: seed demo data into an empty database and allow any CORS origin")
+	flag.StringVar(&c.origins, "allowed-origins", "", "comma-separated browser origins allowed to call the API (CORS); empty disables CORS")
+	flag.BoolVar(&c.trustProxy, "trust-proxy", false, "take client IPs from X-Forwarded-For (only behind a trusted reverse proxy)")
+	flag.StringVar(&c.tlsCert, "tls-cert", "", "serve HTTPS with this certificate file (needs -tls-key)")
+	flag.StringVar(&c.tlsKey, "tls-key", "", "private key for -tls-cert")
+	flag.StringVar(&c.webDir, "web-dir", "", "serve the browser build from this directory (see `build web`)")
+	flag.IntVar(&c.apiRate, "api-rate", 600, "requests per minute allowed per client IP on /api (0 disables)")
 	flag.Parse()
+	return c
+}
 
-	db, err := openDB(*dbPath)
+func main() {
+	cfg := parseFlags()
+	s, err := newServer(cfg)
 	if err != nil {
-		log.Fatalf("open db: %v", err)
+		log.Fatal(err)
 	}
-	defer db.Close()
+	defer s.db.Close()
+	log.Fatal(serve(cfg, s))
+}
 
-	if err := os.MkdirAll(*mediaDir, 0o755); err != nil {
-		log.Fatalf("media dir: %v", err)
+func newServer(cfg config) (*server, error) {
+	db, err := openDB(cfg.dbPath)
+	if err != nil {
+		return nil, fmt.Errorf("open db: %w", err)
 	}
-	s := &server{db: db, hub: newHub(), limiter: newLimiter(10, time.Minute), uploadLimiter: newLimiter(30, time.Minute), mediaDir: *mediaDir, trustProxy: *trustProxy, calls: newCallRooms()}
-	if *dev {
+	if err := os.MkdirAll(cfg.mediaDir, 0o755); err != nil {
+		return nil, fmt.Errorf("media dir: %w", err)
+	}
+	s := &server{
+		db: db, hub: newHub(), calls: newCallRooms(), mediaDir: cfg.mediaDir, trustProxy: cfg.trustProxy,
+		limiter:       newLimiter(10, time.Minute),
+		uploadLimiter: newLimiter(30, time.Minute),
+		origins:       allowedOrigins(cfg.origins, cfg.dev),
+	}
+	if cfg.apiRate > 0 {
+		s.apiLimiter = newLimiter(cfg.apiRate, time.Minute)
+	}
+	if cfg.dev {
 		if err := s.seedIfEmpty(); err != nil {
-			log.Fatalf("seed demo data: %v", err)
+			return nil, fmt.Errorf("seed demo data: %w", err)
 		}
-	}
-	s.origins = map[string]bool{}
-	for _, o := range strings.Split(*origins, ",") {
-		if o = strings.TrimSpace(o); o != "" {
-			s.origins[o] = true
-		}
-	}
-	if *dev && len(s.origins) == 0 {
-		s.origins["*"] = true // e.g. the web app served by Metro on another port
-	}
-	if *dev {
-		log.Printf("dev mode: demo data seeded, browser origins allowed: %s", *origins+map[bool]string{true: "*", false: ""}[s.origins["*"]])
-	}
-	if *apiRate > 0 {
-		s.apiLimiter = newLimiter(*apiRate, time.Minute)
+		log.Printf("dev mode: demo data seeded, browser origins allowed: %s", describeOrigins(s.origins))
 	}
 	presenceHook = s.markPresence
 	s.hub.decorate = s.markPresence
 	s.upgrader = websocket.Upgrader{ReadBufferSize: 4096, WriteBufferSize: 4096, CheckOrigin: s.originAllowed}
 	go s.purgeSessions()
+	return s, nil
+}
+
+// allowedOrigins parses -allowed-origins; development allows any origin
+// unless a list was given (e.g. the web app served by Metro on another port).
+func allowedOrigins(list string, dev bool) map[string]bool {
+	origins := map[string]bool{}
+	for _, o := range strings.Split(list, ",") {
+		if o = strings.TrimSpace(o); o != "" {
+			origins[o] = true
+		}
+	}
+	if dev && len(origins) == 0 {
+		origins["*"] = true
+	}
+	return origins
+}
+
+func describeOrigins(origins map[string]bool) string {
+	names := make([]string, 0, len(origins))
+	for o := range origins {
+		names = append(names, o)
+	}
+	return strings.Join(names, ", ")
+}
+
+// serve runs the HTTP server until it fails.
+func serve(cfg config, s *server) error {
 	mux := http.NewServeMux()
 	s.routes(mux)
-	if *webDir != "" {
-		if _, err := os.Stat(filepath.Join(*webDir, "index.html")); err != nil {
-			log.Fatalf("web dir: %v (build it with `build web`)", err)
+	if cfg.webDir != "" {
+		if _, err := os.Stat(filepath.Join(cfg.webDir, "index.html")); err != nil {
+			return fmt.Errorf("web dir: %v (build it with `build web`)", err)
 		}
-		mux.Handle("/", webApp(*webDir))
+		mux.Handle("/", webApp(cfg.webDir))
 	}
-
 	srv := &http.Server{
-		Addr:              *addr,
+		Addr:              cfg.addr,
 		Handler:           s.secureHeaders(s.cors(logRequests(s.apiLimit(mux)))),
 		MaxHeaderBytes:    64 << 10,
 		ReadHeaderTimeout: 10 * time.Second,
@@ -101,11 +143,11 @@ func main() {
 		IdleTimeout:       2 * time.Minute,
 		TLSConfig:         &tls.Config{MinVersion: tls.VersionTLS12},
 	}
-	log.Printf("ami listening on %s (db %s)", *addr, *dbPath)
-	if *tlsCert != "" || *tlsKey != "" {
-		log.Fatal(srv.ListenAndServeTLS(*tlsCert, *tlsKey))
+	log.Printf("ami listening on %s (db %s)", cfg.addr, cfg.dbPath)
+	if cfg.tlsCert != "" || cfg.tlsKey != "" {
+		return srv.ListenAndServeTLS(cfg.tlsCert, cfg.tlsKey)
 	}
-	log.Fatal(srv.ListenAndServe())
+	return srv.ListenAndServe()
 }
 
 func (s *server) routes(mux *http.ServeMux) {
@@ -113,9 +155,9 @@ func (s *server) routes(mux *http.ServeMux) {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 	})
 
-	// auth
-	mux.HandleFunc("POST /api/register", s.throttle(s.register))
-	mux.HandleFunc("POST /api/login", s.throttle(s.login))
+	// auth and profile
+	mux.HandleFunc("POST /api/register", s.throttle(public(s.register)))
+	mux.HandleFunc("POST /api/login", s.throttle(public(s.login)))
 	mux.HandleFunc("POST /api/logout", s.auth(s.logout))
 	mux.HandleFunc("GET /api/me", s.auth(s.me))
 	mux.HandleFunc("PUT /api/me", s.auth(s.updateMe))
@@ -126,7 +168,7 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/users/{id}", s.auth(s.getUser))
 	mux.HandleFunc("GET /api/users/{id}/posts", s.auth(s.userPosts))
 
-	// posts, comments, reactions
+	// posts, comments, reactions, media
 	mux.HandleFunc("GET /api/feed", s.auth(s.feed))
 	mux.HandleFunc("POST /api/posts", s.auth(s.createPost))
 	mux.HandleFunc("GET /api/posts/{id}", s.auth(s.getPostHandler))
@@ -148,7 +190,7 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/friends/{id}/accept", s.auth(s.acceptFriendRequest))
 	mux.HandleFunc("DELETE /api/friends/{id}", s.auth(s.removeFriend))
 
-	// groups
+	// groups and their chats
 	mux.HandleFunc("GET /api/groups", s.auth(s.listGroups))
 	mux.HandleFunc("POST /api/groups", s.auth(s.createGroup))
 	mux.HandleFunc("GET /api/groups/{id}", s.auth(s.getGroupHandler))
@@ -156,17 +198,15 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/groups/{id}/join", s.auth(s.joinGroup))
 	mux.HandleFunc("POST /api/groups/{id}/leave", s.auth(s.leaveGroup))
 	mux.HandleFunc("GET /api/groups/{id}/posts", s.auth(s.groupPosts))
-	mux.HandleFunc("DELETE /api/groups/{id}/members/{uid}", s.auth(s.removeGroupMember))
 	mux.HandleFunc("POST /api/groups/{id}/members", s.auth(s.addGroupMembers))
-
-	// group chats
+	mux.HandleFunc("DELETE /api/groups/{id}/members/{uid}", s.auth(s.removeGroupMember))
 	mux.HandleFunc("GET /api/groups/{id}/messages", s.auth(s.listGroupMessages))
 	mux.HandleFunc("POST /api/groups/{id}/messages", s.auth(s.sendGroupMessage))
 	mux.HandleFunc("POST /api/groups/{id}/messages/read", s.auth(s.markGroupRead))
 	mux.HandleFunc("PUT /api/groups/{id}/messages/{mid}", s.auth(s.updateGroupMessage))
 	mux.HandleFunc("DELETE /api/groups/{id}/messages/{mid}", s.auth(s.deleteGroupMessage))
 
-	// direct messages
+	// direct messages and notifications
 	mux.HandleFunc("GET /api/conversations", s.auth(s.listConversations))
 	mux.HandleFunc("GET /api/messages/{id}", s.auth(s.listMessages))
 	mux.HandleFunc("POST /api/messages/{id}", s.auth(s.sendMessage))
@@ -179,6 +219,8 @@ func (s *server) routes(mux *http.ServeMux) {
 	// realtime: events + call signaling
 	mux.HandleFunc("GET /ws", s.handleWS)
 }
+
+// ---- middleware
 
 type statusWriter struct {
 	http.ResponseWriter
@@ -226,21 +268,22 @@ func (s *server) cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		h.Add("Vary", "Origin")
-		if origin := r.Header.Get("Origin"); origin != "" {
-			if !s.originAllowed(r) {
-				if r.Method == http.MethodOptions {
-					writeError(w, http.StatusForbidden, "origin not allowed")
-					return
-				}
-			} else {
-				h.Set("Access-Control-Allow-Origin", origin)
-				h.Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-				h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
-				h.Set("Access-Control-Max-Age", "600")
-				if r.Method == http.MethodOptions {
-					w.WriteHeader(http.StatusNoContent)
-					return
-				}
+		origin := r.Header.Get("Origin")
+		switch {
+		case origin == "":
+		case !s.originAllowed(r):
+			if r.Method == http.MethodOptions {
+				writeError(w, http.StatusForbidden, "origin not allowed")
+				return
+			}
+		default:
+			h.Set("Access-Control-Allow-Origin", origin)
+			h.Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+			h.Set("Access-Control-Max-Age", "600")
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
 			}
 		}
 		next.ServeHTTP(w, r)

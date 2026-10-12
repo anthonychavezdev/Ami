@@ -29,45 +29,61 @@ func (s *server) mark(rv reflect.Value) {
 			s.mark(rv.Elem())
 		}
 	case reflect.Interface:
-		if rv.IsNil() {
-			return
-		}
-		inner := rv.Elem()
-		if inner.Kind() == reflect.Ptr {
-			s.mark(inner)
-			return
-		}
-		if !rv.CanSet() {
-			return
-		}
-		tmp := reflect.New(inner.Type()).Elem()
-		tmp.Set(inner)
-		s.mark(tmp)
-		rv.Set(tmp)
+		s.markInterface(rv)
 	case reflect.Struct:
-		if rv.Type() == userType {
-			if rv.CanSet() {
-				u := rv.Addr().Interface().(*User)
-				u.Online = u.ID != 0 && s.hub.present(u.ID)
-			}
-			return
-		}
-		for i := 0; i < rv.NumField(); i++ {
-			if f := rv.Field(i); f.CanSet() {
-				s.mark(f)
-			}
-		}
+		s.markStruct(rv)
 	case reflect.Slice, reflect.Array:
 		for i := 0; i < rv.Len(); i++ {
 			s.mark(rv.Index(i))
 		}
 	case reflect.Map:
-		for _, k := range rv.MapKeys() {
-			val := rv.MapIndex(k)
-			tmp := reflect.New(val.Type()).Elem()
-			tmp.Set(val)
-			s.mark(tmp)
-			rv.SetMapIndex(k, tmp)
+		s.markMap(rv)
+	}
+}
+
+// markInterface marks the value behind an interface; a non-pointer value is
+// copied, marked and put back, since the original cannot be set in place.
+func (s *server) markInterface(rv reflect.Value) {
+	if rv.IsNil() {
+		return
+	}
+	inner := rv.Elem()
+	if inner.Kind() == reflect.Ptr {
+		s.mark(inner)
+		return
+	}
+	if !rv.CanSet() {
+		return
+	}
+	tmp := reflect.New(inner.Type()).Elem()
+	tmp.Set(inner)
+	s.mark(tmp)
+	rv.Set(tmp)
+}
+
+// markStruct marks a User itself, or every settable field of other structs.
+func (s *server) markStruct(rv reflect.Value) {
+	if rv.Type() == userType {
+		if rv.CanSet() {
+			u := rv.Addr().Interface().(*User)
+			u.Online = u.ID != 0 && s.hub.present(u.ID)
 		}
+		return
+	}
+	for i := 0; i < rv.NumField(); i++ {
+		if f := rv.Field(i); f.CanSet() {
+			s.mark(f)
+		}
+	}
+}
+
+// markMap marks each value through a settable copy (map values are not addressable).
+func (s *server) markMap(rv reflect.Value) {
+	for _, k := range rv.MapKeys() {
+		val := rv.MapIndex(k)
+		tmp := reflect.New(val.Type()).Elem()
+		tmp.Set(val)
+		s.mark(tmp)
+		rv.SetMapIndex(k, tmp)
 	}
 }
