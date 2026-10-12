@@ -1,11 +1,12 @@
 import { Stack, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { Loading } from '@/components/ui';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { CallProvider } from '@/lib/call';
+import { onNotificationTap } from '@/lib/notifications';
 import { ThemeProvider, useTheme } from '@/lib/theme';
 import { ToastHost } from '@/lib/toast';
 
@@ -26,6 +27,14 @@ function RootNavigator() {
   const { colors, scheme } = useTheme();
   const router = useRouter();
   const onIncoming = useCallback(() => router.push('/call'), [router]);
+
+  // Tapping a message notification opens that chat.
+  useEffect(() => {
+    if (!user) return;
+    return onNotificationTap((data) => {
+      if (data.chat) router.push(`/chat/${data.chat}`);
+    });
+  }, [user, router]);
 
   if (!ready) return <Loading />;
 

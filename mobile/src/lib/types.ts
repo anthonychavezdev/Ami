@@ -69,4 +69,5 @@ export interface Message {
 export interface Conversation {
   user: User;
   last_message: Message;
+  unread: number;
 }
