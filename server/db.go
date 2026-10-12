@@ -15,6 +15,9 @@ CREATE TABLE IF NOT EXISTS users (
 	salt          BLOB NOT NULL,
 	password_iterations INTEGER NOT NULL DEFAULT 210000,
 	invisible     INTEGER NOT NULL DEFAULT 0,
+	avatar_url    TEXT NOT NULL DEFAULT '',
+	bio           TEXT NOT NULL DEFAULT '',
+	pronouns      TEXT NOT NULL DEFAULT '',
 	created_at    TEXT NOT NULL
 );
 
@@ -139,6 +142,12 @@ func openDB(path string) (*sql.DB, error) {
 	if err := addColumn(db, "users", "invisible", "INTEGER NOT NULL DEFAULT 0"); err != nil {
 		db.Close()
 		return nil, err
+	}
+	for _, col := range []string{"avatar_url", "bio", "pronouns"} {
+		if err := addColumn(db, "users", col, "TEXT NOT NULL DEFAULT ''"); err != nil {
+			db.Close()
+			return nil, err
+		}
 	}
 	for _, col := range [][2]string{{"parent_id", "INTEGER"}, {"edited_at", "TEXT"}, {"deleted_at", "TEXT"}} {
 		if err := addColumn(db, "comments", col[0], col[1]); err != nil {

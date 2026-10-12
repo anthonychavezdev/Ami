@@ -55,7 +55,7 @@ func (s *server) listConversations(w http.ResponseWriter, r *http.Request, me *U
 		var c Conversation
 		var atts string
 		if err := rows.Scan(&c.LastMessage.ID, &c.LastMessage.SenderID, &c.LastMessage.RecipientID, &c.LastMessage.Body, &atts, &c.LastMessage.CreatedAt, &c.LastMessage.EditedAt,
-			&c.User.ID, &c.User.Username, &c.User.DisplayName, &c.User.CreatedAt, &c.Unread); err != nil {
+			&c.User.ID, &c.User.Username, &c.User.DisplayName, &c.User.CreatedAt, &c.User.AvatarURL, &c.User.Pronouns, &c.Unread); err != nil {
 			writeError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
