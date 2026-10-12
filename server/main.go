@@ -11,9 +11,11 @@ import (
 	"crypto/tls"
 	"database/sql"
 	"flag"
+	"github.com/gorilla/websocket"
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,11 +23,15 @@ import (
 )
 
 type server struct {
-	db         *sql.DB
-	hub        *hub
-	limiter    *limiter
-	mediaDir   string
-	trustProxy bool
+	db            *sql.DB
+	hub           *hub
+	limiter       *limiter // login/register attempts per IP
+	apiLimiter    *limiter // all /api requests per IP (nil = off)
+	uploadLimiter *limiter // uploads per user
+	origins       map[string]bool
+	upgrader      websocket.Upgrader
+	mediaDir      string
+	trustProxy    bool
 }
 
 func main() {
@@ -38,6 +44,7 @@ func main() {
 	tlsCert := flag.String("tls-cert", "", "serve HTTPS with this certificate file (needs -tls-key)")
 	tlsKey := flag.String("tls-key", "", "private key for -tls-cert")
 	webDir := flag.String("web-dir", "", "serve the browser build from this directory (see `build web`)")
+	apiRate := flag.Int("api-rate", 600, "requests per minute allowed per client IP on /api (0 disables)")
 	flag.Parse()
 
 	db, err := openDB(*dbPath)
@@ -49,19 +56,29 @@ func main() {
 	if err := os.MkdirAll(*mediaDir, 0o755); err != nil {
 		log.Fatalf("media dir: %v", err)
 	}
-	s := &server{db: db, hub: newHub(), limiter: newLimiter(10, time.Minute), mediaDir: *mediaDir, trustProxy: *trustProxy}
-	if _, err := db.Exec(`DELETE FROM sessions WHERE expires_at < ?`, nowString()); err != nil {
-		log.Printf("purge expired sessions: %v", err)
-	}
+	s := &server{db: db, hub: newHub(), limiter: newLimiter(10, time.Minute), uploadLimiter: newLimiter(30, time.Minute), mediaDir: *mediaDir, trustProxy: *trustProxy}
 	if *dev {
 		if err := s.seedIfEmpty(); err != nil {
 			log.Fatalf("seed demo data: %v", err)
 		}
 	}
-	allowed := strings.Split(*origins, ",")
-	if *dev {
-		allowed = []string{"*"}
+	s.origins = map[string]bool{}
+	for _, o := range strings.Split(*origins, ",") {
+		if o = strings.TrimSpace(o); o != "" {
+			s.origins[o] = true
+		}
 	}
+	if *dev && len(s.origins) == 0 {
+		s.origins["*"] = true // e.g. the web app served by Metro on another port
+	}
+	if *dev {
+		log.Printf("dev mode: demo data seeded, browser origins allowed: %s", *origins+map[bool]string{true: "*", false: ""}[s.origins["*"]])
+	}
+	if *apiRate > 0 {
+		s.apiLimiter = newLimiter(*apiRate, time.Minute)
+	}
+	s.upgrader = websocket.Upgrader{ReadBufferSize: 4096, WriteBufferSize: 4096, CheckOrigin: s.originAllowed}
+	go s.purgeSessions()
 	mux := http.NewServeMux()
 	s.routes(mux)
 	if *webDir != "" {
@@ -73,7 +90,8 @@ func main() {
 
 	srv := &http.Server{
 		Addr:              *addr,
-		Handler:           secureHeaders(cors(allowed, logRequests(mux))),
+		Handler:           s.secureHeaders(s.cors(logRequests(s.apiLimit(mux)))),
+		MaxHeaderBytes:    64 << 10,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      60 * time.Second,
@@ -171,38 +189,84 @@ func logRequests(next http.Handler) http.Handler {
 	})
 }
 
-// cors answers browser cross-origin requests for the allowed origins ("*" for
-// any). With none configured no CORS headers are sent, which is all the native
-// app needs.
-func cors(allowed []string, next http.Handler) http.Handler {
-	set := map[string]bool{}
-	for _, o := range allowed {
-		if o = strings.TrimSpace(o); o != "" {
-			set[o] = true
-		}
+// originAllowed is the browser origin policy shared by CORS and the WebSocket
+// upgrade: requests without an Origin (the native app), the page's own origin
+// (the web build served by -web-dir) and the -allowed-origins list ("*" = any).
+func (s *server) originAllowed(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" || s.origins["*"] || s.origins[origin] {
+		return true
 	}
+	u, err := url.Parse(origin)
+	return err == nil && strings.EqualFold(u.Host, r.Host)
+}
+
+// cors answers cross-origin browser requests for allowed origins. Other
+// origins get no CORS headers (the browser then blocks the response) and a
+// 403 on preflight.
+func (s *server) cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if origin := r.Header.Get("Origin"); origin != "" && (set["*"] || set[origin]) {
-			h := w.Header()
-			h.Set("Access-Control-Allow-Origin", origin)
-			h.Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-			h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
-			h.Add("Vary", "Origin")
-			if r.Method == http.MethodOptions {
-				w.WriteHeader(http.StatusNoContent)
-				return
+		h := w.Header()
+		h.Add("Vary", "Origin")
+		if origin := r.Header.Get("Origin"); origin != "" {
+			if !s.originAllowed(r) {
+				if r.Method == http.MethodOptions {
+					writeError(w, http.StatusForbidden, "origin not allowed")
+					return
+				}
+			} else {
+				h.Set("Access-Control-Allow-Origin", origin)
+				h.Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+				h.Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+				h.Set("Access-Control-Max-Age", "600")
+				if r.Method == http.MethodOptions {
+					w.WriteHeader(http.StatusNoContent)
+					return
+				}
 			}
 		}
 		next.ServeHTTP(w, r)
 	})
 }
 
-func secureHeaders(next http.Handler) http.Handler {
+// apiLimit caps requests per client IP on the API as a whole; the login and
+// register handlers have their own, much lower, budget.
+func (s *server) apiLimit(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.apiLimiter != nil && strings.HasPrefix(r.URL.Path, "/api/") && r.Method != http.MethodOptions && !s.apiLimiter.allow(s.clientIP(r)) {
+			w.Header().Set("Retry-After", "60")
+			writeError(w, http.StatusTooManyRequests, "too many requests")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// secureHeaders: API and media responses are never documents, so they get a
+// locked-down CSP; the web build (web.go) and media (media.go) relax it.
+func (s *server) secureHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Cache-Control", "no-store")
 		h.Set("Referrer-Policy", "no-referrer")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
+		h.Set("Permissions-Policy", "camera=(), microphone=(), display-capture=(), geolocation=()")
+		h.Set("Cross-Origin-Opener-Policy", "same-origin")
+		if r.TLS != nil || (s.trustProxy && r.Header.Get("X-Forwarded-Proto") == "https") {
+			h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// purgeSessions drops expired sessions once an hour (and once at start).
+func (s *server) purgeSessions() {
+	for {
+		if _, err := s.db.Exec(`DELETE FROM sessions WHERE expires_at < ?`, nowString()); err != nil {
+			log.Printf("purge expired sessions: %v", err)
+		}
+		time.Sleep(time.Hour)
+	}
 }

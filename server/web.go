@@ -27,6 +27,10 @@ func webApp(dir string) http.Handler {
 			files.ServeHTTP(w, r)
 			return
 		}
+		h := w.Header()
+		// The bundle is the only script; react-native-web sets inline styles.
+		h.Set("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self' data:; connect-src 'self' ws://"+r.Host+" wss://"+r.Host+"; worker-src 'self' blob:; frame-ancestors 'none'; object-src 'none'; base-uri 'self'; form-action 'self'")
+		h.Set("Permissions-Policy", "camera=(self), microphone=(self), display-capture=(self), geolocation=()")
 		http.ServeFile(w, r, index)
 	})
 }

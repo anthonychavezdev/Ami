@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS users (
 	display_name  TEXT NOT NULL,
 	password_hash BLOB NOT NULL,
 	salt          BLOB NOT NULL,
+	password_iterations INTEGER NOT NULL DEFAULT 210000,
 	created_at    TEXT NOT NULL
 );
 
@@ -122,6 +123,10 @@ func openDB(path string) (*sql.DB, error) {
 			db.Close()
 			return nil, err
 		}
+	}
+	if err := addColumn(db, "users", "password_iterations", "INTEGER NOT NULL DEFAULT 210000"); err != nil {
+		db.Close()
+		return nil, err
 	}
 	if hadReads == 0 {
 		// Chats from before unread tracking start out read.
