@@ -35,8 +35,23 @@ projects (`mobile/android`, `mobile/ios`) are generated: after changing native
 dependencies, `app.json` or `mobile/plugins/`, run `npx expo prebuild --clean`
 in `mobile/` so the next `android`/`ios` picks the changes up.
 
-The app finds the server automatically on the machine running Metro (port 8080).
-To point it elsewhere: `EXPO_PUBLIC_API_URL=http://192.168.1.10:8080 npx expo start`.
+### Ports and addresses
+
+The defaults are in `devenv.nix` (`env`). Override them in a gitignored `.env`
+at the repo root (`NAME=value` per line, loaded when you enter the shell), in
+`devenv.local.nix`, or for one command: `AMI_PORT=9000 server`.
+
+| Variable              | Default | What it does                                                                                   |
+| --------------------- | ------- | ---------------------------------------------------------------------------------------------- |
+| `AMI_PORT`            | `8080`  | Port of the Go API (`server`, `devenv up`) and where the app looks for it.                      |
+| `AMI_METRO_PORT`      | `8081`  | Metro, which also serves the web app. Native dev builds bake it in: rebuild after changing it.  |
+| `AMI_HOST`            | LAN IP  | Address phones use to reach this machine, if Expo picks the wrong interface (VPNs, two networks). |
+| `EXPO_PUBLIC_API_URL` | empty   | Full URL of the API when it runs on another machine. Release builds require it (`https://`).   |
+
+Unless `EXPO_PUBLIC_API_URL` is set, the app calls the API on the machine it was
+loaded from, at `AMI_PORT`: the web page uses the host in the browser's address
+bar, native dev builds use the machine running Metro. So with `server` and `web`
+running here, another device just opens `http://<this machine's IP>:8081`.
 
 ## Production
 
