@@ -240,3 +240,46 @@ func (s *server) updateMessage(w http.ResponseWriter, r *http.Request, me *User)
 	s.hub.sendTo(other, event)
 	writeJSON(w, http.StatusOK, m)
 }
+
+// deleteMessage removes one of the caller's messages for both participants,
+// whose badges are refreshed by the message.deleted event.
+func (s *server) deleteMessage(w http.ResponseWriter, r *http.Request, me *User) {
+	other, ok := pathID(w, r, "id")
+	if !ok {
+		return
+	}
+	mid, ok := pathID(w, r, "mid")
+	if !ok {
+		return
+	}
+	m, err := s.loadMessage(mid)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && m.RecipientID != other && m.SenderID != other) {
+		writeError(w, http.StatusNotFound, "message not found")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if m.SenderID != me.ID {
+		writeError(w, http.StatusForbidden, "only the sender can delete a message")
+		return
+	}
+	if _, err := s.db.Exec(`DELETE FROM messages WHERE id = ?`, mid); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	// SQLite hands the highest id out again after a delete, so a read marker
+	// sitting at or past this message is pulled back to what remains; a new
+	// message reusing the id then still counts as unread.
+	if _, err := s.db.Exec(`UPDATE conversation_reads SET last_read_id = (SELECT COALESCE(MAX(id), 0) FROM messages WHERE sender_id = ?1 AND recipient_id = ?2)
+		WHERE user_id = ?2 AND peer_id = ?1 AND last_read_id >= ?3`, m.SenderID, m.RecipientID, mid); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	for _, uid := range []int64{me.ID, other} {
+		unread, _ := s.unreadMessages(uid)
+		s.hub.sendTo(uid, map[string]any{"type": "message.deleted", "id": mid, "sender_id": m.SenderID, "recipient_id": m.RecipientID, "unread": unread})
+	}
+	w.WriteHeader(http.StatusNoContent)
+}

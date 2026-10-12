@@ -159,6 +159,7 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/messages/{id}", s.auth(s.sendMessage))
 	mux.HandleFunc("POST /api/messages/{id}/read", s.auth(s.markRead))
 	mux.HandleFunc("PUT /api/messages/{id}/{mid}", s.auth(s.updateMessage))
+	mux.HandleFunc("DELETE /api/messages/{id}/{mid}", s.auth(s.deleteMessage))
 	mux.HandleFunc("PUT /api/push-token", s.auth(s.setPushToken))
 	mux.HandleFunc("DELETE /api/push-token", s.auth(s.deletePushToken))
 
