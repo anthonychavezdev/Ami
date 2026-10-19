@@ -34,33 +34,60 @@ type Comment struct {
 
 // ---- reading posts
 
-// postSelect expects the viewer's user id as its first bound parameter.
+// postSelect expects the viewer's user id as its first bound parameter. The
+// reaction counts come separately (fillReactions): one query for the whole
+// page, driven by the reactions' primary key, instead of aggregating every
+// reaction in the table on each read.
 const postSelect = `
 SELECT p.id, p.body, p.attachments, p.created_at, p.edited_at, p.group_id, COALESCE(g.name, ''),
        ` + userCols + `,
        (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted_at IS NULL),
-       COALESCE(rx.reactions, '{}'),
        COALESCE((SELECT emoji FROM reactions r WHERE r.post_id = p.id AND r.user_id = ?), '')
 FROM posts p
 JOIN users u ON u.id = p.author_id
 LEFT JOIN groups g ON g.id = p.group_id
-LEFT JOIN (SELECT post_id, JSON_OBJECTAGG(emoji, n) AS reactions
-           FROM (SELECT post_id, emoji, COUNT(*) AS n FROM reactions GROUP BY post_id, emoji) counts
-           GROUP BY post_id) rx ON rx.post_id = p.id
 `
 
 func scanPost(sc scanner) (Post, error) {
 	var p Post
-	var reactions, attachments string
+	var attachments string
 	err := sc.Scan(fields([]any{&p.ID, &p.Body, &attachments, &p.CreatedAt, &p.EditedAt, &p.GroupID, &p.GroupName},
-		p.Author.fields(), []any{&p.CommentCount, &reactions, &p.MyReaction})...)
+		p.Author.fields(), []any{&p.CommentCount, &p.MyReaction})...)
 	if err != nil {
 		return p, err
 	}
 	p.Reactions = map[string]int{}
-	_ = json.Unmarshal([]byte(reactions), &p.Reactions)
 	p.Attachments = decodeAttachments(attachments)
 	return p, nil
+}
+
+// fillReactions puts each post's {emoji: count} in place, in one query.
+func (s *server) fillReactions(posts []Post) error {
+	if len(posts) == 0 {
+		return nil
+	}
+	byID := make(map[string]*Post, len(posts))
+	ids := make([]any, 0, len(posts))
+	for i := range posts {
+		byID[posts[i].ID] = &posts[i]
+		ids = append(ids, posts[i].ID)
+	}
+	rows, err := s.db.Query(`SELECT post_id, emoji, COUNT(*) FROM reactions WHERE post_id IN (`+placeholders(len(ids))+`) GROUP BY post_id, emoji`, ids...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, emoji string
+		var n int
+		if err := rows.Scan(&id, &emoji, &n); err != nil {
+			return err
+		}
+		if p := byID[id]; p != nil {
+			p.Reactions[emoji] = n
+		}
+	}
+	return rows.Err()
 }
 
 // decodeAttachments turns a stored JSON column into a (never nil) slice.
@@ -72,11 +99,20 @@ func decodeAttachments(raw string) []Attachment {
 
 // queryPosts runs postSelect + tail for viewer, binding args after the viewer id.
 func (s *server) queryPosts(viewer string, tail string, args ...any) ([]Post, error) {
-	return queryAll(s.db, scanPost, postSelect+tail, append([]any{viewer}, args...)...)
+	posts, err := queryAll(s.db, scanPost, postSelect+tail, append([]any{viewer}, args...)...)
+	if err != nil {
+		return nil, err
+	}
+	return posts, s.fillReactions(posts)
 }
 
 func (s *server) getPost(viewer, id string) (Post, error) {
-	return scanPost(s.db.QueryRow(postSelect+`WHERE p.id = ?`, viewer, id))
+	p, err := scanPost(s.db.QueryRow(postSelect+`WHERE p.id = ?`, viewer, id))
+	if err != nil {
+		return p, err
+	}
+	posts := []Post{p}
+	return posts[0], s.fillReactions(posts)
 }
 
 func (s *server) respondPost(w http.ResponseWriter, code int, viewer, id string) error {
@@ -110,19 +146,33 @@ func (s *server) postAudience(authorID string, groupID *string) []string {
 }
 
 // broadcastPost pushes a post's current state to everyone who sees it, each
-// with their own reaction filled in, so feeds update without a refresh.
+// with their own reaction filled in, so feeds update without a refresh. The
+// post is loaded once; who reacted with what is one more query, so the
+// audience's size does not multiply the work.
 func (s *server) broadcastPost(typ string, id string) {
 	base, err := s.getPost("", id)
 	if err != nil {
 		return
 	}
+	mine := map[string]string{} // user -> their reaction
+	rows, err := s.db.Query(`SELECT user_id, emoji FROM reactions WHERE post_id = ?`, id)
+	if err != nil {
+		return
+	}
+	for rows.Next() {
+		var uid, emoji string
+		if rows.Scan(&uid, &emoji) == nil {
+			mine[uid] = emoji
+		}
+	}
+	rows.Close()
 	for _, uid := range s.postAudience(base.Author.ID, base.GroupID) {
 		if !s.hub.online(uid) {
 			continue
 		}
-		if p, err := s.getPost(uid, id); err == nil {
-			s.hub.sendTo(uid, postEvent{Type: typ, Post: p})
-		}
+		p := base
+		p.MyReaction = mine[uid]
+		s.hub.sendTo(uid, postEvent{Type: typ, Post: p})
 	}
 }
 

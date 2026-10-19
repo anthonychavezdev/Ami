@@ -19,12 +19,16 @@ Code: [`server/posts.go`](../server/posts.go) on the server; in the app
 ```
 
 Every post is rendered **for a viewer**: `postSelect` takes the viewer's id as
-its first parameter to fill `my_reaction`, counts live comments (placeholders
-excluded) and aggregates reactions into `{emoji: count}` with MariaDB's
-`JSON_OBJECTAGG` over a per-post, per-emoji count joined to the posts (a
-correlated subquery could not do it: MariaDB does not allow a derived table
-to see the outer row). `group_name` is present for group posts only, `group_id`
-is `null` for profile posts. `attachments` is never null.
+its first parameter to fill `my_reaction` and counts live comments
+(placeholders excluded). The `{emoji: count}` reactions come from one more
+query per page, `fillReactions`: a `GROUP BY post_id, emoji` over just the
+page's posts, driven by the reactions' primary key, so reading a feed never
+touches reactions on other posts. `group_name` is present for group posts
+only, `group_id` is `null` for profile posts. `attachments` is never null.
+
+When a post changes, `broadcastPost` loads it once, reads who reacted with
+what in one query, and sends each online viewer the post with their own
+reaction filled in, so the size of the audience does not multiply the work.
 
 ## Who sees what
 

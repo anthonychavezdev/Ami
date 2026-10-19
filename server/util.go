@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/uuid"
 	"os"
+	"strings"
 )
 
 var errUnauthorized = errors.New("unauthorized")
@@ -244,4 +245,9 @@ func envOr(name, def string) string {
 		return v
 	}
 	return def
+}
+
+// placeholders is "?, ?, ?" for an IN list of n values.
+func placeholders(n int) string {
+	return strings.TrimSuffix(strings.Repeat("?, ", n), ", ")
 }

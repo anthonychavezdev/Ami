@@ -169,8 +169,8 @@ password change ([passwords.md](passwords.md)).
 
 A session is a random 32-byte token the client keeps; the table stores its
 SHA-256 so a leaked database yields no live sessions. `expires_at` is 30 days
-after creation; expired rows are deleted hourly. One user has one row per device
-signed in ([login.md](login.md#sessions)).
+after creation; expired rows are deleted hourly through the `sessions_expires`
+index. One user has one row per device signed in ([login.md](login.md#sessions)).
 
 ### groups and group_members
 
@@ -269,9 +269,14 @@ start, `migrate` does one of two things:
   statements in place: write them so that running again is harmless
   (`addColumn` and `CREATE ... IF NOT EXISTS` are).
 
-The list is empty today: the MariaDB schema is version 0, the shape described
-above. (The SQLite era's migrations, up to UUID ids, went with SQLite; there
-is no path from an old SQLite file to MariaDB other than starting over.)
+The list today:
+
+| Version | Name | What it does |
+| --- | --- | --- |
+| 1 | index for the session purge | Adds `sessions_expires` on `sessions(expires_at)`, so the hourly purge is a range scan instead of a pass over every session. |
+
+(The SQLite era's migrations, up to UUID ids, went with SQLite; there is no
+path from an old SQLite file to MariaDB other than starting over.)
 
 ### Adding a migration
 

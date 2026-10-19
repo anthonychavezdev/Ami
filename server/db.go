@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 	token      CHAR(64) NOT NULL PRIMARY KEY,
 	user_id    CHAR(36) NOT NULL,
 	expires_at VARCHAR(35) NOT NULL,
+	KEY sessions_expires (expires_at), -- the hourly purge
 	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
@@ -176,7 +177,11 @@ CREATE TABLE IF NOT EXISTS push_tokens (
 // commits DDL as it goes, so a migration that fails halfway leaves its
 // earlier statements in place; write them so running again is harmless
 // (addColumn and CREATE ... IF NOT EXISTS are).
-var migrations = []migration{}
+var migrations = []migration{
+	{"index for the session purge", func(tx *sql.Tx) error {
+		return exec(tx, `CREATE INDEX IF NOT EXISTS sessions_expires ON sessions(expires_at)`)
+	}},
+}
 
 type migration struct {
 	name string

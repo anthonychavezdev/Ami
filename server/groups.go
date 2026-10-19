@@ -226,6 +226,10 @@ func (s *server) friendsToAdd(me string, ids []string) ([]string, error) {
 	if len(ids) > 100 {
 		return nil, badRequest("too many members at once")
 	}
+	friends := map[string]bool{}
+	for _, id := range s.friendIDs(me) {
+		friends[id] = true
+	}
 	seen := map[string]bool{me: true}
 	out := []string{}
 	for _, id := range ids {
@@ -233,7 +237,7 @@ func (s *server) friendsToAdd(me string, ids []string) ([]string, error) {
 			continue
 		}
 		seen[id] = true
-		if friends, err := s.areFriends(me, id); err != nil || !friends {
+		if !friends[id] {
 			return nil, badRequest("you can only add friends")
 		}
 		out = append(out, id)
