@@ -18,8 +18,11 @@ The indirect modules (`modernc.org/libc`, `modernc.org/mathutil`,
 `modernc.org/memory`, `github.com/ncruces/go-strftime`,
 `github.com/remyoudompheng/bigfft`,
 `github.com/dustin/go-humanize`, `github.com/mattn/go-isatty`,
-`golang.org/x/sys`) all come with `modernc.org/sqlite`; nothing imports them
-directly.
+`golang.org/x/sys`) all come with `modernc.org/sqlite`. The server imports
+only `golang.org/x/sys/unix` itself, for the system calls behind
+`/api/stats` (`statfs`, `getrusage`, `sysinfo`, `sysctl`;
+[stats.md](stats.md)); the standard `syscall` package lacks the sysctl forms
+macOS needs.
 
 Standard-library packages doing real work, for orientation: `net/http` (the
 server, the method-and-pattern router, `MaxBytesReader`, `ServeFile`),
@@ -27,7 +30,8 @@ server, the method-and-pattern router, `MaxBytesReader`, `ServeFile`),
 `crypto/rand` and `crypto/sha256` (tokens), `encoding/json`, `image` with
 `image/png`, `image/jpeg`, `image/gif` (picture sizes, demo pictures; no WebP
 decoder exists there), `reflect` (presence),
-`os/signal` and `context` (shutdown), `log`, `flag`.
+`os/signal` and `context` (shutdown), `runtime/metrics` (the server's own
+memory for `/api/stats`), `log`, `flag`.
 
 ## The app
 

@@ -10,6 +10,7 @@ import type {
   Me,
   Message,
   Post,
+  ServerStats,
   UploadOptions,
   User,
   UserProfile,
@@ -94,6 +95,7 @@ export const api = {
   login: (username: string, password: string) => post<{ token: string; user: Me }>('/api/login', { username, password }),
   logout: () => post<void>('/api/logout'),
   me: () => get<Me>('/api/me'),
+  stats: () => get<ServerStats>('/api/stats'),
   updateMe: (
     patch: Partial<
       Pick<

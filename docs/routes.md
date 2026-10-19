@@ -68,6 +68,7 @@ that explains it in full. The route table itself is `routes()` in
 | --- | --- | --- | --- | --- | --- |
 | `PUT /api/me` | session | `{username?, display_name?, bio?, pronouns?, interests?, links?, avatar_url?, avatar_crop?, cover_url?, cover_crop?}` | `Me` | Changes the fields sent; the rest stay. | [profile.md](profile.md#put-apime) |
 | `PUT /api/me/presence` | session | `{invisible}` | `{invisible}` | Appear offline to everyone, or visible again. | [profile.md](profile.md#put-apimepresence) |
+| `GET /api/stats` | session | | `Stats` | The server's disk, load and memory, and your share of the uploads. | [stats.md](stats.md) |
 
 ## Users
 

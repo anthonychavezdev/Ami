@@ -30,6 +30,7 @@ the repository root, so `server/hub.go` is `../server/hub.go` from here.
 | [posts.md](posts.md) | The feed, writing and editing posts, reactions, live updates. |
 | [comments.md](comments.md) | Threaded comments, editing, deleting with placeholders. |
 | [media.md](media.md) | Uploads, how files are checked and served, attachments on posts and messages. |
+| [stats.md](stats.md) | The server's disk, load and memory, and each person's share of the uploads. |
 | [friends.md](friends.md) | Friend requests, the friendship states, what friendship unlocks. |
 | [groups.md](groups.md) | Groups, roles, invite-only groups, membership. |
 | [messages.md](messages.md) | Direct and group chats, unread counts, delivery. |

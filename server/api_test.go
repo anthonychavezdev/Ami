@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -795,4 +796,29 @@ func TestUploadLimit(t *testing.T) {
 
 	r = ts.do("POST", "/api/media", raw{nil, "image/png"}, tom.token)
 	ts.check("empty body -> 400", r.status == 400, r)
+}
+
+// The stats: your share is what your posts, messages and profile reference;
+// the host figures are known on Linux and macOS.
+func TestStats(t *testing.T) {
+	ts := newTestServer(t, false)
+	tom, tia := ts.register("tom"), ts.register("tia")
+	ts.check("stats need a session", ts.get("/api/stats", "").status == 401)
+
+	pic := ts.upload(tom.token, tinyPNG(), "image/png").obj()
+	ts.post("/api/posts", J{"body": "", "attachments": []J{pic, pic}}, tom.token)
+	ts.post("/api/posts", J{"body": "", "attachments": []J{pic}}, tom.token)
+	r := ts.get("/api/stats", tom.token)
+	st := r.obj()
+	storage := st.obj("storage")
+	ts.check("your share counts a file once however often it is used", r.status == 200 && storage.num("yours") == float64(len(tinyPNG())), r)
+	ts.check("everyone's uploads include yours", storage.num("uploads") >= storage.num("yours"), storage)
+	ts.check("the database has a size", storage.num("database") > 0, storage)
+	ts.check("the upload limit is told", storage.num("upload_limit") == float64(maxUploadBytes), storage)
+	ts.check("cores", st.obj("cpu").num("cores") >= 1, st.obj("cpu"))
+	if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
+		ts.check("disk and memory are known here", storage.num("disk_total") > 0 && storage.num("disk_free") > 0 && st.obj("memory").num("total") > 0, st)
+	}
+	ts.check("the server's own memory is known", st.obj("memory").num("server") > 0, st.obj("memory"))
+	ts.check("tia has nothing yet", ts.get("/api/stats", tia.token).obj().obj("storage").num("yours") == 0)
 }

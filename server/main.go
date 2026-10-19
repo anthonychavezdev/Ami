@@ -37,8 +37,10 @@ type server struct {
 	origins       map[string]bool
 	upgrader      websocket.Upgrader
 	mediaDir      string
+	dbPath        string
 	trustProxy    bool
 	calls         *callRooms // who is in which call
+	cpu           cpuMeter   // this process's recent CPU use, for /api/stats
 }
 
 // config is everything the command-line flags decide.
@@ -102,7 +104,7 @@ func newServer(ctx context.Context, cfg config) (*server, error) {
 		return nil, fmt.Errorf("media dir: %w", err)
 	}
 	s := &server{
-		db: db, hub: newHub(), calls: newCallRooms(), mediaDir: cfg.mediaDir, trustProxy: cfg.trustProxy,
+		db: db, hub: newHub(), calls: newCallRooms(), mediaDir: cfg.mediaDir, dbPath: cfg.dbPath, trustProxy: cfg.trustProxy,
 		limiter:       newLimiter(10, time.Minute),
 		uploadLimiter: newLimiter(30, time.Minute),
 		origins:       allowedOrigins(cfg.origins, cfg.dev),
@@ -120,6 +122,7 @@ func newServer(ctx context.Context, cfg config) (*server, error) {
 	s.hub.decorate = s.markPresence
 	s.upgrader = websocket.Upgrader{ReadBufferSize: 4096, WriteBufferSize: 4096, CheckOrigin: s.originAllowed}
 	go s.purgeSessions(ctx)
+	go s.meterCPU(ctx)
 	return s, nil
 }
 
@@ -227,6 +230,7 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/me", s.auth(s.updateMe))
 	mux.HandleFunc("PUT /api/me/password", s.auth(s.changePassword))
 	mux.HandleFunc("PUT /api/me/presence", s.auth(s.setPresence))
+	mux.HandleFunc("GET /api/stats", s.auth(s.stats))
 
 	// users
 	mux.HandleFunc("GET /api/users", s.auth(s.searchUsers))

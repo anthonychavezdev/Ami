@@ -165,6 +165,7 @@ project id the app simply never registers a push token.
 | Posts | Markdown text, pictures, videos and links, together or on their own; tap a picture or video to view it fullscreen (arrows, thumbnails, Save to your library). Authors can edit their posts (a pencil marks edited ones). Comments thread like Reddit: reply under a comment, edit or delete your own; a deleted comment with replies stays as [deleted]. In the browser, your posts, comments and messages get a ⋯ button on hover and a right-click menu. Feed = your posts + friends' posts + posts in your groups. Profile posts are public. |
 | Reactions | Tap **React** to 👍; press-and-hold opens the emoji menu. One reaction per user per post, any emoji. |
 | Comments | On the post screen. |
+| Server stats | A Server tab with the disk the uploads sit on and your share of them, the processor's load and the memory, so everyone can see what they are taking up. |
 | Profile | A picture and a wide cover (GIFs animate), each with its own crop; display name, pronouns, a Markdown bio, interests as tags that Find people searches, links to your other places; a username change that must be valid and free, and a password change (other devices are signed out). |
 | Friends | Request → accept. Only friends can message/call each other. Pushed live over WebSocket. Every avatar carries a presence dot: green while the user has the app open, gray otherwise. "Appear offline" on the Me tab hides yours. |
 | Groups | Creator is owner + admin; others join as members. Admin can add friends, remove members, delete posts, delete the group. Every group has a chat and a call. Invite-only groups are hidden from Discover and only the admin adds people; that is what the + button on the Messages tab creates. |
@@ -214,6 +215,7 @@ GET    /api/conversations   (direct chats + group chats)
 GET|POST /api/messages/{userId} {body, attachments}
 POST   /api/messages/{userId}/read   PUT|DELETE /api/messages/{userId}/{messageId}   (sender; PUT {body})
 PUT|DELETE /api/push-token {token}
+GET    /api/stats   (disk, uploads and your share, load, memory)
 GET    /ws?token=   (every event and client message is a struct in server/events.go, mirrored by
                      mobile/src/lib/events.ts; the call protocol is described in server/calls.go)
 ```

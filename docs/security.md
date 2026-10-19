@@ -35,6 +35,7 @@ Every rule is enforced by the server, in the handler that performs the action:
 | Join | public groups only |
 | Delete a group | the owner |
 | Edit your profile, change your password, register push tokens | you |
+| The server's disk, load and memory, and your own share of the uploads (`/api/stats`) | any signed-in user |
 
 The listings scope what people discover (the feed, group discovery), but
 fetching a post, a group or a profile by id is open to any signed-in user; see
