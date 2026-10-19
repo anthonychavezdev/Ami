@@ -1,6 +1,19 @@
 import { API_URL } from './config';
 import { uploadFile } from './upload';
-import type { Attachment, ChatTarget, Comment, Conversation, Group, GroupDetail, Me, Message, Post, User, UserProfile } from './types';
+import type {
+  Attachment,
+  ChatTarget,
+  Comment,
+  Conversation,
+  Group,
+  GroupDetail,
+  Me,
+  Message,
+  Post,
+  UploadProgress,
+  User,
+  UserProfile,
+} from './types';
 import { errorMessage } from './errors';
 
 let authToken: string | null = null;
@@ -35,12 +48,12 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
 
 // Upload of a picked file: the file is the request body, streamed from disk
 // (upload.ts on phones, upload.web.ts in the browser).
-async function upload<T>(path: string, file: { uri: string; type: string }): Promise<T> {
+async function upload<T>(path: string, file: { uri: string; type: string }, onProgress?: (p: UploadProgress) => void): Promise<T> {
   const headers: Record<string, string> = {};
   if (authToken) headers.Authorization = `Bearer ${authToken}`;
   let res: { status: number; body: string };
   try {
-    res = await uploadFile(API_URL + path, file, headers);
+    res = await uploadFile(API_URL + path, file, headers, onProgress);
   } catch (e) {
     throw new ApiError(0, `Cannot reach server at ${API_URL} (${errorMessage(e)})`);
   }
@@ -100,7 +113,8 @@ export const api = {
   feed: (before?: string) => get<Post[]>(`/api/feed${q({ before })}`),
   createPost: (body: string, group_id?: string, attachments: Attachment[] = []) =>
     post<Post>('/api/posts', { body, group_id, attachments }),
-  uploadMedia: (file: { uri: string; type: string }) => upload<Attachment>('/api/media', file),
+  uploadMedia: (file: { uri: string; type: string }, onProgress?: (p: UploadProgress) => void) =>
+    upload<Attachment>('/api/media', file, onProgress),
   post: (id: string) => get<Post>(`/api/posts/${id}`),
   deletePost: (id: string) => del<void>(`/api/posts/${id}`),
   updatePost: (id: string, body: string, attachments: Attachment[]) => put<Post>(`/api/posts/${id}`, { body, attachments }),

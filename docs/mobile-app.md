@@ -161,7 +161,7 @@ pair exports the same names, so the rest of the code never checks the platform:
 | --- | --- | --- |
 | `storage` | `expo-secure-store` (Keychain / Keystore) | `localStorage` |
 | `confirm` | `Alert.alert` with a destructive button | `window.confirm` |
-| `upload` | `expo-file-system` `File.upload`, streamed by the OS | `fetch(blob:)` → a Blob as the body |
+| `upload` | `expo-file-system` `File.upload`, streamed by the OS, with its progress events | `fetch(blob:)` → a Blob sent by `XMLHttpRequest`, which reports upload progress (fetch cannot) |
 | `save` | download to cache, `expo-media-library` | an `<a download>` click |
 | `notifications` | `expo-notifications`, push tokens, app badge | Notification API, `(n)` in the tab title |
 | `webrtc` | `react-native-webrtc` classes, `RTCView`, the ReplayKit picker | the browser's WebRTC, `<video>` / `<audio>` |

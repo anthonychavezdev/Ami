@@ -132,3 +132,6 @@ export interface Conversation {
   last_message: Message | null; // null: a group nobody has written in yet
   unread: number;
 }
+
+// How far an upload has got, in bytes (upload.ts / upload.web.ts).
+export type UploadProgress = { sent: number; total: number };
