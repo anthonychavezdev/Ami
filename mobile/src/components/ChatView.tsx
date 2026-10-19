@@ -8,7 +8,7 @@ import { Composer } from './Composer';
 import { useContextMenu } from './ContextMenu';
 import { EditBar } from './EditBar';
 import { MessageBubble, type MessageActions } from './MessageBubble';
-import { Empty, KeyboardScreen, Loading } from './ui';
+import { Empty, KeyboardScreen, Loading, PaneHeader } from './ui';
 import { useAuth } from '@/lib/auth';
 import { useCall } from '@/lib/call';
 import { confirmAction } from '@/lib/confirm';
@@ -76,16 +76,7 @@ export function ChatView({ kind, id, embedded = false }: ChatTarget & { embedded
   return (
     <KeyboardScreen>
       <View style={{ flex: 1 }}>
-        {embedded ? (
-          <View style={styles.paneHeader}>
-            <Text style={styles.paneTitle} numberOfLines={1}>
-              {title}
-            </Text>
-            {buttons}
-          </View>
-        ) : (
-          <Stack.Screen options={{ title, headerRight: () => buttons }} />
-        )}
+        {embedded ? <PaneHeader title={title}>{buttons}</PaneHeader> : <Stack.Screen options={{ title, headerRight: () => buttons }} />}
         {chat.isGroup && (
           <CallBanner inThisCall={inThisCall} others={chat.inCall.filter((x) => x !== me?.id).length} onPress={() => startCall(false)} />
         )}
@@ -166,15 +157,4 @@ function HeaderButtons({ isGroup, groupId, onCall }: { isGroup: boolean; groupId
 const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     empty: { color: colors.muted, textAlign: 'center', transform: [{ scaleY: -1 }] },
-    paneHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.md,
-      paddingHorizontal: spacing.lg,
-      paddingVertical: spacing.md,
-      backgroundColor: colors.card,
-      borderBottomWidth: 1,
-      borderBottomColor: colors.border,
-    },
-    paneTitle: { flex: 1, fontSize: 17, fontWeight: '700', color: colors.text },
   });
