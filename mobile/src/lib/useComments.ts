@@ -1,5 +1,4 @@
-import { useRouter } from 'expo-router';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react';
 
 import { api } from './api';
 import { addComment, replaceComment, thread } from './comments';
@@ -9,9 +8,8 @@ import { socket } from './ws';
 import { errorMessage } from './errors';
 
 // A post and its comments, kept live: comments come, change and go, the
-// post's counts and reactions update, and a deleted post sends you back.
-export function useComments(postId: number) {
-  const router = useRouter();
+// post's counts and reactions update, and a deleted post calls onGone.
+export function useComments(postId: number, onGone: () => void) {
   const [post, setPost] = useState<Post | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -28,6 +26,10 @@ export function useComments(postId: number) {
       .finally(() => setLoading(false));
   }, [postId]);
 
+  const gone = useEffectEvent(() => {
+    toast.show('This post was deleted');
+    onGone();
+  });
   useEffect(() => {
     const refetch = () =>
       void api
@@ -39,14 +41,10 @@ export function useComments(postId: number) {
       socket.on('comment.updated', (e) => e.comment.post_id === postId && setComments((list) => replaceComment(list, e.comment))),
       socket.on('comment.deleted', (e) => e.post_id === postId && refetch()), // the server decides what stays as [deleted]
       socket.on('post.updated', (e) => e.post.id === postId && setPost(e.post)),
-      socket.on('post.deleted', (e) => {
-        if (e.id !== postId) return;
-        toast.show('This post was deleted');
-        router.back();
-      }),
+      socket.on('post.deleted', (e) => e.id === postId && gone()),
     ];
     return () => offs.forEach((off) => off());
-  }, [postId, router]);
+  }, [postId]);
 
   const add = useCallback(
     async (body: string, parentId?: number) => {

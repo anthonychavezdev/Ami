@@ -34,13 +34,15 @@ export function PostCard({
   onComment,
   canDelete,
   showGroup = true,
+  selected,
 }: {
   post: Post;
   onChange: (p: Post) => void;
   onDelete?: (id: number) => void;
-  onComment?: () => void; // on the post screen: focus the comment box instead of opening the post
+  onComment?: () => void; // instead of opening the post screen: focus the comment box (post screen) or open the post beside the feed
   canDelete?: boolean;
   showGroup?: boolean;
+  selected?: boolean; // the post open beside the feed
 }) {
   const styles = useStyles(makeStyles);
   const { colors } = useTheme();
@@ -60,7 +62,7 @@ export function PostCard({
   const openMenu = (x: number, y: number) => open(items, x, y);
 
   return (
-    <View style={styles.card} {...hoverProps} {...(items.length ? contextMenuProps(openMenu) : {})}>
+    <View style={[styles.card, selected && styles.cardSelected]} {...hoverProps} {...(items.length ? contextMenuProps(openMenu) : {})}>
       <View style={styles.header}>
         <AuthorLine post={post} showGroup={showGroup} />
         <View style={styles.headerActions}>
@@ -207,6 +209,7 @@ const makeStyles = (colors: ThemeColors) =>
       borderWidth: 1,
       borderColor: colors.border,
     },
+    cardSelected: { borderColor: colors.accent },
     header: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm },
     headerActions: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
     author: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: spacing.md },
