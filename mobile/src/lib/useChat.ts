@@ -3,7 +3,7 @@ import { AppState } from 'react-native';
 
 import { api } from './api';
 import { errorMessage } from './errors';
-import { belongsTo, groupRoomKey, prependMessage, removeMessage, replaceMessage } from './messages';
+import { belongsTo, groupRoomKey, mergeLatest, prependMessage, removeMessage, replaceMessage } from './messages';
 import type { Attachment, ChatTarget, Group, GroupMember, Message, User } from './types';
 import { unread } from './unread';
 import { socket } from './ws';
@@ -53,6 +53,8 @@ export function useChat(kind: ChatTarget['kind'], id: number) {
       socket.on('message', (e) => inThisChat(e.message) && setMessages((list) => list && prependMessage(list, e.message))),
       socket.on('message.updated', (e) => inThisChat(e.message) && setMessages((list) => list && replaceMessage(list, e.message))),
       socket.on('message.deleted', (e) => inThisChat(e) && setMessages((list) => list && removeMessage(list, e.id))),
+      // Reconnected: whatever was said or changed meanwhile was missed, so fetch the newest page again.
+      socket.on('open', () => void api.messages(chat).then((latest) => setMessages((list) => list && mergeLatest(list, latest)))),
     ];
     return () => offs.forEach((off) => off());
   }, [chat]);
@@ -76,8 +78,23 @@ export function useChat(kind: ChatTarget['kind'], id: number) {
     if (older.length) setMessages((list) => [...(list ?? []), ...older.slice().reverse()]);
   }, [messages, chat]);
 
-  const send = useCallback((body: string, attachments: Attachment[]) => api.sendMessage(chat, body, attachments), [chat]);
-  const edit = useCallback((m: Message, body: string) => api.updateMessage(chat, m.id, body), [chat]);
+  // Sending, editing and deleting show their result at once from the server's
+  // reply, like posts and comments do; the socket's echo of the same change is
+  // then a no-op. Otherwise a dropped socket would hide your own edits.
+  const send = useCallback(
+    async (body: string, attachments: Attachment[]) => {
+      const m = await api.sendMessage(chat, body, attachments);
+      setMessages((list) => list && prependMessage(list, m));
+    },
+    [chat],
+  );
+  const edit = useCallback(
+    async (m: Message, body: string) => {
+      const updated = await api.updateMessage(chat, m.id, body);
+      setMessages((list) => list && replaceMessage(list, updated));
+    },
+    [chat],
+  );
   const remove = useCallback(
     async (m: Message) => {
       await api.deleteMessage(chat, m.id);
