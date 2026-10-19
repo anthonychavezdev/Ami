@@ -87,6 +87,7 @@ that explains it in full. The route table itself is `routes()` in
 | `GET /api/posts/{id}` | session | | `Post` | One post as you see it. | [posts.md](posts.md#get-apipostsid) |
 | `PUT /api/posts/{id}` | session | `{body, attachments}` | `Post` | The author edits text and attachments. | [posts.md](posts.md#put-apipostsid) |
 | `DELETE /api/posts/{id}` | session | | 204 | The author, or the admin of its group, deletes it. | [posts.md](posts.md#delete-apipostsid) |
+| `GET /api/posts/{id}/reactions` | session | | `[{emoji, users}]` | Who reacted with what, the most used emoji first. | [posts.md](posts.md#reactions) |
 | `PUT /api/posts/{id}/reaction` | session | `{emoji}` | `Post` | Sets your one reaction to the post. | [posts.md](posts.md#reactions) |
 | `DELETE /api/posts/{id}/reaction` | session | | `Post` | Removes it. | [posts.md](posts.md#reactions) |
 

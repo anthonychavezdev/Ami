@@ -95,6 +95,17 @@ string of at most 32 bytes and 8 runes, so any emoji sequence works; the app
 offers a fixed palette (`REACTION_EMOJIS` in `theme.ts`) with 👍 as the tap
 default. Reacting to a missing post is 404.
 
+`GET /api/posts/{id}/reactions` answers who reacted with what: a list of
+`{emoji, users: [User]}`, the most used emoji first, people by display name,
+from one query joining reactions to users. Posts are visible to any signed-in
+user, so their reactions are too; a missing post is 404. The post itself
+keeps only the counts, so feeds stay small; the app asks for the people on
+demand: in the browser, resting the pointer on a reaction pill shows a tip
+with the names (`ReactionSummary.web.tsx`, through a portal so cards never
+clip it); on phones, holding a pill opens a sheet with one tab per emoji and
+the people behind the held one, each a link to their profile
+(`ReactionSummary.tsx`).
+
 ## Live updates: `broadcastPost`
 
 After a create, edit, reaction or comment change, `broadcastPost(type, id)` loads

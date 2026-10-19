@@ -10,6 +10,7 @@ import type {
   Me,
   Message,
   Post,
+  ReactionGroup,
   ServerStats,
   UploadOptions,
   User,
@@ -126,6 +127,7 @@ export const api = {
   updateComment: (id: string, body: string) => put<Comment>(`/api/comments/${id}`, { body }),
   deleteComment: (id: string) => del<void>(`/api/comments/${id}`),
   react: (postId: string, emoji: string) => put<Post>(`/api/posts/${postId}/reaction`, { emoji }),
+  postReactions: (postId: string) => get<ReactionGroup[]>(`/api/posts/${postId}/reactions`),
   unreact: (postId: string) => del<Post>(`/api/posts/${postId}/reaction`),
 
   // friends

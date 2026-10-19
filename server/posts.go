@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"net/http"
+	"sort"
 	"strings"
 	"unicode/utf8"
 )
@@ -342,6 +343,49 @@ func (s *server) setReaction(w http.ResponseWriter, r *http.Request, me *User) e
 	}
 	s.broadcastPost("post.updated", id)
 	return s.respondPost(w, http.StatusOK, me.ID, id)
+}
+
+// ReactionGroup is everyone who reacted to a post with one emoji.
+type ReactionGroup struct {
+	Emoji string `json:"emoji"`
+	Users []User `json:"users"`
+}
+
+// listReactions answers who reacted with what: one group per emoji, the most
+// used first, people by display name. Posts are visible to any signed-in
+// user, so their reactions are too.
+func (s *server) listReactions(w http.ResponseWriter, r *http.Request, me *User) error {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return err
+	}
+	if _, err := s.postOwner(id); err != nil {
+		return err
+	}
+	type reaction struct {
+		emoji string
+		user  User
+	}
+	rows, err := queryAll(s.db, func(sc scanner) (reaction, error) {
+		var x reaction
+		return x, sc.Scan(fields([]any{&x.emoji}, x.user.fields())...)
+	}, `SELECT r.emoji, `+userCols+` FROM reactions r JOIN users u ON u.id = r.user_id WHERE r.post_id = ? ORDER BY r.emoji, u.display_name`, id)
+	if err != nil {
+		return err
+	}
+	groups := []ReactionGroup{}
+	index := map[string]int{}
+	for _, x := range rows {
+		i, ok := index[x.emoji]
+		if !ok {
+			i = len(groups)
+			index[x.emoji] = i
+			groups = append(groups, ReactionGroup{Emoji: x.emoji, Users: []User{}})
+		}
+		groups[i].Users = append(groups[i].Users, x.user)
+	}
+	sort.SliceStable(groups, func(i, j int) bool { return len(groups[i].Users) > len(groups[j].Users) })
+	return ok(w, groups)
 }
 
 func (s *server) deleteReaction(w http.ResponseWriter, r *http.Request, me *User) error {
