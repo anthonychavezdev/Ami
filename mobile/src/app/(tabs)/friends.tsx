@@ -1,11 +1,14 @@
 import { Feather } from '@expo/vector-icons';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { FlatList, RefreshControl, Text, View } from 'react-native';
 
 import { UserRow } from '@/components/UserRow';
-import { Button, Empty, Input, Loading, SectionLabel, Segmented } from '@/components/ui';
+import { UserView } from '@/components/UserView';
+import { Button, Empty, Input, Loading, Panes, SectionLabel, Segmented } from '@/components/ui';
 import { api } from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
+import { useWide } from '@/lib/layout';
 import type { User, UserProfile } from '@/lib/types';
 import { useDebounced } from '@/lib/useDebounced';
 import { useLiveLoad } from '@/lib/useLiveLoad';
@@ -15,9 +18,21 @@ import { spacing } from '@/theme';
 
 type Tab = 'friends' | 'requests' | 'find';
 
+// How a list opens a person: their profile screen, or, on wide windows, the pane beside the list.
+type Opening = { selectedId: number | null; onOpen?: (user: User) => void };
+
+// Friends, requests and people to find. On a wide window the open profile
+// sits beside the lists, named by ?user= so a reload or a link (/user/...
+// redirects here) lands on it.
 export default function FriendsScreen() {
+  const router = useRouter();
+  const wide = useWide();
+  const { user: userParam } = useLocalSearchParams<{ user?: string }>();
+  const openId = wide && Number(userParam) > 0 ? Number(userParam) : null;
   const [tab, setTab] = useState<Tab>('friends');
-  return (
+  const opening: Opening = { selectedId: openId, onOpen: wide ? (u) => router.setParams({ user: String(u.id) }) : undefined };
+
+  const lists = (
     <View style={{ flex: 1 }}>
       <Segmented
         value={tab}
@@ -28,17 +43,24 @@ export default function FriendsScreen() {
           { key: 'find', label: 'Find people' },
         ]}
       />
-      {tab === 'friends' && <FriendList />}
-      {tab === 'requests' && <Requests />}
-      {tab === 'find' && <Find />}
+      {tab === 'friends' && <FriendList {...opening} />}
+      {tab === 'requests' && <Requests {...opening} />}
+      {tab === 'find' && <Find {...opening} />}
     </View>
   );
+  if (!wide) return lists;
+  return <Panes list={lists}>{openId ? <UserView key={openId} id={openId} embedded /> : <Empty text="Pick a person." />}</Panes>;
+}
+
+// A person in one of the lists, opening the way the screen says.
+function PersonRow({ user, right, selectedId, onOpen }: { user: User; right?: React.ReactNode } & Opening) {
+  return <UserRow user={user} right={right} selected={user.id === selectedId} onPress={onOpen && (() => onOpen(user))} />;
 }
 
 const FRIEND_EVENTS = ['friend.accepted'] as const;
 const REQUEST_EVENTS = ['friend.request', 'friend.accepted'] as const;
 
-function FriendList() {
+function FriendList(opening: Opening) {
   const { colors } = useTheme();
   const [friends, setFriends] = useState<User[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -55,7 +77,7 @@ function FriendList() {
     <FlatList
       data={friends}
       keyExtractor={(u) => String(u.id)}
-      renderItem={({ item }) => <UserRow user={item} />}
+      renderItem={({ item }) => <PersonRow user={item} {...opening} />}
       ListEmptyComponent={<Empty text="No friends yet. Find people and send a request." />}
       refreshControl={
         <RefreshControl
@@ -84,7 +106,7 @@ const requestRows = (data: { incoming: User[]; outgoing: User[] }): RequestItem[
     ...s.users.map((u) => ({ user: u, incoming: s.incoming, key: `${s.title}-${u.id}` })),
   ]);
 
-function Requests() {
+function Requests(opening: Opening) {
   const [data, setData] = useState<{ incoming: User[]; outgoing: User[] } | null>(null);
   const load = useCallback(async () => setData(await api.friendRequests()), []);
   useLiveLoad(load, REQUEST_EVENTS);
@@ -109,8 +131,9 @@ function Requests() {
             {item.header}
           </SectionLabel>
         ) : (
-          <UserRow
+          <PersonRow
             user={item.user}
+            {...opening}
             right={
               item.incoming ? (
                 <View style={{ flexDirection: 'row', gap: spacing.sm }}>
@@ -149,7 +172,7 @@ function useUserSearch(query: string) {
   return { results: found.list, loading: found.q !== q, setStatus };
 }
 
-function Find() {
+function Find(opening: Opening) {
   const [query, setQuery] = useState('');
   const { results, loading, setStatus } = useUserSearch(query);
   return (
@@ -164,7 +187,7 @@ function Find() {
           data={results}
           keyExtractor={(u) => String(u.id)}
           renderItem={({ item }) => (
-            <UserRow user={item} right={<FriendStatusButton user={item} onStatus={(s) => setStatus(item.id, s)} />} />
+            <PersonRow user={item} {...opening} right={<FriendStatusButton user={item} onStatus={(s) => setStatus(item.id, s)} />} />
           )}
           ListEmptyComponent={<Empty text={query ? 'No one found.' : 'Search for people to add.'} />}
           keyboardShouldPersistTaps="handled"

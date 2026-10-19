@@ -1,18 +1,17 @@
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useState } from 'react';
-import { FlatList, RefreshControl, StyleSheet, View } from 'react-native';
+import { FlatList, RefreshControl } from 'react-native';
 
 import { ChatView } from '@/components/ChatView';
 import { ConversationRow } from '@/components/ConversationRow';
-import { Empty, Fab, Loading } from '@/components/ui';
+import { Empty, Fab, Loading, Panes } from '@/components/ui';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useWide } from '@/lib/layout';
 import { chatKey, parseChatKey } from '@/lib/messages';
 import type { Conversation } from '@/lib/types';
 import { useLiveLoad } from '@/lib/useLiveLoad';
-import { useStyles, useTheme } from '@/lib/theme';
-import { type ThemeColors, spacing } from '@/theme';
+import { useTheme } from '@/lib/theme';
 
 // Events after which the list is reloaded.
 const REFRESH_ON = ['message', 'message.updated', 'message.deleted', 'messages.read', 'group.added'] as const;
@@ -21,7 +20,6 @@ const REFRESH_ON = ['message', 'message.updated', 'message.deleted', 'messages.r
 // window the open chat sits beside the list, named by ?chat= so a reload or a
 // link (/chat/... redirects here) lands on it.
 export default function MessagesScreen() {
-  const styles = useStyles(makeStyles);
   const { colors } = useTheme();
   const { user: me } = useAuth();
   const router = useRouter();
@@ -81,30 +79,15 @@ export default function MessagesScreen() {
     );
   }
   return (
-    <View style={styles.panes}>
-      <View style={styles.listPane}>
-        {list}
-        {fab}
-      </View>
-      <View style={styles.chatPane}>
-        {open ? <ChatView key={chatKey(open)} kind={open.kind} id={open.id} embedded /> : <Empty text="Pick a conversation." />}
-      </View>
-    </View>
+    <Panes
+      list={
+        <>
+          {list}
+          {fab}
+        </>
+      }
+    >
+      {open ? <ChatView key={chatKey(open)} kind={open.kind} id={open.id} embedded /> : <Empty text="Pick a conversation." />}
+    </Panes>
   );
 }
-
-const makeStyles = (colors: ThemeColors) =>
-  StyleSheet.create({
-    panes: {
-      flex: 1,
-      flexDirection: 'row',
-      margin: spacing.lg,
-      marginTop: 0,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 12,
-      overflow: 'hidden',
-    },
-    listPane: { width: 340, borderRightWidth: 1, borderRightColor: colors.border, backgroundColor: colors.card },
-    chatPane: { flex: 1 },
-  });

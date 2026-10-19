@@ -4,7 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { FlatList, Modal, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { GroupView } from '@/components/GroupView';
-import { Button, Empty, Fab, Input, Loading, Row, Segmented } from '@/components/ui';
+import { Button, Empty, Fab, Input, Loading, Panes, Row, Segmented } from '@/components/ui';
 import { api } from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
 import { useWide } from '@/lib/layout';
@@ -23,7 +23,6 @@ type Opening = { selectedId: number | null; onOpen?: (group: Group) => void };
 // sits beside the list, named by ?group= so a reload or a link (/group/...
 // redirects here) lands on it.
 export default function GroupsScreen() {
-  const styles = useStyles(makeStyles);
   const router = useRouter();
   const wide = useWide();
   const { group: groupParam } = useLocalSearchParams<{ group?: string }>();
@@ -58,24 +57,21 @@ export default function GroupsScreen() {
   );
   if (!wide) return lists;
   return (
-    <View style={styles.panes}>
-      <View style={styles.listPane}>{lists}</View>
-      <View style={styles.groupPane}>
-        {openId ? (
-          <GroupView
-            key={openId}
-            id={openId}
-            embedded
-            onGone={() => {
-              router.setParams({ group: undefined });
-              setReloadKey((k) => k + 1);
-            }}
-          />
-        ) : (
-          <Empty text="Pick a group." />
-        )}
-      </View>
-    </View>
+    <Panes list={lists}>
+      {openId ? (
+        <GroupView
+          key={openId}
+          id={openId}
+          embedded
+          onGone={() => {
+            router.setParams({ group: undefined });
+            setReloadKey((k) => k + 1);
+          }}
+        />
+      ) : (
+        <Empty text="Pick a group." />
+      )}
+    </Panes>
   );
 }
 
@@ -208,18 +204,6 @@ function CreateGroupModal({ visible, onClose, onCreated }: { visible: boolean; o
 
 const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
-    panes: {
-      flex: 1,
-      flexDirection: 'row',
-      margin: spacing.lg,
-      marginTop: 0,
-      borderWidth: 1,
-      borderColor: colors.border,
-      borderRadius: 12,
-      overflow: 'hidden',
-    },
-    listPane: { width: 340, borderRightWidth: 1, borderRightColor: colors.border, backgroundColor: colors.card },
-    groupPane: { flex: 1 },
     groupIcon: {
       width: 44,
       height: 44,
