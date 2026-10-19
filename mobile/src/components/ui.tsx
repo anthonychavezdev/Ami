@@ -3,6 +3,7 @@ import { Image } from 'expo-image';
 import { useHeaderHeight } from 'expo-router/build/react-navigation/elements';
 import React from 'react';
 import {
+  type DimensionValue,
   ActivityIndicator,
   KeyboardAvoidingView,
   Pressable,
@@ -232,13 +233,21 @@ export function WideColumn({ children, width = COLUMN_WIDTH }: { children: React
 // indicator. Padding on both platforms: Android draws edge to edge, so the
 // window no longer shrinks for the keyboard by itself. The offset is the
 // header's real height, which varies by phone.
-// A list in a pane of its own beside what it opened: how Messages, Groups and
-// Friends lay out on a wide window.
-export function Panes({ list, children }: { list: React.ReactNode; children: React.ReactNode }) {
+// A list in a pane of its own beside what it opened: how the Feed, Messages,
+// Groups and Friends tabs lay out on a wide window.
+export function Panes({
+  list,
+  listWidth = 340,
+  children,
+}: {
+  list: React.ReactNode;
+  listWidth?: DimensionValue;
+  children: React.ReactNode;
+}) {
   const styles = useStyles(makeStyles);
   return (
     <View style={styles.panes}>
-      <View style={styles.listPane}>{list}</View>
+      <View style={[styles.listPane, { width: listWidth }]}>{list}</View>
       <View style={styles.detailPane}>{children}</View>
     </View>
   );
@@ -322,7 +331,7 @@ const makeStyles = (colors: ThemeColors) =>
       borderRadius: 12,
       overflow: 'hidden',
     },
-    listPane: { width: 340, borderRightWidth: 1, borderRightColor: colors.border, backgroundColor: colors.card },
+    listPane: { borderRightWidth: 1, borderRightColor: colors.border, backgroundColor: colors.card },
     detailPane: { flex: 1 },
     btn: { paddingVertical: 12, paddingHorizontal: 18, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
     btnSmall: { paddingVertical: 7, paddingHorizontal: 12, borderRadius: radius.pill },
