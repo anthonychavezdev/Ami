@@ -43,6 +43,10 @@ erDiagram
         TEXT pronouns
         TEXT avatar_crop "JSON {x,y,w,aspect}"
         INTEGER must_change_password "after -reset-password"
+        TEXT cover_url "under /media, or empty"
+        TEXT cover_crop "JSON, a 3:1 window"
+        TEXT interests "JSON array of tags"
+        TEXT links "JSON array of {label, url}"
         TEXT created_at
     }
     sessions {
@@ -135,8 +139,9 @@ erDiagram
   written by `nowString()`. They compare correctly as strings, which the
   conversations sort relies on.
 - **Booleans** are `INTEGER` 0 or 1 (`invisible`, `private`, `must_change_password`).
-- **JSON columns** (`posts.attachments`, `messages.attachments`, `users.avatar_crop`)
-  hold JSON text; defaults are `'[]'` and `''`.
+- **JSON columns** (`posts.attachments`, `messages.attachments`, `users.avatar_crop`,
+  `users.cover_crop`, `users.interests`, `users.links`) hold JSON text; defaults are
+  `'[]'` and `''`. `interests` is searched with `json_each`.
 - **Foreign keys** are declared with `ON DELETE CASCADE` and enforced
   (`PRAGMA foreign_keys(ON)` in the connection string), so deleting a user or a
   group removes its rows everywhere. `comments.parent_id` has no cascade: a parent
@@ -152,8 +157,8 @@ One row per account. `password_hash` is PBKDF2-HMAC-SHA256 of the password with
 the 16-byte `salt`, using `password_iterations` rounds (600,000 today; the column
 default of 210,000 is what the first release used, and a login with a lower count
 re-hashes the password at the current one). Profile fields (`display_name`,
-`bio`, `pronouns`, `avatar_url`, `avatar_crop`) are edited through `PUT /api/me`
-([profile.md](profile.md)). `invisible` is the "appear offline" setting.
+`bio`, `pronouns`, `interests`, `links`, `avatar_url`, `avatar_crop`, `cover_url`,
+`cover_crop`) are edited through `PUT /api/me` ([profile.md](profile.md)). `invisible` is the "appear offline" setting.
 `must_change_password` is set by `-reset-password` and cleared by the next
 password change ([passwords.md](passwords.md)).
 
@@ -263,6 +268,7 @@ The list today:
 | 1 | everything up to group chats | For databases from before versioning, which were upgraded piecemeal: creates any missing tables from `schema`, adds the columns in `addedColumns` that `CREATE TABLE IF NOT EXISTS` would not add, rebuilds `messages` so `recipient_id` can be NULL and `group_id` exists (SQLite cannot relax a constraint in place, so a copy is made), creates `lateIndexes` (on columns that only exist after this step), and writes read markers so chats older than unread tracking start out read. |
 | 2 | password resets | Adds `users.must_change_password`. |
 | 3 | ids become UUIDs | Turns every integer id into a UUID while keeping every reference: the tables are copied aside, dropped, recreated from `schema` and refilled through a map from each old id to a new one (`toUUIDs`, `refill`). New ids are handed out in the old order, so what was newer stays newer, and a read marker lands on the newest message at or before where it was. A database whose ids are already text is left alone. |
+| 4 | cover, interests and links | Adds `users.cover_url`, `cover_crop`, `interests` and `links`. |
 
 `lateIndexes` are separate from `schema` only because they index columns that an
 old database gains in migration 1; a new database gets both at once.

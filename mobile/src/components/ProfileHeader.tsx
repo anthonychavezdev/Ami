@@ -1,16 +1,19 @@
+import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
+import { Cover } from './Cover';
 import { Avatar, Button, ErrorBanner } from './ui';
 import { api } from '@/lib/api';
 import { confirmAction } from '@/lib/confirm';
-import { useStyles } from '@/lib/theme';
+import { PostMarkdown } from '@/lib/markdown';
+import { useStyles, useTheme } from '@/lib/theme';
 import type { UserProfile } from '@/lib/types';
-import { spacing, type ThemeColors } from '@/theme';
+import { radius, spacing, type ThemeColors } from '@/theme';
 
-// The top of someone's profile: picture, names, bio, counts and what you can
-// do with them (befriend, message, call).
+// The top of someone's profile: cover, picture, names, bio (Markdown),
+// interests, links, counts and what you can do with them (befriend, message, call).
 export function ProfileHeader({
   profile,
   isMe,
@@ -25,25 +28,65 @@ export function ProfileHeader({
   onCall: (video: boolean) => void;
 }) {
   const styles = useStyles(makeStyles);
+  const { colors } = useTheme();
+  const router = useRouter();
   return (
-    <View style={styles.header}>
-      <Avatar user={profile} size={72} />
-      <Text style={styles.name}>{profile.display_name}</Text>
-      <Text style={styles.username}>
-        @{profile.username}
-        {profile.pronouns ? ` · ${profile.pronouns}` : ''}
-      </Text>
-      {!!profile.bio && <Text style={styles.bio}>{profile.bio}</Text>}
-      <Text style={styles.stats}>
-        {profile.friend_count ?? 0} friends · {profile.post_count ?? 0} posts
-      </Text>
-      {!isMe && (
-        <View style={styles.actions}>
-          <FriendButtons profile={profile} onChange={onFriendChange} onCall={onCall} />
+    <View>
+      {!!profile.cover_url && <Cover url={profile.cover_url} crop={profile.cover_crop} />}
+      <View style={styles.header}>
+        <View style={profile.cover_url ? styles.overCover : undefined}>
+          <Avatar user={profile} size={72} />
         </View>
-      )}
-      <ErrorBanner error={error} />
-      <Text style={styles.section}>Posts</Text>
+        <Text style={styles.name}>{profile.display_name}</Text>
+        <Text style={styles.username}>
+          @{profile.username}
+          {profile.pronouns ? ` · ${profile.pronouns}` : ''}
+        </Text>
+        {!!profile.bio && (
+          <View style={styles.bio}>
+            <PostMarkdown>{profile.bio}</PostMarkdown>
+          </View>
+        )}
+        {!!profile.interests?.length && (
+          <View style={styles.chips}>
+            {profile.interests.map((tag) => (
+              <Pressable
+                key={tag}
+                onPress={() => router.push({ pathname: '/friends', params: { q: tag } })}
+                style={({ pressed }) => [styles.chip, pressed && { opacity: 0.7 }]}
+                accessibilityLabel={`Find people into ${tag}`}
+              >
+                <Text style={styles.chipText}>{tag}</Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
+        {!!profile.links?.length && (
+          <View style={styles.chips}>
+            {profile.links.map((l) => (
+              <Pressable
+                key={l.url}
+                onPress={() => Linking.openURL(l.url).catch(() => {})}
+                style={({ pressed }) => [styles.link, pressed && { opacity: 0.7 }]}
+                accessibilityLabel={`Open ${l.label}`}
+              >
+                <Feather name="link" size={14} color={colors.accent} />
+                <Text style={styles.linkText}>{l.label}</Text>
+              </Pressable>
+            ))}
+          </View>
+        )}
+        <Text style={styles.stats}>
+          {profile.friend_count ?? 0} friends · {profile.post_count ?? 0} posts
+        </Text>
+        {!isMe && (
+          <View style={styles.actions}>
+            <FriendButtons profile={profile} onChange={onFriendChange} onCall={onCall} />
+          </View>
+        )}
+        <ErrorBanner error={error} />
+        <Text style={styles.section}>Posts</Text>
+      </View>
     </View>
   );
 }
@@ -94,10 +137,26 @@ function FriendButtons({
 const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     header: { alignItems: 'center', padding: spacing.xl, gap: spacing.xs },
+    overCover: { marginTop: -40, padding: 4, borderRadius: 44, backgroundColor: colors.bg },
     name: { fontSize: 22, fontWeight: '800', color: colors.text, marginTop: spacing.sm },
     username: { color: colors.muted },
-    bio: { color: colors.text, fontSize: 15, lineHeight: 21, textAlign: 'center', marginTop: spacing.sm, paddingHorizontal: spacing.lg },
-    stats: { color: colors.muted, marginTop: spacing.xs },
+    bio: { alignSelf: 'stretch', marginTop: spacing.sm, paddingHorizontal: spacing.lg },
+    chips: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: spacing.sm, marginTop: spacing.md },
+    chip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: radius.pill, backgroundColor: colors.accentSoft },
+    chipText: { color: colors.accent, fontWeight: '600', fontSize: 13 },
+    link: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: radius.pill,
+      borderWidth: 1,
+      borderColor: colors.border,
+      backgroundColor: colors.card,
+    },
+    linkText: { color: colors.accent, fontWeight: '600', fontSize: 13 },
+    stats: { color: colors.muted, marginTop: spacing.md },
     actions: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: spacing.sm, marginTop: spacing.lg },
     section: { alignSelf: 'flex-start', fontWeight: '700', color: colors.text, fontSize: 16, marginTop: spacing.xl },
   });

@@ -184,6 +184,38 @@ func TestProfile(t *testing.T) {
 	r = me(J{"avatar_url": ""})
 	ts.check("remove profile picture (crop goes too)", r.status == 200 && r.obj().str("avatar_url") == "" && r.obj().obj("avatar_crop").num("w") == 0, r)
 	ts.check("crop without a picture -> 400", me(square).status == 400 || me(J{"avatar_crop": square}).status == 400)
+
+	r = me(J{"interests": []string{" Fútbol ", "fútbol", "", "café", "Senderismo"}})
+	ts.check("interests are trimmed and deduplicated", r.status == 200 && equal(stringsOf(r.obj()["interests"]), []string{"Fútbol", "café", "Senderismo"}), r)
+	ts.check("an interest too long -> 400", me(J{"interests": []string{strings.Repeat("x", 31)}}).status == 400)
+	many := make([]string, 21)
+	for i := range many {
+		many[i] = path("tag%d", i)
+	}
+	ts.check("too many interests -> 400", me(J{"interests": many}).status == 400)
+	r = ts.get("/api/users?q=caf", t2.token)
+	ts.check("search finds people by interest, with their interests", r.status == 200 && len(r.list()) == 1 && r.list()[0].id("id") == t1.id && contains(stringsOf(r.list()[0]["interests"]), "café"), r)
+	r = me(J{"links": []J{{"url": "https://www.instagram.com/tester"}, {"label": "Blog", "url": "https://blog.example/"}}})
+	links := r.obj().list("links")
+	ts.check("links keep their order; a label defaults to the host", r.status == 200 && len(links) == 2 && links[0].str("label") == "instagram.com" && links[1].str("label") == "Blog" && links[1].str("url") == "https://blog.example/", r)
+	ts.check("a link that is not http(s) -> 400", me(J{"links": []J{{"url": "javascript:alert(1)"}}}).status == 400)
+	ts.check("a link label too long -> 400", me(J{"links": []J{{"label": strings.Repeat("x", 31), "url": "https://a.example"}}}).status == 400)
+	r = me(J{"bio": "**Hola**, _soy tester_"})
+	ts.check("the bio keeps its Markdown as text", r.status == 200 && r.obj().str("bio") == "**Hola**, _soy tester_", r)
+	r = ts.get(path("/api/users/%s", t1.id), t2.token)
+	ts.check("the profile shows interests, links and the Markdown bio", len(r.obj().list("links")) == 2 && len(stringsOf(r.obj()["interests"])) == 3 && r.obj().str("bio") == "**Hola**, _soy tester_", r)
+
+	cover := ts.upload(t1.token, tinyPNG(), "cover.png", "image/png").obj().str("url")
+	r = me(J{"cover_url": cover})
+	ts.check("set a cover picture (gets the widest centred 3:1 window)", r.status == 200 && r.obj().str("cover_url") == cover && cropIs(r.obj().obj("cover_crop"), 0, 0.3333, 1, 1), r)
+	r = me(J{"cover_crop": J{"x": 0.25, "y": 0.1, "w": 0.6, "aspect": 1}})
+	ts.check("position the cover", r.status == 200 && cropIs(r.obj().obj("cover_crop"), 0.25, 0.1, 0.6, 1), r)
+	ts.check("a cover window below the picture -> 400", me(J{"cover_crop": J{"x": 0, "y": 0.9, "w": 0.6, "aspect": 1}}).status == 400)
+	ts.check("a cover that is not an upload -> 400", me(J{"cover_url": "https://evil.example/x.png"}).status == 400)
+	r = ts.get(path("/api/users/%s", t1.id), t2.token)
+	ts.check("the cover travels with the profile", r.obj().str("cover_url") == cover && cropIs(r.obj().obj("cover_crop"), 0.25, 0.1, 0.6, 1), r)
+	r = me(J{"cover_url": ""})
+	ts.check("remove the cover (crop goes too)", r.status == 200 && r.obj().str("cover_url") == "" && r.obj().obj("cover_crop").num("w") == 0, r)
 	ts.check("empty update -> 400", me(J{}).status == 400)
 }
 

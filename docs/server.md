@@ -156,7 +156,7 @@ SQLite serializes writers anyway, and a single connection means no
   text and compared as text.
 - JSON columns are written with `jsonString(v)` and read with
   `decodeAttachments` (always a slice, never nil) or a `Scan` method
-  (`AvatarCrop`).
+  (`Crop`).
 
 The schema, the migration mechanism and every table are described in
 [database-schema.md](database-schema.md).

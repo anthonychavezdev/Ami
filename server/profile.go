@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -14,14 +15,90 @@ import (
 // Names nobody may take: "deleted" is the placeholder author of removed comments.
 var reservedUsernames = map[string]bool{"deleted": true, "admin": true, "ami": true, "me": true, "system": true}
 
-// profileInput is a PUT /api/me body: only the fields sent are changed.
+// profileInput is a PUT /api/me body: only the fields sent are changed. The
+// bio is Markdown, which the app renders and the server keeps as text.
 type profileInput struct {
-	Username    *string     `json:"username"`
-	DisplayName *string     `json:"display_name"`
-	Bio         *string     `json:"bio"`
-	Pronouns    *string     `json:"pronouns"`
-	AvatarURL   *string     `json:"avatar_url"`
-	AvatarCrop  *AvatarCrop `json:"avatar_crop"`
+	Username    *string   `json:"username"`
+	DisplayName *string   `json:"display_name"`
+	Bio         *string   `json:"bio"`
+	Pronouns    *string   `json:"pronouns"`
+	Interests   *[]string `json:"interests"`
+	Links       *[]Link   `json:"links"`
+	AvatarURL   *string   `json:"avatar_url"`
+	AvatarCrop  *Crop     `json:"avatar_crop"`
+	CoverURL    *string   `json:"cover_url"`
+	CoverCrop   *Crop     `json:"cover_crop"`
+}
+
+// Link is one of a person's other places: a label and an http(s) URL.
+type Link struct {
+	Label string `json:"label"`
+	URL   string `json:"url"`
+}
+
+const (
+	maxInterests    = 20
+	maxInterestLen  = 30
+	maxLinks        = 10
+	maxLinkLabelLen = 30
+)
+
+func decodeInterests(raw string) []string {
+	out := []string{}
+	_ = json.Unmarshal([]byte(raw), &out)
+	return out
+}
+
+func decodeLinks(raw string) []Link {
+	out := []Link{}
+	_ = json.Unmarshal([]byte(raw), &out)
+	return out
+}
+
+// cleanInterests trims the tags, drops empty ones and repeats (ignoring
+// case), and caps their count and length.
+func cleanInterests(raw []string) ([]string, error) {
+	out := []string{}
+	seen := map[string]bool{}
+	for _, t := range raw {
+		t = strings.TrimSpace(t)
+		if t == "" || seen[strings.ToLower(t)] {
+			continue
+		}
+		if utf8.RuneCountInString(t) > maxInterestLen {
+			return nil, badRequest(fmt.Sprintf("an interest must be at most %d characters", maxInterestLen))
+		}
+		seen[strings.ToLower(t)] = true
+		out = append(out, t)
+	}
+	if len(out) > maxInterests {
+		return nil, badRequest(fmt.Sprintf("at most %d interests", maxInterests))
+	}
+	return out, nil
+}
+
+// cleanLinks checks each link's URL (http or https, like a post's link) and
+// label; a missing label is the site's host.
+func cleanLinks(raw []Link) ([]Link, error) {
+	if len(raw) > maxLinks {
+		return nil, badRequest(fmt.Sprintf("at most %d links", maxLinks))
+	}
+	out := []Link{}
+	for _, l := range raw {
+		u, err := validLink(l.URL)
+		if err != nil {
+			return nil, badRequest(err.Error())
+		}
+		label := strings.TrimSpace(l.Label)
+		if utf8.RuneCountInString(label) > maxLinkLabelLen {
+			return nil, badRequest(fmt.Sprintf("a link label must be at most %d characters", maxLinkLabelLen))
+		}
+		if label == "" {
+			label = strings.TrimPrefix(u.Host, "www.")
+		}
+		out = append(out, Link{Label: label, URL: l.URL})
+	}
+	return out, nil
 }
 
 // columnPatch is the SET part of an UPDATE, built one column at a time.
@@ -93,7 +170,25 @@ func (s *server) profilePatch(userID string, in profileInput) (columnPatch, erro
 		}
 		p = p.with("pronouns", pr)
 	}
-	return s.avatarPatch(p, userID, in)
+	if in.Interests != nil {
+		tags, err := cleanInterests(*in.Interests)
+		if err != nil {
+			return p, err
+		}
+		p = p.with("interests", jsonString(tags))
+	}
+	if in.Links != nil {
+		links, err := cleanLinks(*in.Links)
+		if err != nil {
+			return p, err
+		}
+		p = p.with("links", jsonString(links))
+	}
+	p, err := s.picturePatch(p, userID, avatarPicture, in.AvatarURL, in.AvatarCrop)
+	if err != nil {
+		return p, err
+	}
+	return s.picturePatch(p, userID, coverPicture, in.CoverURL, in.CoverCrop)
 }
 
 // newUsername checks a username change: valid, not reserved, nobody else's.

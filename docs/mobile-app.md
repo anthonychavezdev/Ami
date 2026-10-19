@@ -198,7 +198,7 @@ Toasts ([`lib/toast.tsx`](../mobile/src/lib/toast.tsx)) are a tiny pub/sub:
 
 ### Markdown
 
-Post bodies are Markdown rendered by `react-native-markdown-display` with a
+Post bodies and profile bios are Markdown rendered by `react-native-markdown-display` with a
 `markdown-it` parser set to linkify bare URLs and never render HTML
 ([`lib/markdown.tsx`](../mobile/src/lib/markdown.tsx)); the styles follow the
 theme. The composer's toolbar edits the text with pure helpers in

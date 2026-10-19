@@ -13,7 +13,7 @@ people* segment ([`(tabs)/friends.tsx`](../mobile/src/app/(tabs)/friends.tsx)),
 | --- | --- | --- |
 | `User` | `id`, `username`, `display_name`, `created_at`, `avatar_url` (omitted when empty), `avatar_crop`, `pronouns` (omitted when empty), `online` | Everywhere a person is referenced: post authors, comment authors, message senders, friends lists, members, events. |
 | `Me` | `User` plus `invisible`, `bio`, `must_change_password` | Only for the signed-in account: `/api/me`, `/api/login`, `/api/register`, `PUT /api/me`, `PUT /api/me/password`. |
-| `UserProfile` | `User` plus `bio`, `friend_status`, `friend_count`, `post_count` | Search results (status only) and profiles. |
+| `UserProfile` | `User` plus `bio`, `interests`, `links`, `cover_url`, `cover_crop`, `friend_status`, `friend_count`, `post_count` | Search results (status and interests only) and profiles. |
 
 `online` is filled in by the server on output for every `User`
 ([server.md](server.md#presence-in-every-response)); the app keeps it current
@@ -24,18 +24,21 @@ afterwards through presence events ([websocket.md](websocket.md#presence)).
 
 ## GET /api/users?q=
 
-Finds up to 25 accounts, other than yours, whose username or display name
-contains `q`, ordered by username. The term is used in a `LIKE` pattern with `%`
-and `_` escaped, so searching for `a_b` finds that text literally. An empty `q`
-lists the first 25 accounts. Each result is a `UserProfile` with only
-`friend_status` filled in (no bio or counts), which is what the Find list needs
-for its *Add friend* / *Requested* / *Accept* / *Friends* button.
+Finds up to 25 accounts, other than yours, whose username, display name or one
+of whose interests contains `q`, ordered by username. The term is used in a
+`LIKE` pattern with `%` and `_` escaped, so searching for `a_b` finds that text
+literally; interests are searched with SQLite's `json_each` over the stored
+array. An empty `q` lists the first 25 accounts. Each result is a
+`UserProfile` with `friend_status` and `interests` filled in (no bio, cover,
+links or counts): what the Find list needs for its button and to show what
+matched.
 
 ## GET /api/users/{id}
 
-One account as a `UserProfile`: the public fields, the bio, your friendship
-status, how many friends they have (accepted friendships in either direction)
-and how many profile posts (group posts are not counted). Your own id gives
+One account as a `UserProfile`: the public fields, the bio, interests, links,
+the cover and its crop, your friendship status, how many friends they have
+(accepted friendships in either direction) and how many profile posts (group
+posts are not counted). Your own id gives
 `friend_status: "self"`. An unknown id is 404.
 
 ## GET /api/users/{id}/posts
@@ -50,12 +53,16 @@ see them ([posts.md](posts.md#the-post-shape)).
 - **Find people** is the third segment of the Friends tab. `useUserSearch`
   debounces the query by 250 ms, calls `api.searchUsers`, and keeps each result's
   `friend_status` current from `friend.changed` events and from the button's
-  own replies. `FriendStatusButton` shows the one action that fits the status.
+  own replies. `FriendStatusButton` shows the one action that fits the status,
+  and a result's row lists their interests. Opening the tab with `?q=<text>`
+  starts on this segment with that search, which is what tapping an interest
+  chip on a profile does.
 - **A profile** is `UserView`: it loads `api.user(id)` and the person's posts
   through `usePosts(api.userPosts)` with an `accept` filter so that live
   `post.created` events for other people's posts are ignored. `ProfileHeader`
-  shows the picture, names, bio, counts and the friendship buttons (or none on
-  your own profile); *Message*, *Call* and *Video* appear once you are friends.
+  shows the cover, the picture, names, the Markdown bio, interests, links,
+  counts and the friendship buttons (or none on your own profile); *Message*,
+  *Call* and *Video* appear once you are friends ([profile.md](profile.md)).
   The profile reloads itself when a `friend.changed` event names this person,
   so acting from a list beside it keeps it right.
 - The route `user/[id]` renders `UserView` full screen on phones and, on a wide
