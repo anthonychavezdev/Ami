@@ -25,6 +25,14 @@ export const prependMessage = (list: Message[], m: Message) => (list.some((x) =>
 export const replaceMessage = (list: Message[], m: Message) => list.map((x) => (x.id === m.id ? m : x));
 export const removeMessage = (list: Message[], id: number) => list.filter((x) => x.id !== id);
 
+// Folds the newest page from the server (oldest first) into the list: new
+// messages go on top, known ones take the fresh copy, older pages stay.
+export function mergeLatest(list: Message[], latest: Message[]): Message[] {
+  const fresh = new Map(latest.map((m) => [m.id, m]));
+  const unseen = latest.filter((m) => !list.some((x) => x.id === m.id)).reverse();
+  return [...unseen, ...list.map((m) => fresh.get(m.id) ?? m)];
+}
+
 // The second line of a Messages tab row: who wrote last and what, or how
 // many members a silent group has.
 export function conversationSubtitle(
