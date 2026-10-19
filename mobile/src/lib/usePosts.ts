@@ -31,7 +31,7 @@ export function usePosts(fetchPage: (before?: number) => Promise<Post[]>, accept
         done.current = page.length === 0;
         if (reset || page.length) cursor.current = page[page.length - 1]?.id;
         setPosts((prev) => (reset ? page : withPage(prev, page)));
-        setLoadedFor(fetchPage);
+        setLoadedFor(() => fetchPage); // a function given straight to the setter would be run as an updater
         setError(null);
       } catch (e) {
         setError(errorMessage(e));
