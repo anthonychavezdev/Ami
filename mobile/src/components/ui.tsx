@@ -173,16 +173,18 @@ export function Row({
   subtitle,
   right,
   onPress,
+  selected,
 }: {
   left: React.ReactNode;
   title: string;
   subtitle?: string;
   right?: React.ReactNode;
   onPress?: () => void;
+  selected?: boolean; // the open item of a list beside its detail (wide Messages view)
 }) {
   const styles = useStyles(makeStyles);
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.row, pressed && { opacity: 0.7 }]}>
+    <Pressable onPress={onPress} style={({ pressed }) => [styles.row, selected && styles.rowSelected, pressed && { opacity: 0.7 }]}>
       {left}
       <View style={{ flex: 1 }}>
         <Text style={styles.rowTitle}>{title}</Text>
@@ -215,12 +217,12 @@ export function SectionLabel({ children, style }: { children: React.ReactNode; s
 
 // On wide windows a screen sits in a column of readable width instead of
 // stretching across the window; on phones it is the whole screen.
-export function WideColumn({ children }: { children: React.ReactNode }) {
+export function WideColumn({ children, width = COLUMN_WIDTH }: { children: React.ReactNode; width?: number }) {
   const wide = useWide();
   if (!wide) return <>{children}</>;
   return (
     <View style={{ flex: 1, alignItems: 'center' }}>
-      <View style={{ flex: 1, width: '100%', maxWidth: COLUMN_WIDTH }}>{children}</View>
+      <View style={{ flex: 1, width: '100%', maxWidth: width }}>{children}</View>
     </View>
   );
 }
@@ -323,6 +325,7 @@ const makeStyles = (colors: ThemeColors) =>
       borderBottomWidth: 1,
       borderBottomColor: colors.border,
     },
+    rowSelected: { backgroundColor: colors.accentSoft },
     rowTitle: { fontWeight: '700', color: colors.text, fontSize: 15 },
     rowSub: { color: colors.muted, fontSize: 13 },
     fab: {

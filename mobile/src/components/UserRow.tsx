@@ -10,11 +10,13 @@ export function UserRow({
   subtitle,
   right,
   onPress,
+  selected,
 }: {
   user: User;
   subtitle?: string;
   right?: React.ReactNode;
   onPress?: () => void;
+  selected?: boolean;
 }) {
   const router = useRouter();
   return (
@@ -24,6 +26,7 @@ export function UserRow({
       subtitle={subtitle ?? `@${user.username}`}
       right={right}
       onPress={onPress ?? (() => router.push(`/user/${user.id}`))}
+      selected={selected}
     />
   );
 }

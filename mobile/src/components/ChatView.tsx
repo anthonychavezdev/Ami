@@ -23,8 +23,10 @@ import { errorMessage } from '@/lib/errors';
 
 // One chat screen for both kinds of chat: with a friend (kind 'user') or in a
 // group (kind 'group'). Group chats name the author of each message, let the
-// admin delete anything, and show the group call going on, if any.
-export function ChatView({ kind, id }: ChatTarget) {
+// admin delete anything, and show the group call going on, if any. `embedded`
+// is the pane of the wide Messages view: it draws its own header instead of
+// configuring the navigator's.
+export function ChatView({ kind, id, embedded = false }: ChatTarget & { embedded?: boolean }) {
   const styles = useStyles(makeStyles);
   const chat = useChat(kind, id);
   const { user: me } = useAuth();
@@ -69,11 +71,21 @@ export function ChatView({ kind, id }: ChatTarget) {
   if (chat.error) return <Empty text={chat.error} />;
   if (!chat.messages || (chat.isGroup ? !chat.group : !chat.other)) return <Loading />;
   const title = chat.isGroup ? chat.group!.name : chat.other!.display_name;
+  const buttons = <HeaderButtons isGroup={chat.isGroup} groupId={id} onCall={startCall} />;
 
   return (
     <KeyboardScreen>
       <View style={{ flex: 1 }}>
-        <Stack.Screen options={{ title, headerRight: () => <HeaderButtons isGroup={chat.isGroup} groupId={id} onCall={startCall} /> }} />
+        {embedded ? (
+          <View style={styles.paneHeader}>
+            <Text style={styles.paneTitle} numberOfLines={1}>
+              {title}
+            </Text>
+            {buttons}
+          </View>
+        ) : (
+          <Stack.Screen options={{ title, headerRight: () => buttons }} />
+        )}
         {chat.isGroup && (
           <CallBanner inThisCall={inThisCall} others={chat.inCall.filter((x) => x !== me?.id).length} onPress={() => startCall(false)} />
         )}
@@ -154,4 +166,15 @@ function HeaderButtons({ isGroup, groupId, onCall }: { isGroup: boolean; groupId
 const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     empty: { color: colors.muted, textAlign: 'center', transform: [{ scaleY: -1 }] },
+    paneHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.md,
+      backgroundColor: colors.card,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    paneTitle: { flex: 1, fontSize: 17, fontWeight: '700', color: colors.text },
   });
