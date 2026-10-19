@@ -10,6 +10,12 @@ export const chatOf = (m: Message, me: number): ChatTarget =>
 
 export const chatKey = (chat: ChatTarget) => `${chat.kind === 'group' ? 'g' : 'u'}:${chat.id}`;
 
+// The chat a key names (the two-pane Messages view keeps the open chat in the URL), or null.
+export function parseChatKey(key: string | undefined): ChatTarget | null {
+  const m = key?.match(/^([gu]):(\d+)$/);
+  return m ? { kind: m[1] === 'g' ? 'group' : 'user', id: Number(m[2]) } : null;
+}
+
 // The server's room key of a group's call (see server/calls.go).
 export const groupRoomKey = (groupId: number) => `g:${groupId}`;
 

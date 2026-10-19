@@ -163,7 +163,7 @@ project id the app simply never registers a push token.
 | Calls | Voice or video, one-to-one or in a group (up to 8 people). WebRTC with STUN (`stun.l.google.com`), full mesh: everyone sends to everyone, the server only relays signaling. A group call rings every member; the group chat shows *Call in progress · Join* while it is on. Mute, camera on/off, flip camera. |
 | Screen share | Toggle during any call, group calls included; sent as a second video stream to every participant and shown on a stage above the people. |
 | Theme | Light, dark, or follow the device setting (Me tab). |
-| Wide screens | In a browser on a laptop or desktop (and on tablets) the tabs become a sidebar and every screen sits in a centred column of readable width; phones keep the bottom tabs. |
+| Wide screens | In a browser on a laptop or desktop (and on tablets) the tabs become a sidebar, every screen sits in a centred column of readable width, and Messages shows the conversation list beside the open chat; phones keep the bottom tabs and full-screen chats. |
 
 ### Screen sharing caveats
 
