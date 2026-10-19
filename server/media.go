@@ -38,7 +38,7 @@ const (
 )
 
 // maxUploadBytes caps one upload; a variable so tests can lower it.
-var maxUploadBytes int64 = maxUploadGB << 30
+var maxUploadBytes int64 = maxUploadGB * 1_000_000_000 // decimal, the units phones and the app show
 
 func tooLarge() error {
 	return fail(http.StatusRequestEntityTooLarge, fmt.Sprintf("file too large (max %d GB)", maxUploadGB))

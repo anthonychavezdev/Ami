@@ -25,10 +25,10 @@ is a native module. `android` and `ios` in the dev shell build one
 src/
   app/                      routes (one file = one screen; _layout.tsx = navigator)
     _layout.tsx             providers, the root stack, the access guards
-    (tabs)/_layout.tsx      the five tabs (sidebar on wide windows)
+    (tabs)/_layout.tsx      the six tabs (sidebar on wide windows)
     (tabs)/index.tsx        Feed        (tabs)/friends.tsx   Friends
     (tabs)/groups.tsx       Groups      (tabs)/messages.tsx  Messages
-    (tabs)/profile.tsx      Me
+    (tabs)/server.tsx       Server      (tabs)/profile.tsx   Me
     login.tsx register.tsx change-password.tsx edit-profile.tsx
     user/[id].tsx post/[id].tsx group/[id].tsx chat/[id].tsx chat/group/[id].tsx
     new-group-chat.tsx call.tsx
@@ -72,7 +72,8 @@ name ([notifications.md](notifications.md)).
 ## The tabs
 
 [`(tabs)/_layout.tsx`](../mobile/src/app/(tabs)/_layout.tsx) declares Feed,
-Friends, Groups, Messages (with the unread badge from the unread store) and Me.
+Friends, Groups, Messages (with the unread badge from the unread store), Server
+([stats.md](stats.md#the-server-tab)) and Me.
 On a wide window the tab bar moves to the left as a material sidebar with
 labels beside the icons, every tab gets a 1200 px column, and header titles are
 centred over it.

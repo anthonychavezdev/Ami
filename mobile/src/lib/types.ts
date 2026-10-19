@@ -137,3 +137,11 @@ export interface Conversation {
 // (upload.ts / upload.web.ts).
 export type UploadProgress = { sent: number; total: number };
 export type UploadOptions = { onProgress?: (progress: UploadProgress) => void; signal?: AbortSignal };
+
+// GET /api/stats: the resources behind the server. Host figures its platform
+// cannot provide are 0.
+export type ServerStats = {
+  storage: { disk_total: number; disk_free: number; uploads: number; database: number; yours: number; upload_limit: number };
+  cpu: { cores: number; load_1: number; load_5: number; load_15: number; server_percent: number };
+  memory: { total: number; available: number; server: number };
+};

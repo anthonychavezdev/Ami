@@ -50,6 +50,7 @@ export default function TabsLayout() {
           tabBarBadgeStyle: { backgroundColor: colors.danger, color: '#fff' },
         }}
       />
+      <Tabs.Screen name="server" options={{ title: 'Server', tabBarIcon: icon('server') }} />
       <Tabs.Screen name="profile" options={{ title: 'Me', tabBarIcon: icon('user') }} />
     </Tabs>
   );
