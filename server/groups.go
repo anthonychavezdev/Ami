@@ -244,11 +244,11 @@ func (s *server) friendsToAdd(me string, ids []string) ([]string, error) {
 // addMember puts a user in a group as a member, with the chat read up to now
 // (what was said before they came in does not count as unread).
 func addMember(tx *sql.Tx, groupID, userID string, ts string) error {
-	if _, err := tx.Exec(`INSERT OR IGNORE INTO group_members(group_id, user_id, role, joined_at) VALUES (?, ?, 'member', ?)`, groupID, userID, ts); err != nil {
+	if _, err := tx.Exec(`INSERT IGNORE INTO group_members(group_id, user_id, role, joined_at) VALUES (?, ?, 'member', ?)`, groupID, userID, ts); err != nil {
 		return err
 	}
-	_, err := tx.Exec(`INSERT OR REPLACE INTO group_reads(user_id, group_id, last_read_id)
-		VALUES (?1, ?2, COALESCE((SELECT MAX(id) FROM messages WHERE group_id = ?2), ''))`, userID, groupID)
+	_, err := tx.Exec(`REPLACE INTO group_reads(user_id, group_id, last_read_id)
+		VALUES (?, ?, COALESCE((SELECT MAX(id) FROM messages WHERE group_id = ?), ''))`, userID, groupID, groupID)
 	return err
 }
 

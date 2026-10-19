@@ -6,23 +6,18 @@ and to prefer what Expo and the standard library already provide.
 
 ## Go
 
-The server is standard library except for three modules ([`server/go.mod`](../server/go.mod)):
+The server is standard library except for four modules ([`server/go.mod`](../server/go.mod)):
 
 | Module | Version | Used for | Why |
 | --- | --- | --- | --- |
-| `modernc.org/sqlite` | 1.60 | The database driver behind `database/sql` ([`db.go`](../server/db.go)). | A pure-Go translation of SQLite: no cgo, so the binary is static and cross-compiles with `CGO_ENABLED=0`, and `go test` needs no C toolchain. SQLite itself because one file, no service to run, and the write volume of a friends-scale network needs nothing more. |
-| `github.com/google/uuid` | 1.6 | Version 7 UUIDs for every row id (`newID` in [`util.go`](../server/util.go)). | Already in the module graph through the SQLite driver. Its v7 generator is monotonic within a process, which keeps ids ordered by creation time, the property every list and read marker relies on. |
+| `github.com/go-sql-driver/mysql` | 1.10 | The MariaDB driver behind `database/sql` ([`db.go`](../server/db.go)). | Pure Go: no cgo, so the binary is static and cross-compiles with `CGO_ENABLED=0`. MariaDB itself so that many requests can write at once (InnoDB locks rows, SQLite locked the file) while readers carry on. The driver is the standard one for MySQL and MariaDB, maintained by the Go community. |
+| `github.com/google/uuid` | 1.6 | Version 7 UUIDs for every row id (`newID` in [`util.go`](../server/util.go)). | Its v7 generator is monotonic within a process, which keeps ids ordered by creation time, the property every list and read marker relies on. |
 | `github.com/gorilla/websocket` | 1.5 | The WebSocket server: the upgrade, framing, ping/pong, read limits ([`ws.go`](../server/ws.go), [`hub.go`](../server/hub.go)). | The standard library has no WebSocket implementation (`golang.org/x/net/websocket` is minimal and unmaintained). gorilla is small, stable and the de facto choice. Its one rule, a single writer per connection, is what `writeLoop` exists for. |
 
-The indirect modules (`modernc.org/libc`, `modernc.org/mathutil`,
-`modernc.org/memory`, `github.com/ncruces/go-strftime`,
-`github.com/remyoudompheng/bigfft`,
-`github.com/dustin/go-humanize`, `github.com/mattn/go-isatty`,
-`golang.org/x/sys`) all come with `modernc.org/sqlite`. The server imports
-only `golang.org/x/sys/unix` itself, for the system calls behind
-`/api/stats` (`statfs`, `getrusage`, `sysinfo`, `sysctl`;
-[stats.md](stats.md)); the standard `syscall` package lacks the sysctl forms
-macOS needs.
+`golang.org/x/sys` is the fourth: the server imports `golang.org/x/sys/unix`
+for the system calls behind `/api/stats` (`statfs`, `getrusage`, `sysinfo`,
+`sysctl`; [stats.md](stats.md)), since the standard `syscall` package lacks
+the sysctl forms macOS needs.
 
 Standard-library packages doing real work, for orientation: `net/http` (the
 server, the method-and-pattern router, `MaxBytesReader`, `ServeFile`),
@@ -90,7 +85,7 @@ Provided by the dev shell ([`devenv.nix`](../devenv.nix)), nothing installed glo
 | JDK 17 | | What React Native's Gradle build expects. |
 | Android SDK | platform 36, build tools 36.0.0 and 35.0.0, NDK 27.1, CMake 3.22, a `google_apis` emulator image matching the host CPU | Building the Android app and running the `ami` emulator. |
 | watchman | | Faster file watching for Metro. |
-| sqlite3 | | Inspecting the database. |
+| MariaDB | 11 | The database, run by `devenv up` (or by `test` for the duration); its `mysql` client for inspecting it. |
 | python3 | 3.14 | The end-to-end scripts (standard library only). |
 | CocoaPods | macOS only | iOS native dependencies; Xcode itself comes from the App Store. |
 | process-compose | via `devenv up` | Runs the dev server as a supervised process, optional. |

@@ -1,4 +1,4 @@
-// Command server is the Ami backend: a single binary, SQLite on disk,
+// Command server is the Ami backend: a single binary over MariaDB,
 // JSON over HTTP, and a WebSocket endpoint (gorilla/websocket) for realtime events
 // and WebRTC signaling.
 //
@@ -37,7 +37,6 @@ type server struct {
 	origins       map[string]bool
 	upgrader      websocket.Upgrader
 	mediaDir      string
-	dbPath        string
 	trustProxy    bool
 	calls         *callRooms // who is in which call
 	cpu           cpuMeter   // this process's recent CPU use, for /api/stats
@@ -45,16 +44,17 @@ type server struct {
 
 // config is everything the command-line flags decide.
 type config struct {
-	addr, dbPath, mediaDir, origins, tlsCert, tlsKey, webDir string
-	dev, trustProxy, verbose                                 bool
-	apiRate                                                  int
-	resetPassword                                            string // a username: print a temporary password for it and exit
+	addr, dsn, mediaDir, origins, tlsCert, tlsKey, webDir string
+	dev, trustProxy, verbose                              bool
+	apiRate                                               int
+	resetPassword                                         string // a username: print a temporary password for it and exit
 }
 
 func parseFlags() config {
 	var c config
 	flag.StringVar(&c.addr, "addr", ":8080", "listen address")
-	flag.StringVar(&c.dbPath, "db", "ami.db", "sqlite database path")
+	flag.StringVar(&c.dsn, "db", envOr("AMI_DB", "ami:ami@tcp(127.0.0.1:3306)/ami"),
+		"MariaDB: user:password@tcp(host:3306)/database or user:password@unix(/path/mysql.sock)/database (default $AMI_DB)")
 	flag.StringVar(&c.mediaDir, "media-dir", "media", "directory for uploaded pictures and videos")
 	flag.BoolVar(&c.dev, "dev", false, "development mode: seed demo data into an empty database and allow any CORS origin")
 	flag.StringVar(&c.origins, "allowed-origins", "", "comma-separated browser origins allowed to call the API (CORS); empty disables CORS")
@@ -96,7 +96,7 @@ func main() {
 // newServer opens the database and starts the background work, which runs
 // until ctx ends.
 func newServer(ctx context.Context, cfg config) (*server, error) {
-	db, err := openDB(cfg.dbPath)
+	db, err := openDB(cfg.dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open db: %w", err)
 	}
@@ -104,7 +104,7 @@ func newServer(ctx context.Context, cfg config) (*server, error) {
 		return nil, fmt.Errorf("media dir: %w", err)
 	}
 	s := &server{
-		db: db, hub: newHub(), calls: newCallRooms(), mediaDir: cfg.mediaDir, dbPath: cfg.dbPath, trustProxy: cfg.trustProxy,
+		db: db, hub: newHub(), calls: newCallRooms(), mediaDir: cfg.mediaDir, trustProxy: cfg.trustProxy,
 		limiter:       newLimiter(10, time.Minute),
 		uploadLimiter: newLimiter(30, time.Minute),
 		origins:       allowedOrigins(cfg.origins, cfg.dev),
@@ -189,7 +189,7 @@ func serve(ctx context.Context, cfg config, s *server) error {
 	}
 	failed := make(chan error, 1)
 	go func() {
-		log.Printf("ami listening on %s (db %s)", cfg.addr, cfg.dbPath)
+		log.Printf("ami listening on %s (db %s)", cfg.addr, redactDSN(cfg.dsn))
 		if verbose {
 			log.Print("verbose: logging headers, bodies and WebSocket traffic; passwords and tokens are redacted")
 		}

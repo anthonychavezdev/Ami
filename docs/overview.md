@@ -13,7 +13,7 @@ flowchart LR
         H[Handlers: JSON over HTTP]
         HUB[Hub: WebSocket connections and presence]
         CALLS[Call rooms: signaling only]
-        DB[(SQLite file)]
+        DB[(MariaDB)]
         MEDIA[(media/ directory)]
     end
     EXPO[Expo push service]
@@ -28,9 +28,9 @@ flowchart LR
 ```
 
 - The **server** (`server/`) is a single binary built on the Go standard library plus
-  two dependencies: a pure-Go SQLite driver and a WebSocket library. It stores
-  everything in one SQLite file, keeps uploaded pictures and videos in a
-  directory, serves a JSON API, pushes realtime events over a WebSocket, relays
+  a few dependencies: the MariaDB driver, a WebSocket library, UUIDs and the
+  system calls behind the stats. It stores everything in a MariaDB database,
+  keeps uploaded pictures and videos in a directory, serves a JSON API, pushes realtime events over a WebSocket, relays
   WebRTC signaling for calls, and sends push notifications through Expo to
   devices that are not connected.
 - The **app** (`mobile/`) is an Expo Router application in TypeScript. The same

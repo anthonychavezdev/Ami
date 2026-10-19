@@ -10,7 +10,7 @@ that come with it.
 
 | Artifact | How | Notes |
 | --- | --- | --- |
-| `dist/ami-server` | `CGO_ENABLED=0 go build -trimpath -ldflags="-s -w"` | A static, stripped binary. Set `GOOS`/`GOARCH` to cross-compile (`GOOS=linux GOARCH=amd64 build server`). Pure-Go SQLite is what makes this possible. |
+| `dist/ami-server` | `CGO_ENABLED=0 go build -trimpath -ldflags="-s -w"` | A static, stripped binary. Set `GOOS`/`GOARCH` to cross-compile (`GOOS=linux GOARCH=amd64 build server`). The MariaDB driver is pure Go, which is what makes this possible. |
 | `dist/web/` | `npx expo export --platform web` | The browser build: minified, hashed bundles and an `index.html`. If `EXPO_PUBLIC_API_URL` is set it is baked in; otherwise the page talks to the origin it is served from. |
 | `dist/ami-release.apk` | `expo prebuild`, `gradlew assembleRelease` for `arm64-v8a` and `armeabi-v7a`, `apksigner` | Requires `EXPO_PUBLIC_API_URL=https://...`, `AMI_KEYSTORE` and `AMI_KEYSTORE_PASSWORD` (`AMI_KEY_ALIAS` defaults to `ami`). Hermes bytecode, R8 and resource shrinking are on. Never the debug key. |
 | `dist/Ami.ipa` | `expo prebuild`, `xcodebuild archive` and `-exportArchive` with automatic signing | macOS with Xcode signed in; `AMI_APPLE_TEAM` is the team id; `AMI_IOS_METHOD` picks `app-store-connect` (default), `release-testing` or `debugging`. |
@@ -18,12 +18,20 @@ that come with it.
 ## Running the server
 
 ```sh
-./ami-server -db /var/lib/ami/ami.db -media-dir /var/lib/ami/media -addr :8080
+mariadb -e "CREATE DATABASE ami CHARACTER SET utf8mb4; CREATE USER 'ami'@'localhost' IDENTIFIED BY 'a long password'; GRANT ALL ON ami.* TO 'ami'@'localhost'"
+AMI_DB='ami:a long password@unix(/run/mysqld/mysqld.sock)/ami' ./ami-server -media-dir /var/lib/ami/media -addr :8080
 ```
 
-- Run it as its own user with write access to the two paths; the binary needs
-  nothing else. Both paths are created if missing; the database is migrated on
-  start, so back it up before upgrading ([database-schema.md](database-schema.md#migrations)).
+- MariaDB 10.5 or newer (`JSON_OBJECTAGG` and `JSON_SEARCH` are used), with a
+  database and a user that owns it. Give the connection string through
+  `AMI_DB` rather than `-db`, so the password is not on the command line;
+  prefer the socket when the database is on the same machine, or
+  `tcp(host:3306)` with `tls=true` across machines. The server creates and
+  migrates its tables on start, so back the database up before upgrading
+  ([database-schema.md](database-schema.md#migrations)). It waits up to 30 s
+  for the database at start, which covers a reboot where both come up at once.
+- Run it as its own user with write access to the media directory; the binary
+  needs nothing else. The directory is created if missing.
 - **Never pass `-dev`** in production: it seeds demo accounts into an empty
   database and allows every browser origin.
 - TLS: either `-tls-cert` and `-tls-key` to serve HTTPS directly, or a
@@ -49,9 +57,13 @@ that come with it.
 A minimal systemd unit:
 
 ```ini
+[Unit]
+After=mariadb.service
+
 [Service]
 User=ami
-ExecStart=/usr/local/bin/ami-server -db /var/lib/ami/ami.db -media-dir /var/lib/ami/media -addr 127.0.0.1:8080 -trust-proxy -web-dir /var/lib/ami/web
+Environment=AMI_DB=ami:a long password@unix(/run/mysqld/mysqld.sock)/ami
+ExecStart=/usr/local/bin/ami-server -media-dir /var/lib/ami/media -addr 127.0.0.1:8080 -trust-proxy -web-dir /var/lib/ami/web
 Restart=on-failure
 ```
 
@@ -88,9 +100,9 @@ apps are simply not pushed ([notifications.md](notifications.md)).
 
 ## Backups and data
 
-- The database is one file plus its WAL; back it up with
-  `sqlite3 ami.db ".backup /backups/ami-$(date +%F).db"`, which is consistent
-  while the server runs. A plain copy can miss the WAL.
+- Back the database up with `mariadb-dump --single-transaction ami > /backups/ami-$(date +%F).sql`,
+  which is consistent while the server runs; restore with `mariadb ami < file.sql`
+  into an empty database.
 - The media directory holds every upload under random names; back it up with
   the database. Nothing in it is ever deleted by the server, including uploads
   that were never attached to anything, so it only grows.
@@ -112,14 +124,14 @@ and by the test suite on the server side, but not at runtime between versions.
 
 ## Recovering an account
 
-`./ami-server -db /var/lib/ami/ami.db -reset-password <username>` prints a
+`AMI_DB=... ./ami-server -reset-password <username>` prints a
 temporary password, signs the account out everywhere, and exits; the running
 server does not need to stop ([passwords.md](passwords.md#resetting-a-forgotten-password)).
 
 ## Sizing
 
-One process, one SQLite writer: the server comfortably serves a community of
-friends on a small VM. Calls do not load it (media is peer to peer). The parts
+One process over MariaDB: the server comfortably serves a community of
+friends on a small VM, and the database takes concurrent writes in stride. Calls do not load it (media is peer to peer). The parts
 that grow with users are the media directory and the per-request presence
 reflection, neither of which matters at that scale. Horizontal scaling is not
 designed in: the hub, the call rooms and the rate limiters are per process.

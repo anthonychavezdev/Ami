@@ -2,7 +2,7 @@
 
 Ami is a small social network: posts with comments and reactions, friends,
 groups, direct and group chats, and peer-to-peer voice and video calls with
-screen sharing. It is one Go binary with a SQLite file behind it and one
+screen sharing. It is one Go binary with a MariaDB database behind it and one
 Expo (React Native) app that runs on Android, iOS and in the browser.
 
 These pages explain how everything works, from the first request to the last

@@ -32,7 +32,7 @@ func (s *server) setPushToken(w http.ResponseWriter, r *http.Request, me *User) 
 	}
 	// A token belongs to one device: re-registering moves it to the current user.
 	if _, err := s.db.Exec(`INSERT INTO push_tokens(token, user_id, updated_at) VALUES (?, ?, ?)
-		ON CONFLICT(token) DO UPDATE SET user_id = excluded.user_id, updated_at = excluded.updated_at`, in.Token, me.ID, nowString()); err != nil {
+		ON DUPLICATE KEY UPDATE user_id = VALUES(user_id), updated_at = VALUES(updated_at)`, in.Token, me.ID, nowString()); err != nil {
 		return err
 	}
 	return noContent(w)

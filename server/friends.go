@@ -14,7 +14,7 @@ func (s *server) friendStatus(me, other string) (string, error) {
 	var from string
 	var status string
 	err := s.db.QueryRow(`SELECT from_id, status FROM friendships
-		WHERE (from_id = ?1 AND to_id = ?2) OR (from_id = ?2 AND to_id = ?1)`, me, other).Scan(&from, &status)
+		WHERE (from_id = ? AND to_id = ?) OR (from_id = ? AND to_id = ?)`, me, other, other, me).Scan(&from, &status)
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
 		return "none", nil
@@ -36,14 +36,14 @@ func (s *server) areFriends(a, b string) (bool, error) {
 
 // friendIDs lists a user's accepted friends.
 func (s *server) friendIDs(userID string) []string {
-	return queryIDs(s.db, `SELECT CASE WHEN from_id = ?1 THEN to_id ELSE from_id END FROM friendships
-		WHERE status = 'accepted' AND (from_id = ?1 OR to_id = ?1)`, userID)
+	return queryIDs(s.db, `SELECT CASE WHEN from_id = ? THEN to_id ELSE from_id END FROM friendships
+		WHERE status = 'accepted' AND (from_id = ? OR to_id = ?)`, userID, userID, userID)
 }
 
 func (s *server) listFriends(w http.ResponseWriter, r *http.Request, me *User) error {
 	users, err := queryAll(s.db, scanUser, `SELECT `+userCols+` FROM users u WHERE u.id IN (
-		SELECT CASE WHEN from_id = ?1 THEN to_id ELSE from_id END FROM friendships
-		WHERE status = 'accepted' AND (from_id = ?1 OR to_id = ?1)) ORDER BY u.display_name`, me.ID)
+		SELECT CASE WHEN from_id = ? THEN to_id ELSE from_id END FROM friendships
+		WHERE status = 'accepted' AND (from_id = ? OR to_id = ?)) ORDER BY u.display_name`, me.ID, me.ID, me.ID)
 	if err != nil {
 		return err
 	}
@@ -138,7 +138,7 @@ func (s *server) removeFriend(w http.ResponseWriter, r *http.Request, me *User) 
 	if err != nil {
 		return err
 	}
-	res, err := s.db.Exec(`DELETE FROM friendships WHERE (from_id = ?1 AND to_id = ?2) OR (from_id = ?2 AND to_id = ?1)`, me.ID, other)
+	res, err := s.db.Exec(`DELETE FROM friendships WHERE (from_id = ? AND to_id = ?) OR (from_id = ? AND to_id = ?)`, me.ID, other, other, me.ID)
 	if err != nil {
 		return err
 	}

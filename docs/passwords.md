@@ -49,8 +49,8 @@ then `resetPassword`:
    survives being read out loud or written on paper.
 3. In one transaction: stores it as the account's password, sets
    `must_change_password = 1`, and deletes **every** session of the account.
-4. Prints the password and exits. The running server is not restarted; SQLite's
-   WAL mode and the 5 s busy timeout let the two processes share the file.
+4. Prints the password and exits. The running server is not restarted; both
+   processes are ordinary MariaDB clients.
 
 The operator tells the person the password in person (or any channel they
 trust). The temporary password is a real password: anyone who learns it can sign

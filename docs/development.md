@@ -7,8 +7,9 @@ the loops for each platform, and the traps.
 
 The repository is a [devenv](https://devenv.sh) project ([`devenv.nix`](../devenv.nix)):
 `devenv shell` (or `direnv allow` once, through [`.envrc`](../.envrc)) gives you
-Go, Node and npm, the Android SDK with an emulator, JDK 17, watchman, the
-`sqlite3` CLI, Python for the end-to-end scripts and, on macOS, CocoaPods.
+Go, Node and npm, the Android SDK with an emulator, JDK 17, watchman, MariaDB
+with its `mysql` client, Python for the end-to-end scripts and, on macOS,
+CocoaPods.
 Nothing is installed globally: Go's module cache, npm's cache, Gradle, CocoaPods
 and the Android AVDs all live inside the repository (`.go/`, `.npm/`, `.gradle/`,
 `.cocoapods/`, `.android/`), all gitignored. Xcode is the one thing Nix cannot
@@ -22,8 +23,8 @@ The Android SDK ships under Google's license, which `devenv.yaml` accepts with
 | Command | What it does |
 | --- | --- |
 | `setup` | `go mod tidy` in `server/` and `npm install` in `mobile/`. Run once, and after dependency changes. |
-| `server [flags]` | The API with the production defaults on `:$AMI_PORT`. `server -dev` seeds demo data and allows any browser origin; `server -dev -verbose` also logs every request, response and socket message. Flags go straight to the binary. |
-| `devenv up` | The same server in dev mode under process-compose, for people who prefer a supervised process. |
+| `devenv up` | MariaDB and the server in dev mode under process-compose. The database lives under `.devenv/state/mysql`, with an `ami` database and user created on the first start; the server reaches it over the socket in `$AMI_DB`. `devenv up mysql` runs the database alone. |
+| `server [flags]` | The API with the production defaults on `:$AMI_PORT`, against the MariaDB that `devenv up` runs. `server -dev` seeds demo data and allows any browser origin; `server -dev -verbose` also logs every request, response and socket message. Flags go straight to the binary. |
 | `web` | Metro serving the app as a web page on `http://localhost:$AMI_METRO_PORT`. |
 | `mobile` | Metro alone, for an app already installed on a device or emulator. |
 | `android` | Creates the `ami` emulator if needed (Pixel 7, API 36), builds the development build, installs it on the emulator or a USB phone, starts Metro. |
@@ -56,8 +57,8 @@ only), posts with pictures, links and Markdown, comments, reactions, direct and
 group chats, and unread badges for `ana`. Log in as `ana` to see every state.
 The content is defined in [`server/demo.go`](../server/demo.go) and inserted by
 [`server/seed.go`](../server/seed.go); the demo pictures are gradients generated
-into the media directory. To start over, stop the server and delete
-`server/ami.db*`.
+into the media directory. To start over, stop the server and empty the
+database: `mysql -u ami -pami ami -e 'DROP DATABASE ami; CREATE DATABASE ami'`.
 
 ## The daily loop
 
@@ -115,8 +116,9 @@ traffic, with passwords and tokens redacted and bodies cut at 4 KB. It is the
 fastest way to see what a client actually sent, and the output is safe to paste
 into an issue. See [server.md](server.md#logging).
 
-`sqlite3 server/ami.db` opens the database in the shell; `.tables`, `.schema
-posts` and plain SQL work as usual ([database-schema.md](database-schema.md#working-with-the-file)).
+`mysql -u ami -pami ami` opens the database in the shell; `SHOW TABLES`,
+`DESCRIBE posts` and plain SQL work as usual
+([database-schema.md](database-schema.md#working-with-the-database)).
 
 ## Traps
 

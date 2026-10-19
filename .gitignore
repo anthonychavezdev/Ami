@@ -17,8 +17,7 @@ local.properties
 # build output
 dist/
 
-# server runtime data
-server/*.db*
+# server runtime data (the database lives in .devenv/state/mysql)
 server/media/
 
 # editors / OS

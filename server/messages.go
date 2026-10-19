@@ -40,12 +40,14 @@ type chat struct {
 
 func (c chat) isGroup() bool { return c.group != "" }
 
-// filter selects the chat's messages (alias m); ?1 is the viewer, ?2 the chat.
-func (c chat) filter() (string, string) {
+// filter selects the chat's messages (alias m) as seen by viewer, with the
+// arguments its placeholders take.
+func (c chat) filter(viewer string) (string, []any) {
 	if c.isGroup() {
-		return "m.group_id = ?2", c.group
+		return "m.group_id = ?", []any{c.group}
 	}
-	return "m.group_id IS NULL AND ((m.sender_id = ?1 AND m.recipient_id = ?2) OR (m.sender_id = ?2 AND m.recipient_id = ?1))", c.peer
+	return "m.group_id IS NULL AND ((m.sender_id = ? AND m.recipient_id = ?) OR (m.sender_id = ? AND m.recipient_id = ?))",
+		[]any{viewer, c.peer, c.peer, viewer}
 }
 
 // contains is whether a message belongs to the chat.
@@ -135,10 +137,10 @@ func (s *server) listChat(w http.ResponseWriter, r *http.Request, me *User, c ch
 	if limit == 30 {
 		limit = 50
 	}
-	where, target := c.filter()
+	where, args := c.filter(me.ID)
 	messages, err := queryAll(s.db, scanMessage, `SELECT `+messageCols+`, `+userCols+` FROM (
-			SELECT * FROM messages m WHERE `+where+` AND m.id < ?3 ORDER BY m.id DESC LIMIT ?4) m
-		JOIN users u ON u.id = m.sender_id ORDER BY m.id ASC`, me.ID, target, before, limit)
+			SELECT * FROM messages m WHERE `+where+` AND m.id < ? ORDER BY m.id DESC LIMIT ?) m
+		JOIN users u ON u.id = m.sender_id ORDER BY m.id ASC`, append(args, before, limit)...)
 	if err != nil {
 		return err
 	}
@@ -329,19 +331,20 @@ func (s *server) mayDeleteMessage(userID string, m Message, c chat) bool {
 func (s *server) unreadMessages(userID string) (int, error) {
 	var n int
 	err := s.db.QueryRow(`SELECT
-		(SELECT COUNT(*) FROM messages x WHERE x.group_id IS NULL AND x.recipient_id = ?1
-			AND x.id > COALESCE((SELECT last_read_id FROM conversation_reads r WHERE r.user_id = ?1 AND r.peer_id = x.sender_id), ''))
-		+ (SELECT COUNT(*) FROM messages x JOIN group_members gm ON gm.group_id = x.group_id AND gm.user_id = ?1
-			WHERE x.sender_id != ?1
-			AND x.id > COALESCE((SELECT last_read_id FROM group_reads r WHERE r.user_id = ?1 AND r.group_id = x.group_id), ''))`, userID).Scan(&n)
+		(SELECT COUNT(*) FROM messages x WHERE x.group_id IS NULL AND x.recipient_id = ?
+			AND x.id > COALESCE((SELECT last_read_id FROM conversation_reads r WHERE r.user_id = ? AND r.peer_id = x.sender_id), ''))
+		+ (SELECT COUNT(*) FROM messages x JOIN group_members gm ON gm.group_id = x.group_id AND gm.user_id = ?
+			WHERE x.sender_id != ?
+			AND x.id > COALESCE((SELECT last_read_id FROM group_reads r WHERE r.user_id = ? AND r.group_id = x.group_id), ''))`,
+		userID, userID, userID, userID, userID).Scan(&n)
 	return n, err
 }
 
 // groupUnread counts a group's messages from others past the user's read marker.
 func (s *server) groupUnread(userID, groupID string) int {
 	var n int
-	_ = s.db.QueryRow(`SELECT COUNT(*) FROM messages x WHERE x.group_id = ?2 AND x.sender_id != ?1
-		AND x.id > COALESCE((SELECT last_read_id FROM group_reads r WHERE r.user_id = ?1 AND r.group_id = ?2), '')`, userID, groupID).Scan(&n)
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM messages x WHERE x.group_id = ? AND x.sender_id != ?
+		AND x.id > COALESCE((SELECT last_read_id FROM group_reads r WHERE r.user_id = ? AND r.group_id = ?), '')`, groupID, userID, userID, groupID).Scan(&n)
 	return n
 }
 
@@ -362,13 +365,13 @@ func (s *server) readChat(w http.ResponseWriter, r *http.Request, me *User, c ch
 func (s *server) moveReadMarker(userID string, c chat) error {
 	if c.isGroup() {
 		_, err := s.db.Exec(`INSERT INTO group_reads(user_id, group_id, last_read_id)
-			VALUES (?1, ?2, COALESCE((SELECT MAX(id) FROM messages WHERE group_id = ?2), ''))
-			ON CONFLICT(user_id, group_id) DO UPDATE SET last_read_id = excluded.last_read_id`, userID, c.group)
+			VALUES (?, ?, COALESCE((SELECT MAX(id) FROM messages WHERE group_id = ?), ''))
+			ON DUPLICATE KEY UPDATE last_read_id = VALUES(last_read_id)`, userID, c.group, c.group)
 		return err
 	}
 	_, err := s.db.Exec(`INSERT INTO conversation_reads(user_id, peer_id, last_read_id)
-		VALUES (?1, ?2, COALESCE((SELECT MAX(id) FROM messages WHERE group_id IS NULL AND sender_id = ?2 AND recipient_id = ?1), ''))
-		ON CONFLICT(user_id, peer_id) DO UPDATE SET last_read_id = excluded.last_read_id`, userID, c.peer)
+		VALUES (?, ?, COALESCE((SELECT MAX(id) FROM messages WHERE group_id IS NULL AND sender_id = ? AND recipient_id = ?), ''))
+		ON DUPLICATE KEY UPDATE last_read_id = VALUES(last_read_id)`, userID, c.peer, c.peer, userID)
 	return err
 }
 
@@ -402,18 +405,19 @@ func (s *server) directConversations(userID string) ([]Conversation, error) {
 	}
 	return queryAll(s.db, scan, `
 		SELECT `+messageCols+`, `+userCols+`,
-			(SELECT COUNT(*) FROM messages x WHERE x.group_id IS NULL AND x.sender_id = u.id AND x.recipient_id = ?1
-				AND x.id > COALESCE((SELECT last_read_id FROM conversation_reads r WHERE r.user_id = ?1 AND r.peer_id = u.id), ''))
+			(SELECT COUNT(*) FROM messages x WHERE x.group_id IS NULL AND x.sender_id = u.id AND x.recipient_id = ?
+				AND x.id > COALESCE((SELECT last_read_id FROM conversation_reads r WHERE r.user_id = ? AND r.peer_id = u.id), ''))
 		FROM messages m
-		JOIN users u ON u.id = CASE WHEN m.sender_id = ?1 THEN m.recipient_id ELSE m.sender_id END
+		JOIN users u ON u.id = CASE WHEN m.sender_id = ? THEN m.recipient_id ELSE m.sender_id END
 		WHERE m.id IN (
-			SELECT MAX(id) FROM messages WHERE group_id IS NULL AND (sender_id = ?1 OR recipient_id = ?1)
-			GROUP BY CASE WHEN sender_id = ?1 THEN recipient_id ELSE sender_id END)`, userID)
+			SELECT MAX(id) FROM messages WHERE group_id IS NULL AND (sender_id = ? OR recipient_id = ?)
+			GROUP BY CASE WHEN sender_id = ? THEN recipient_id ELSE sender_id END)`,
+		userID, userID, userID, userID, userID, userID)
 }
 
 // groupConversations: every group the user is in, with its newest message if any.
 func (s *server) groupConversations(userID string) ([]Conversation, error) {
-	groups, err := s.queryGroups(userID, `WHERE g.id IN (SELECT group_id FROM group_members WHERE user_id = ?1)`)
+	groups, err := s.queryGroups(userID, `WHERE g.id IN (SELECT group_id FROM group_members WHERE user_id = ?)`, userID)
 	if err != nil {
 		return nil, err
 	}

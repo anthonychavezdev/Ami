@@ -83,9 +83,9 @@ func (s *server) searchUsers(w http.ResponseWriter, r *http.Request, me *User) e
 		var h hit
 		return h, sc.Scan(fields(h.user.fields(), []any{&h.interests})...)
 	}, `SELECT `+userCols+`, u.interests FROM users u
-		WHERE u.id != ?1 AND (u.username LIKE ?2 ESCAPE '\' OR u.display_name LIKE ?2 ESCAPE '\'
-			OR EXISTS (SELECT 1 FROM json_each(u.interests) WHERE value LIKE ?2 ESCAPE '\'))
-		ORDER BY u.username LIMIT 25`, me.ID, like)
+		WHERE u.id != ? AND (u.username LIKE ? OR u.display_name LIKE ?
+			OR JSON_SEARCH(LOWER(u.interests), 'one', ?) IS NOT NULL)
+		ORDER BY u.username LIMIT 25`, me.ID, like, like, strings.ToLower(like))
 	if err != nil {
 		return err
 	}
@@ -95,7 +95,8 @@ func (s *server) searchUsers(w http.ResponseWriter, r *http.Request, me *User) e
 	}))
 }
 
-// escapeLike makes a search term literal inside a LIKE pattern.
+// escapeLike makes a search term literal inside a LIKE pattern (the escape
+// character is the default backslash; JSON_SEARCH uses the same patterns).
 func escapeLike(q string) string { return strings.NewReplacer("%", "\\%", "_", "\\_").Replace(q) }
 
 func (s *server) getUser(w http.ResponseWriter, r *http.Request, me *User) error {
@@ -118,7 +119,7 @@ func (s *server) profileOf(viewer string, u User) UserProfile {
 	_ = s.db.QueryRow(`SELECT bio, interests, links, cover_url, cover_crop FROM users WHERE id = ?`, u.ID).Scan(&p.Bio, &interests, &links, &p.CoverURL, &p.CoverCrop)
 	p.Interests, p.Links = decodeInterests(interests), decodeLinks(links)
 	p.FriendStatus, _ = s.friendStatus(viewer, u.ID)
-	_ = s.db.QueryRow(`SELECT COUNT(*) FROM friendships WHERE status = 'accepted' AND (from_id = ?1 OR to_id = ?1)`, u.ID).Scan(&p.FriendCount)
+	_ = s.db.QueryRow(`SELECT COUNT(*) FROM friendships WHERE status = 'accepted' AND (from_id = ? OR to_id = ?)`, u.ID, u.ID).Scan(&p.FriendCount)
 	_ = s.db.QueryRow(`SELECT COUNT(*) FROM posts WHERE author_id = ? AND group_id IS NULL`, u.ID).Scan(&p.PostCount)
 	return p
 }

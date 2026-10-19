@@ -1,8 +1,8 @@
 # The server
 
 The server is the Go program in [`server/`](../server). It is one binary with no
-runtime dependencies beyond the SQLite file and the media directory it is pointed
-at. This page explains how it is put together; the pages linked from
+runtime dependencies beyond the MariaDB database and the media directory it is
+pointed at. This page explains how it is put together; the pages linked from
 [routes.md](routes.md) explain what each route does.
 
 ## Starting up
@@ -29,7 +29,7 @@ at. This page explains how it is put together; the pages linked from
 | Flag | Default | Meaning |
 | --- | --- | --- |
 | `-addr` | `:8080` | Listen address, on every interface. |
-| `-db` | `ami.db` | Path of the SQLite database. Created and migrated on start. |
+| `-db` | `$AMI_DB`, else `ami:ami@tcp(127.0.0.1:3306)/ami` | The MariaDB connection: `user:password@tcp(host:3306)/database` or `user:password@unix(/path/mysql.sock)/database`. The database must exist; its tables are created and migrated on start. The password is never logged. |
 | `-media-dir` | `media` | Directory for uploaded pictures and videos. Created on start. |
 | `-dev` | off | Development mode: seed demo data into an empty database and allow any browser origin. |
 | `-allowed-origins` | empty | Comma-separated browser origins allowed by CORS and the WebSocket upgrade. Empty means no cross-origin browser access (the page's own origin is always allowed). |
@@ -136,10 +136,13 @@ and gathered in [security.md](security.md#limits).
 
 ## Database access
 
-`openDB` in [`db.go`](../server/db.go) opens the file with WAL journaling, foreign
-keys on and a 5 s busy timeout, and limits the pool to **one connection**:
-SQLite serializes writers anyway, and a single connection means no
-`SQLITE_BUSY` errors to handle. Everything else is plain `database/sql`:
+`openDB` in [`db.go`](../server/db.go) connects to MariaDB with a pool of up to
+32 connections, waits up to 30 s for the database to answer and runs the
+migrations ([database-schema.md](database-schema.md#how-the-database-is-opened)).
+Handlers run short statements and transactions, so concurrent requests
+rarely wait on each other; a lost race for a unique key (two registrations
+of one username) is `isUniqueViolation`, answered with a 409. Everything
+else is plain `database/sql`:
 
 - `queryAll(db, scan, query, args...)` runs a query and collects rows through a
   `scan` function, returning a never-nil slice. `scanUser`, `scanPost`,
