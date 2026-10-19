@@ -101,6 +101,11 @@ func TestMigrateFirstRelease(t *testing.T) {
 	if columnType(db, "users", "id") != "TEXT" {
 		t.Errorf("migration 3 did not turn ids into text: users.id is %s", columnType(db, "users", "id"))
 	}
+	for _, c := range []string{"cover_url", "cover_crop", "interests", "links"} {
+		if !columnExists(db, "users", c) {
+			t.Errorf("migration 4 did not add users.%s", c)
+		}
+	}
 	var ana string
 	if err := db.QueryRow(`SELECT id FROM users WHERE username = 'ana'`).Scan(&ana); err != nil || !isID(ana) {
 		t.Errorf("ana's id after migrating: %q, %v", ana, err)

@@ -37,7 +37,7 @@ What each test covers ([`api_test.go`](../server/api_test.go) unless noted):
 | `TestLoginRateLimit` | The 11th attempt in a minute is 429. |
 | `TestSeededContent` | The demo feed, group chats and badges for `ana`, media served immutable, path traversal refused. |
 | `TestPosts` | Markdown posts, uploads (sizes, sandbox CSP, per-user budget, disguised files), attachments and links, feed paging and visibility, deletes. |
-| `TestProfile` | Every `PUT /api/me` rule, renaming and logging in with the new name, GIF avatars, crops and their validation. |
+| `TestProfile` | Every `PUT /api/me` rule, renaming and logging in with the new name, GIF avatars, crops and their validation, interests (and searching by them), links, the Markdown bio, the cover and its crop. |
 | `TestCommentsAndReactions` | Comments, replies, nesting, edits, `[deleted]` placeholders and pruning, counts, reactions. |
 | `TestFriends` | Search, every request transition, 409s, messaging non-friends, feed after accepting, unfriending, mutual requests. |
 | `TestMessages` | Direct messages, history and cursors, attachments, unread counts and reading, push token routes, edits and deletes. |

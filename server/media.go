@@ -140,6 +140,19 @@ func sniffMedia(head []byte, declared string) string {
 	return detected
 }
 
+// validLink checks a URL someone typed, for a post's link attachment or a
+// profile link: http or https, with a host, at most 2048 bytes.
+func validLink(raw string) (*url.URL, error) {
+	if len(raw) > 2048 {
+		return nil, errors.New("link too long")
+	}
+	u, err := url.Parse(raw)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+		return nil, errors.New("links must be http(s) URLs")
+	}
+	return u, nil
+}
+
 // serveMedia serves uploaded files. Names are random, so they need no auth and
 // can be cached forever.
 func (s *server) serveMedia(w http.ResponseWriter, r *http.Request) {
@@ -186,9 +199,8 @@ func (s *server) cleanAttachment(a Attachment) (Attachment, error) {
 		}
 		return a, nil
 	case "link":
-		u, err := url.Parse(a.URL)
-		if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
-			return a, errors.New("links must be http(s) URLs")
+		if _, err := validLink(a.URL); err != nil {
+			return a, err
 		}
 		return Attachment{Type: "link", URL: a.URL}, nil
 	default:

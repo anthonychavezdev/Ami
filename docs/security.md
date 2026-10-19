@@ -96,6 +96,8 @@ carries a URL that was not produced by the server, except links, which must be
 | Members added at once | 100 | `friendsToAdd` |
 | Username, password | 3 to 24 characters; 8 to 128 bytes | `validCredentials` |
 | Display name, bio, pronouns | 50, 500, 30 characters | `profilePatch` |
+| Interests | 20 tags of 30 characters | `cleanInterests` |
+| Profile links | 10, labels of 30 characters, URLs of 2,048 bytes | `cleanLinks` |
 | Emoji | 32 bytes, 8 runes | `validEmoji` |
 | List pages | 100 items (comments 500) | `pagination`, `listComments` |
 | Call | 8 participants | `maxCallParticipants` |

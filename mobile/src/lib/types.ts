@@ -5,23 +5,35 @@ export interface User {
   created_at: string;
   online?: boolean; // as of when the object was fetched; presence events keep it current
   avatar_url?: string; // uploaded picture under /media; empty = initials
-  avatar_crop?: AvatarCrop; // the square shown in the circle; w === 0 means the whole picture, centred
+  avatar_crop?: Crop; // the square shown in the circle; w === 0 means the whole picture, centred
   pronouns?: string;
 }
 
-// A square window on a picture: x/y top-left and w side as fractions of the
-// width (the side as a fraction of the height is w * aspect).
-export interface AvatarCrop {
+// A window on a picture: x/y top-left and w width as fractions of the
+// picture's width, aspect the picture's width/height. The window's own shape
+// is fixed (1 for the round profile picture, 3 for the cover), so its height
+// as a fraction of the picture's height is w * aspect / ratio.
+export interface Crop {
   x: number;
   y: number;
   w: number;
   aspect: number;
 }
 
+// One of a person's other places, shown on their profile.
+export interface ProfileLink {
+  label: string;
+  url: string;
+}
+
 // The signed-in user with private settings.
 export interface Me extends User {
   invisible: boolean; // appear offline to everyone
-  bio: string;
+  bio: string; // Markdown
+  interests: string[]; // tags; search finds people by them
+  links: ProfileLink[];
+  cover_url: string; // the wide picture across the top of the profile, under /media; empty = none
+  cover_crop?: Crop; // its 3:1 window
   must_change_password: boolean; // signed in with a temporary password: the app only shows the change-password screen
 }
 
@@ -29,6 +41,10 @@ export type FriendStatus = 'self' | 'none' | 'friends' | 'outgoing' | 'incoming'
 
 export interface UserProfile extends User {
   bio?: string;
+  interests?: string[];
+  links?: ProfileLink[];
+  cover_url?: string;
+  cover_crop?: Crop;
   friend_status: FriendStatus;
   friend_count?: number;
   post_count?: number;

@@ -110,7 +110,7 @@ with a diagram, is in [database-schema.md](database-schema.md).
 | [`sessions.go`](../server/sessions.go) | Passwords, tokens, register, login, logout, `auth`, password change and reset. |
 | [`users.go`](../server/users.go) | The `User`, `Me` and `UserProfile` types, user search, profiles, a user's posts. |
 | [`profile.go`](../server/profile.go) | Editing your own profile and appearing offline. |
-| [`avatar.go`](../server/avatar.go) | Profile pictures and the crop shown in the circle. |
+| [`pictures.go`](../server/pictures.go) | Profile and cover pictures and the window of each that is shown. |
 | [`posts.go`](../server/posts.go) | Posts, the feed, reactions, comments. |
 | [`media.go`](../server/media.go) | Uploads, serving `/media/`, attachment validation. |
 | [`friends.go`](../server/friends.go) | Friendship states and the request flow. |
@@ -133,7 +133,7 @@ with a diagram, is in [database-schema.md](database-schema.md).
 | Directory | What lives there |
 | --- | --- |
 | [`mobile/src/app/`](../mobile/src/app) | Expo Router routes: one file per screen, layouts in `_layout.tsx`, tabs in `(tabs)/`. Route files are thin; the bodies are components. |
-| [`mobile/src/components/`](../mobile/src/components) | Screen bodies (`ChatView`, `GroupView`, `PostView`, `UserView`, `ProfileEditor`, `PasswordForm`), cards and rows, the composer, the media viewer, the UI kit in `ui.tsx`. |
+| [`mobile/src/components/`](../mobile/src/components) | Screen bodies (`ChatView`, `GroupView`, `PostView`, `UserView`, `ProfileEditor`, `PasswordForm`), cards and rows, the composer, the media viewer, the picture crop editor and cover, the UI kit in `ui.tsx`. |
 | [`mobile/src/lib/`](../mobile/src/lib) | Everything that is not a view: the API client, the socket, auth, stores, hooks, the call manager, notifications, theme, helpers. |
 | [`mobile/src/theme.ts`](../mobile/src/theme.ts) | Colours, spacing, radii, the reaction emoji list. |
 | [`mobile/e2e/`](../mobile/e2e) | Python scripts that drive the Android build on emulators. |

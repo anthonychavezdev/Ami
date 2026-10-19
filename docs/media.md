@@ -94,4 +94,4 @@ Errors are `400` with the reason. Profile pictures go through a stricter check
   photo library with `expo-media-library` (asking permission first); in the
   browser it triggers a download (`save.ts` / `save.web.ts`).
 - **Profile pictures** use the same upload and the crop editor
-  ([profile.md](profile.md#the-profile-picture)).
+  ([profile.md](profile.md#the-two-pictures-and-their-crops)).

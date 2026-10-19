@@ -26,6 +26,10 @@ CREATE TABLE IF NOT EXISTS users (
 	pronouns      TEXT NOT NULL DEFAULT '',
 	avatar_crop   TEXT NOT NULL DEFAULT '',
 	must_change_password INTEGER NOT NULL DEFAULT 0, -- set by -reset-password; cleared by PUT /api/me/password
+	cover_url     TEXT NOT NULL DEFAULT '',   -- the wide picture across the top of the profile
+	cover_crop    TEXT NOT NULL DEFAULT '',   -- its 3:1 window, JSON like avatar_crop
+	interests     TEXT NOT NULL DEFAULT '[]', -- JSON array of tags
+	links         TEXT NOT NULL DEFAULT '[]', -- JSON array of {label, url}
 	created_at    TEXT NOT NULL
 );
 
@@ -150,6 +154,17 @@ var migrations = []migration{
 		return addColumn(tx, "users", "must_change_password", "INTEGER NOT NULL DEFAULT 0")
 	}},
 	{"ids become UUIDs", toUUIDs},
+	{"cover, interests and links", func(tx *sql.Tx) error {
+		for _, c := range []struct{ column, definition string }{
+			{"cover_url", "TEXT NOT NULL DEFAULT ''"}, {"cover_crop", "TEXT NOT NULL DEFAULT ''"},
+			{"interests", "TEXT NOT NULL DEFAULT '[]'"}, {"links", "TEXT NOT NULL DEFAULT '[]'"},
+		} {
+			if err := addColumn(tx, "users", c.column, c.definition); err != nil {
+				return err
+			}
+		}
+		return nil
+	}},
 }
 
 type migration struct {

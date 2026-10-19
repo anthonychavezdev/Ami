@@ -25,7 +25,7 @@ the repository root, so `server/hub.go` is `../server/hub.go` from here.
 | [mobile-app.md](mobile-app.md) | How the app is put together: routing, state, networking, the wide layout, components and platform files. |
 | [login.md](login.md) | Accounts and sessions: register, login, logout, tokens, the forced-password gate. |
 | [passwords.md](passwords.md) | Changing a password, the `-reset-password` recovery flow. |
-| [profile.md](profile.md) | Editing your profile, profile pictures and their crop, appearing offline. |
+| [profile.md](profile.md) | Editing your profile: Markdown bio, interests, links, the picture and the cover with their crops, appearing offline. |
 | [users.md](users.md) | Searching people, viewing a profile, a person's posts. |
 | [posts.md](posts.md) | The feed, writing and editing posts, reactions, live updates. |
 | [comments.md](comments.md) | Threaded comments, editing, deleting with placeholders. |

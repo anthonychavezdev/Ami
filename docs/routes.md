@@ -65,14 +65,14 @@ that explains it in full. The route table itself is `routes()` in
 
 | Route | Auth | Request | Response | Summary | Details |
 | --- | --- | --- | --- | --- | --- |
-| `PUT /api/me` | session | `{username?, display_name?, bio?, pronouns?, avatar_url?, avatar_crop?}` | `Me` | Changes the fields sent; the rest stay. | [profile.md](profile.md#put-apime) |
+| `PUT /api/me` | session | `{username?, display_name?, bio?, pronouns?, interests?, links?, avatar_url?, avatar_crop?, cover_url?, cover_crop?}` | `Me` | Changes the fields sent; the rest stay. | [profile.md](profile.md#put-apime) |
 | `PUT /api/me/presence` | session | `{invisible}` | `{invisible}` | Appear offline to everyone, or visible again. | [profile.md](profile.md#put-apimepresence) |
 
 ## Users
 
 | Route | Auth | Request | Response | Summary | Details |
 | --- | --- | --- | --- | --- | --- |
-| `GET /api/users?q=` | session | | `UserProfile[]` | Up to 25 people whose username or name contains `q`, with your friendship status to each. | [users.md](users.md#get-apiusersq) |
+| `GET /api/users?q=` | session | | `UserProfile[]` | Up to 25 people whose username, name or interests contain `q`, with your friendship status to each and their interests. | [users.md](users.md#get-apiusersq) |
 | `GET /api/users/{id}` | session | | `UserProfile` | Someone's profile: bio, friendship status, friend and post counts. | [users.md](users.md#get-apiusersid) |
 | `GET /api/users/{id}/posts` | session, paged | | `Post[]` | Their profile posts (not group posts); public to any signed-in user. | [users.md](users.md#get-apiusersidposts) |
 

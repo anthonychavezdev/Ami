@@ -23,7 +23,7 @@ import { COLUMN_WIDTH, useWide } from '@/lib/layout';
 import { useOnline } from '@/lib/presence';
 import { useStyles, useTheme } from '@/lib/theme';
 import { radius, spacing, type ThemeColors } from '@/theme';
-import type { AvatarCrop, User } from '@/lib/types';
+import type { Crop, User } from '@/lib/types';
 
 export function Button({
   title,
@@ -82,12 +82,13 @@ export function Input({ ref, ...props }: TextInputProps & { ref?: React.Ref<Text
 // A hue from a name, so the same name always gets the same colour.
 export const nameHue = (name: string) => [...name].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 0);
 
-// Places the picture so that its chosen square fills a circle of `size`.
-function cropStyle(crop: AvatarCrop | undefined, size: number) {
-  if (!crop?.w) return { width: size, height: size };
-  const width = size / crop.w;
-  const height = width / crop.aspect;
-  return { position: 'absolute' as const, left: -crop.x * width, top: -crop.y * height, width, height };
+// Places a picture so that its chosen window fills a box of width x height
+// (the avatar's circle, the cover's band); without a crop the box is filled.
+export function cropStyle(crop: Crop | undefined, width: number, height: number) {
+  if (!crop?.w) return { width, height };
+  const w = width / crop.w;
+  const h = w / crop.aspect;
+  return { position: 'absolute' as const, left: -crop.x * w, top: -crop.y * h, width: w, height: h };
 }
 
 // Initials on a colored disc, with a presence dot (green online, gray offline)
@@ -97,7 +98,7 @@ export function Avatar({
   size = 40,
   status = true,
 }: {
-  user: Pick<User, 'display_name' | 'username'> & { id?: string; online?: boolean; avatar_url?: string; avatar_crop?: AvatarCrop };
+  user: Pick<User, 'display_name' | 'username'> & { id?: string; online?: boolean; avatar_url?: string; avatar_crop?: Crop };
   size?: number;
   status?: boolean;
 }) {
@@ -120,7 +121,7 @@ export function Avatar({
         <View style={{ width: size, height: size, borderRadius: size / 2, overflow: 'hidden' }}>
           <Image
             source={{ uri: API_URL + user.avatar_url }}
-            style={cropStyle(user.avatar_crop, size)}
+            style={cropStyle(user.avatar_crop, size, size)}
             contentFit={user.avatar_crop?.w ? 'fill' : 'cover'}
             accessibilityLabel="Profile picture"
           />

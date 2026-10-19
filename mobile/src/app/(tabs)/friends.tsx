@@ -24,13 +24,20 @@ type Opening = { selectedId: string | null; onOpen?: (user: User) => void };
 
 // Friends, requests and people to find. On a wide window the open profile
 // sits beside the lists, named by ?user= so a reload or a link (/user/...
-// redirects here) lands on it.
+// redirects here) lands on it. ?q= opens Find people with that search (an
+// interest tapped on a profile).
 export default function FriendsScreen() {
   const router = useRouter();
   const wide = useWide();
-  const { user: userParam } = useLocalSearchParams<{ user?: string }>();
+  const { user: userParam, q } = useLocalSearchParams<{ user?: string; q?: string }>();
   const openId = wide && userParam ? userParam : null;
-  const [tab, setTab] = useState<Tab>('friends');
+  const [tab, setTab] = useState<Tab>(q ? 'find' : 'friends');
+  const [seenQ, setSeenQ] = useState(q);
+  if (q !== seenQ) {
+    // A new search arrived (an interest tapped on a profile): show it. State reset during render, per the React docs.
+    setSeenQ(q);
+    if (q) setTab('find');
+  }
   const opening: Opening = { selectedId: openId, onOpen: wide ? (u) => router.setParams({ user: u.id }) : undefined };
 
   const lists = (
@@ -46,7 +53,7 @@ export default function FriendsScreen() {
       />
       {tab === 'friends' && <FriendList {...opening} />}
       {tab === 'requests' && <Requests {...opening} />}
-      {tab === 'find' && <Find {...opening} />}
+      {tab === 'find' && <Find key={q ?? ''} initialQuery={q ?? ''} {...opening} />}
     </View>
   );
   if (!wide) return lists;
@@ -54,8 +61,10 @@ export default function FriendsScreen() {
 }
 
 // A person in one of the lists, opening the way the screen says.
-function PersonRow({ user, right, selectedId, onOpen }: { user: User; right?: React.ReactNode } & Opening) {
-  return <UserRow user={user} right={right} selected={user.id === selectedId} onPress={onOpen && (() => onOpen(user))} />;
+function PersonRow({ user, subtitle, right, selectedId, onOpen }: { user: User; subtitle?: string; right?: React.ReactNode } & Opening) {
+  return (
+    <UserRow user={user} subtitle={subtitle} right={right} selected={user.id === selectedId} onPress={onOpen && (() => onOpen(user))} />
+  );
 }
 
 const FRIEND_EVENTS = ['friend.changed'] as const;
@@ -177,13 +186,19 @@ function useUserSearch(query: string) {
   return { results: found.list, loading: found.q !== q, setStatus };
 }
 
-function Find(opening: Opening) {
-  const [query, setQuery] = useState('');
+function Find({ initialQuery = '', ...opening }: Opening & { initialQuery?: string }) {
+  const [query, setQuery] = useState(initialQuery);
   const { results, loading, setStatus } = useUserSearch(query);
   return (
     <View style={{ flex: 1 }}>
       <View style={{ padding: spacing.lg, paddingTop: spacing.sm }}>
-        <Input placeholder="Search by name or username" value={query} onChangeText={setQuery} autoCapitalize="none" autoCorrect={false} />
+        <Input
+          placeholder="Search by name, username or interest"
+          value={query}
+          onChangeText={setQuery}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
       </View>
       {loading && results.length === 0 ? (
         <Loading />
@@ -192,9 +207,14 @@ function Find(opening: Opening) {
           data={results}
           keyExtractor={(u) => String(u.id)}
           renderItem={({ item }) => (
-            <PersonRow user={item} {...opening} right={<FriendStatusButton user={item} onStatus={(s) => setStatus(item.id, s)} />} />
+            <PersonRow
+              user={item}
+              subtitle={item.interests?.length ? `@${item.username} · ${item.interests.join(', ')}` : undefined}
+              {...opening}
+              right={<FriendStatusButton user={item} onStatus={(s) => setStatus(item.id, s)} />}
+            />
           )}
-          ListEmptyComponent={<Empty text={query ? 'No one found.' : 'Search for people to add.'} />}
+          ListEmptyComponent={<Empty text={query ? 'No one found.' : 'Search for people to add, by name or by interest.'} />}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ flexGrow: 1 }}
         />

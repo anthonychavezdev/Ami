@@ -8,14 +8,14 @@ import (
 // User is what everyone sees of an account. Me adds the private settings,
 // UserProfile what a profile page shows.
 type User struct {
-	ID          string     `json:"id"`
-	Username    string     `json:"username"`
-	DisplayName string     `json:"display_name"`
-	CreatedAt   string     `json:"created_at"`
-	AvatarURL   string     `json:"avatar_url,omitempty"` // an uploaded picture under /media, or empty for initials
-	AvatarCrop  AvatarCrop `json:"avatar_crop"`          // the part of the picture shown in the circle (W == 0: whole picture, centred)
-	Pronouns    string     `json:"pronouns,omitempty"`
-	Online      bool       `json:"online"` // has a live connection; filled in by markPresence (presence.go) on output
+	ID          string `json:"id"`
+	Username    string `json:"username"`
+	DisplayName string `json:"display_name"`
+	CreatedAt   string `json:"created_at"`
+	AvatarURL   string `json:"avatar_url,omitempty"` // an uploaded picture under /media, or empty for initials
+	AvatarCrop  Crop   `json:"avatar_crop"`          // the part of the picture shown in the circle (W == 0: whole picture, centred)
+	Pronouns    string `json:"pronouns,omitempty"`
+	Online      bool   `json:"online"` // has a live connection; filled in by markPresence (presence.go) on output
 }
 
 // userCols selects a User from the users table (alias u); fields() scans it.
@@ -39,38 +39,59 @@ func (s *server) userByID(id string) (User, error) {
 // Me is the caller's own user with private settings and the full profile.
 type Me struct {
 	User
-	Invisible          bool   `json:"invisible"` // appear offline to everyone
-	Bio                string `json:"bio"`
-	MustChangePassword bool   `json:"must_change_password"` // signed in with a temporary password: set a new one first
+	Invisible          bool     `json:"invisible"` // appear offline to everyone
+	Bio                string   `json:"bio"`       // Markdown
+	Interests          []string `json:"interests"` // tags, shown on the profile and searched
+	Links              []Link   `json:"links"`     // other places of theirs
+	CoverURL           string   `json:"cover_url"` // the wide picture across the top of the profile
+	CoverCrop          Crop     `json:"cover_crop"`
+	MustChangePassword bool     `json:"must_change_password"` // signed in with a temporary password: set a new one first
 }
 
 func (s *server) meFor(u User) Me {
 	m := Me{User: u}
-	_ = s.db.QueryRow(`SELECT invisible, bio, must_change_password FROM users WHERE id = ?`, u.ID).Scan(&m.Invisible, &m.Bio, &m.MustChangePassword)
+	var interests, links string
+	_ = s.db.QueryRow(`SELECT invisible, bio, interests, links, cover_url, cover_crop, must_change_password FROM users WHERE id = ?`, u.ID).
+		Scan(&m.Invisible, &m.Bio, &interests, &links, &m.CoverURL, &m.CoverCrop, &m.MustChangePassword)
+	m.Interests, m.Links = decodeInterests(interests), decodeLinks(links)
 	return m
 }
 
+// UserProfile is a user as a profile page shows them. Search results carry
+// only the interests (what matched) and the friendship status.
 type UserProfile struct {
 	User
-	Bio          string `json:"bio"`
-	FriendStatus string `json:"friend_status"` // self | none | friends | outgoing | incoming
-	FriendCount  int    `json:"friend_count"`
-	PostCount    int    `json:"post_count"`
+	Bio          string   `json:"bio"`
+	Interests    []string `json:"interests"`
+	Links        []Link   `json:"links"`
+	CoverURL     string   `json:"cover_url,omitempty"`
+	CoverCrop    Crop     `json:"cover_crop"`
+	FriendStatus string   `json:"friend_status"` // self | none | friends | outgoing | incoming
+	FriendCount  int      `json:"friend_count"`
+	PostCount    int      `json:"post_count"`
 }
 
-// searchUsers finds people by username or display name, with how each one
-// relates to the caller.
+// searchUsers finds people by username, display name or interest, with how
+// each one relates to the caller and the interests that show what matched.
 func (s *server) searchUsers(w http.ResponseWriter, r *http.Request, me *User) error {
 	like := "%" + escapeLike(strings.TrimSpace(r.URL.Query().Get("q"))) + "%"
-	users, err := queryAll(s.db, scanUser, `SELECT `+userCols+` FROM users u
-		WHERE u.id != ? AND (u.username LIKE ? ESCAPE '\' OR u.display_name LIKE ? ESCAPE '\')
-		ORDER BY u.username LIMIT 25`, me.ID, like, like)
+	type hit struct {
+		user      User
+		interests string
+	}
+	hits, err := queryAll(s.db, func(sc scanner) (hit, error) {
+		var h hit
+		return h, sc.Scan(fields(h.user.fields(), []any{&h.interests})...)
+	}, `SELECT `+userCols+`, u.interests FROM users u
+		WHERE u.id != ?1 AND (u.username LIKE ?2 ESCAPE '\' OR u.display_name LIKE ?2 ESCAPE '\'
+			OR EXISTS (SELECT 1 FROM json_each(u.interests) WHERE value LIKE ?2 ESCAPE '\'))
+		ORDER BY u.username LIMIT 25`, me.ID, like)
 	if err != nil {
 		return err
 	}
-	return ok(w, mapSlice(users, func(u User) UserProfile {
-		status, _ := s.friendStatus(me.ID, u.ID)
-		return UserProfile{User: u, FriendStatus: status}
+	return ok(w, mapSlice(hits, func(h hit) UserProfile {
+		status, _ := s.friendStatus(me.ID, h.user.ID)
+		return UserProfile{User: h.user, Interests: decodeInterests(h.interests), Links: []Link{}, FriendStatus: status}
 	}))
 }
 
@@ -89,10 +110,13 @@ func (s *server) getUser(w http.ResponseWriter, r *http.Request, me *User) error
 	return ok(w, s.profileOf(me.ID, u))
 }
 
-// profileOf is a user as seen by viewer: bio, friendship and counts included.
+// profileOf is a user as seen by viewer: bio, cover, interests, links,
+// friendship and counts included.
 func (s *server) profileOf(viewer string, u User) UserProfile {
 	p := UserProfile{User: u}
-	_ = s.db.QueryRow(`SELECT bio FROM users WHERE id = ?`, u.ID).Scan(&p.Bio)
+	var interests, links string
+	_ = s.db.QueryRow(`SELECT bio, interests, links, cover_url, cover_crop FROM users WHERE id = ?`, u.ID).Scan(&p.Bio, &interests, &links, &p.CoverURL, &p.CoverCrop)
+	p.Interests, p.Links = decodeInterests(interests), decodeLinks(links)
 	p.FriendStatus, _ = s.friendStatus(viewer, u.ID)
 	_ = s.db.QueryRow(`SELECT COUNT(*) FROM friendships WHERE status = 'accepted' AND (from_id = ?1 OR to_id = ?1)`, u.ID).Scan(&p.FriendCount)
 	_ = s.db.QueryRow(`SELECT COUNT(*) FROM posts WHERE author_id = ? AND group_id IS NULL`, u.ID).Scan(&p.PostCount)
