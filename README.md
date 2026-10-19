@@ -11,6 +11,7 @@ groups, direct messages, and peer-to-peer voice/video calls with screen sharing.
 - `devenv.nix` — toolchains, env vars and the `server`, `web`, `android`, `test`, `build`
   scripts. Everything installs inside this repo (`.go/`, `.npm/`,
   `mobile/node_modules/`, `.gradle/`, `.android/`, `.cocoapods/`).
+- `docs/` — how everything works, top to bottom: start at [docs/README.md](docs/README.md).
 
 ## Run
 
@@ -189,6 +190,7 @@ project id the app simply never registers a push token.
 ## API
 
 All JSON. `Authorization: Bearer <token>` after `/api/register` or `/api/login`.
+Every route is explained in [docs/routes.md](docs/routes.md).
 
 ```
 POST   /api/register  /api/login  /api/logout      GET /api/me
