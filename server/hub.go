@@ -170,6 +170,9 @@ func (h *hub) sendToMany(userIDs []int64, v any) { h.deliver(userIDs, v) }
 // sendToClient pushes an event to one connection only (the device that acted).
 func (h *hub) sendToClient(c *client, v any) {
 	if data, err := h.marshal(v); err == nil {
+		if verbose {
+			log.Printf("ws → user %d (one device): %s", c.user.ID, cut(data))
+		}
 		c.queue(data)
 	}
 }
@@ -189,6 +192,9 @@ func (h *hub) deliver(userIDs []int64, v any) int {
 			c.queue(data)
 			n++
 		}
+	}
+	if verbose {
+		log.Printf("ws → users %v (connections: %d): %s", userIDs, n, cut(data))
 	}
 	return n
 }
@@ -232,6 +238,7 @@ func (s *server) handleWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	me := su.User
+	noteUser(r, me.ID)
 	s.hub.setHidden(me.ID, s.invisible(me.ID)) // before add, so an invisible user is never announced
 	ws, err := s.wsUpgrade(w, r)
 	if err != nil {
@@ -268,6 +275,9 @@ func (s *server) handleWS(w http.ResponseWriter, r *http.Request) {
 
 // handleWSMessage dispatches one client message (see clientMessage in events.go).
 func (s *server) handleWSMessage(c *client, data []byte) {
+	if verbose {
+		log.Printf("ws ← user %d: %s", c.user.ID, cut(data))
+	}
 	var msg clientMessage
 	if err := json.Unmarshal(data, &msg); err != nil {
 		return

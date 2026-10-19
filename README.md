@@ -34,6 +34,11 @@ On Linux the emulator needs `/dev/kvm` access (NixOS: add your user to the
 password `amigo-demo`) plus friendships, groups, posts and chats. Log in as
 `ana` to see every state. Production never seeds.
 
+To watch what a client sends and gets back, run `server -verbose`: every
+request and response is logged with headers and body, and every WebSocket
+message in and out. Passwords and tokens are redacted and bodies are cut at
+4 KB, so the output is safe to paste into an issue.
+
 The app needs a development build (not Expo Go) because of `react-native-webrtc`.
 `android` produces one and installs it on the emulator, or on a USB-connected
 phone if one is plugged in; `ios` does the same in the Simulator. The native
@@ -208,4 +213,4 @@ GET    /ws?token=   (every event and client message is a struct in server/events
                      mobile/src/lib/events.ts; the call protocol is described in server/calls.go)
 ```
 
-Server flags: `-addr :8080 -db ami.db -media-dir media`; `-reset-password <username>` (see Forgotten passwords).
+Server flags: `-addr :8080 -db ami.db -media-dir media`; `-reset-password <username>` (see Forgotten passwords); `-verbose` logs whole requests, responses and WebSocket messages (see Development).

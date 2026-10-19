@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -114,6 +115,10 @@ func (s *server) pushTokens(userID int64) []string {
 // sendPush posts a batch to Expo and returns the tokens Expo says no longer exist.
 func sendPush(msgs []pushMessage) (dead []string) {
 	payload, _ := json.Marshal(msgs)
+	if verbose {
+		shown, _ := json.Marshal(mapSlice(msgs, func(m pushMessage) pushMessage { m.To = "[redacted]"; return m }))
+		log.Printf("push → Expo: %s", cut(shown))
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, expoPushURL, bytes.NewReader(payload))
@@ -133,9 +138,13 @@ func sendPush(msgs []pushMessage) (dead []string) {
 			} `json:"details"`
 		} `json:"data"`
 	}
-	if err := json.NewDecoder(res.Body).Decode(&out); err != nil || res.StatusCode != http.StatusOK {
+	var body bytes.Buffer
+	if err := json.NewDecoder(io.TeeReader(res.Body, &body)).Decode(&out); err != nil || res.StatusCode != http.StatusOK {
 		log.Printf("push: status %d", res.StatusCode)
 		return nil
+	}
+	if verbose {
+		log.Printf("push ← Expo %d: %s", res.StatusCode, cut(body.Bytes()))
 	}
 	for i, r := range out.Data {
 		if i < len(msgs) && r.Status == "error" && r.Details.Error == "DeviceNotRegistered" {
