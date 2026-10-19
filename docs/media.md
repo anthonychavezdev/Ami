@@ -86,7 +86,7 @@ Errors are `400` with the reason. Profile pictures go through a stricter check
   `expo-image-picker` (pictures and videos, multiple selection up to the 10
   remaining slots, quality 0.85) and uploads each asset in turn through
   `api.uploadMedia`, counting in-flight uploads so the send button waits and
-  showing a progress bar for the one in flight ("Uploading video · 1.2 GB of
+  showing a progress bar (`UploadBar`, shared with the profile editor) for the one in flight ("Uploading video · 1.2 GB of
   3.0 GB", with how many picked files are queued behind it). Links
   are added from a small URL field. `AttachmentChips` shows what is queued, with
   thumbnails for pictures and a remove button. On devices the file is handed
