@@ -21,7 +21,7 @@ export default function TabsLayout() {
   const wide = useWide(); // sidebar instead of a bottom bar
   return (
     <Tabs
-      screenLayout={({ route, children }) => <WideColumn width={route.name === 'profile' ? undefined : 1200}>{children}</WideColumn>}
+      screenLayout={({ children }) => <WideColumn width={1200}>{children}</WideColumn>}
       screenOptions={{
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.muted,

@@ -253,6 +253,27 @@ export function Panes({
   );
 }
 
+// The title row of a pane beside a list (a chat, a form) that has no screen
+// header of its own: a title, whatever goes on the right, and a close button
+// when the pane can be shut.
+export function PaneHeader({ title, onClose, children }: { title: string; onClose?: () => void; children?: React.ReactNode }) {
+  const styles = useStyles(makeStyles);
+  const { colors } = useTheme();
+  return (
+    <View style={styles.paneHeader}>
+      <Text style={styles.paneTitle} numberOfLines={1}>
+        {title}
+      </Text>
+      {children}
+      {onClose && (
+        <Pressable onPress={onClose} hitSlop={10} accessibilityLabel="Close">
+          <Feather name="x" size={22} color={colors.muted} />
+        </Pressable>
+      )}
+    </View>
+  );
+}
+
 export function KeyboardScreen({ children }: { children: React.ReactNode }) {
   const headerHeight = useHeaderHeight();
   return (
@@ -333,6 +354,17 @@ const makeStyles = (colors: ThemeColors) =>
     },
     listPane: { borderRightWidth: 1, borderRightColor: colors.border, backgroundColor: colors.card },
     detailPane: { flex: 1 },
+    paneHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.md,
+      backgroundColor: colors.card,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    paneTitle: { flex: 1, fontSize: 17, fontWeight: '700', color: colors.text },
     btn: { paddingVertical: 12, paddingHorizontal: 18, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
     btnSmall: { paddingVertical: 7, paddingHorizontal: 12, borderRadius: radius.pill },
     btnContent: { flexDirection: 'row', alignItems: 'center', gap: 6 },
