@@ -6,6 +6,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 
 import { COVER_RATIO, Cover } from './Cover';
 import { CropEditor, defaultCrop } from './CropEditor';
+import { UploadBar } from './UploadBar';
 import { Avatar, Button, ErrorBanner, Input, KeyboardScreen, SectionLabel } from './ui';
 import { api } from '@/lib/api';
 import { API_URL } from '@/lib/config';
@@ -23,7 +24,7 @@ import {
 } from '@/lib/profileForm';
 import { useStyles, useTheme } from '@/lib/theme';
 import { toast } from '@/lib/toast';
-import type { Crop } from '@/lib/types';
+import type { Crop, UploadProgress } from '@/lib/types';
 import { radius, spacing, type ThemeColors } from '@/theme';
 import { errorMessage } from '@/lib/errors';
 
@@ -53,6 +54,7 @@ export function ProfileEditor({ onDone }: { onDone: () => void }) {
         },
   );
   const [uploading, setUploading] = useState<Picture | null>(null);
+  const [progress, setProgress] = useState<UploadProgress | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [interest, setInterest] = useState('');
@@ -67,9 +69,10 @@ export function ProfileEditor({ onDone }: { onDone: () => void }) {
     if (result.canceled) return;
     const asset = result.assets[0];
     setUploading(which);
+    setProgress({ sent: 0, total: 0 });
     setError(null);
     try {
-      const att = await api.uploadMedia({ uri: asset.uri, type: asset.mimeType ?? 'image/jpeg' });
+      const att = await api.uploadMedia({ uri: asset.uri, type: asset.mimeType ?? 'image/jpeg' }, setProgress);
       if (att.type !== 'image') throw new Error('Profile pictures must be pictures');
       const crop = att.width && att.height ? defaultCrop(att.width / att.height, which === 'cover' ? COVER_RATIO : 1) : null;
       set(which === 'cover' ? { cover: att.url, coverCrop: crop } : { avatarUrl: att.url, crop });
@@ -77,6 +80,7 @@ export function ProfileEditor({ onDone }: { onDone: () => void }) {
       setError(errorMessage(e));
     } finally {
       setUploading(null);
+      setProgress(null);
     }
   };
 
@@ -132,7 +136,6 @@ export function ProfileEditor({ onDone }: { onDone: () => void }) {
             small
             onPress={() => void pickPicture('cover')}
             disabled={uploading !== null}
-            loading={uploading === 'cover'}
           />
           {!!form.cover && (
             <Button
@@ -145,6 +148,7 @@ export function ProfileEditor({ onDone }: { onDone: () => void }) {
             />
           )}
         </View>
+        {uploading === 'cover' && progress && <UploadBar label="Uploading cover" progress={progress} />}
         <PictureCrop uri={form.cover} crop={form.coverCrop} ratio={COVER_RATIO} onChange={(coverCrop) => set({ coverCrop })} />
 
         <SectionLabel style={{ marginTop: spacing.md }}>Picture</SectionLabel>
@@ -179,6 +183,7 @@ export function ProfileEditor({ onDone }: { onDone: () => void }) {
             />
           )}
         </View>
+        {uploading === 'avatar' && progress && <UploadBar label="Uploading picture" progress={progress} />}
         <PictureCrop uri={form.avatarUrl} crop={form.crop} ratio={1} onChange={(crop) => set({ crop })} />
         <Text style={styles.hint}>JPG, PNG, WebP or GIF (animated GIFs play). The small circle above is what others see.</Text>
 
