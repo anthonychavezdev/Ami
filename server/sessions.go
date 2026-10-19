@@ -118,6 +118,7 @@ func (s *server) auth(h authedHandler) http.HandlerFunc {
 			writeError(w, http.StatusUnauthorized, "unauthorized")
 			return
 		}
+		noteUser(r, su.User.ID)
 		if su.mustChangePassword && !passwordChangeOnly[r.Method+" "+r.URL.Path] {
 			writeError(w, http.StatusForbidden, "set a new password first")
 			return

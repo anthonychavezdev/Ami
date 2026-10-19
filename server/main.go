@@ -44,7 +44,7 @@ type server struct {
 // config is everything the command-line flags decide.
 type config struct {
 	addr, dbPath, mediaDir, origins, tlsCert, tlsKey, webDir string
-	dev, trustProxy                                          bool
+	dev, trustProxy, verbose                                 bool
 	apiRate                                                  int
 	resetPassword                                            string // a username: print a temporary password for it and exit
 }
@@ -61,6 +61,7 @@ func parseFlags() config {
 	flag.StringVar(&c.tlsKey, "tls-key", "", "private key for -tls-cert")
 	flag.StringVar(&c.webDir, "web-dir", "", "serve the browser build from this directory (see `build web`)")
 	flag.IntVar(&c.apiRate, "api-rate", 600, "requests per minute allowed per client IP on /api (0 disables)")
+	flag.BoolVar(&c.verbose, "verbose", false, "log every request and response with headers and body, and every WebSocket message (passwords and tokens redacted, bodies cut at 4 KB)")
 	flag.StringVar(&c.resetPassword, "reset-password", "", "give this user a temporary password (printed) that must be changed at their next login, sign out their devices, and exit")
 	flag.Parse()
 	return c
@@ -68,6 +69,7 @@ func parseFlags() config {
 
 func main() {
 	cfg := parseFlags()
+	verbose = cfg.verbose
 	if cfg.resetPassword != "" {
 		if err := printTemporaryPassword(cfg); err != nil {
 			log.Fatal(err)
@@ -155,7 +157,11 @@ func (s *server) handler(webDir string) (http.Handler, error) {
 		}
 		mux.Handle("/", webApp(webDir))
 	}
-	return s.secureHeaders(s.cors(logRequests(s.apiLimit(mux)))), nil
+	logged := logRequests
+	if verbose {
+		logged = logTraffic // the whole exchange instead of one line
+	}
+	return s.secureHeaders(s.cors(logged(s.apiLimit(mux)))), nil
 }
 
 // shutdownGrace is how long in-flight requests get to finish on shutdown.
@@ -181,6 +187,9 @@ func serve(ctx context.Context, cfg config, s *server) error {
 	failed := make(chan error, 1)
 	go func() {
 		log.Printf("ami listening on %s (db %s)", cfg.addr, cfg.dbPath)
+		if verbose {
+			log.Print("verbose: logging headers, bodies and WebSocket traffic; passwords and tokens are redacted")
+		}
 		if cfg.tlsCert != "" || cfg.tlsKey != "" {
 			failed <- srv.ListenAndServeTLS(cfg.tlsCert, cfg.tlsKey)
 		} else {
