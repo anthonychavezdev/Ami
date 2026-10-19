@@ -3,9 +3,10 @@ import { StatusBar } from 'expo-status-bar';
 import React, { useCallback, useEffect } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
-import { Loading } from '@/components/ui';
+import { Loading, WideColumn } from '@/components/ui';
 import { AuthProvider, useAuth } from '@/lib/auth';
 import { CallProvider } from '@/lib/call';
+import { useWide } from '@/lib/layout';
 import { onNotificationTap } from '@/lib/notifications';
 import { ThemeProvider, useTheme } from '@/lib/theme';
 import { ToastHost } from '@/lib/toast';
@@ -25,6 +26,7 @@ export default function RootLayout() {
 function RootNavigator() {
   const { user, ready } = useAuth();
   const { colors, scheme } = useTheme();
+  const wide = useWide();
   const router = useRouter();
   const onIncoming = useCallback(() => router.push('/call'), [router]);
 
@@ -43,15 +45,17 @@ function RootNavigator() {
     <CallProvider onIncoming={onIncoming}>
       <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
       <Stack
-        screenLayout={({ children }) => (
+        screenLayout={({ route, children }) => (
           <>
-            {children}
+            {/* the tabs lay themselves out (sidebar + column) and a call fills the window */}
+            {route.name === '(tabs)' || route.name === 'call' ? children : <WideColumn>{children}</WideColumn>}
             <ToastHost />
           </>
         )}
         screenOptions={{
           headerTintColor: colors.accent,
           headerTitleStyle: { color: colors.text },
+          headerTitleAlign: wide ? 'center' : undefined, // over the column, not at the far left
           headerStyle: { backgroundColor: colors.card },
           headerBackButtonDisplayMode: 'minimal', // otherwise iOS shows the route group name, "(tabs)"
           contentStyle: { backgroundColor: colors.bg },
