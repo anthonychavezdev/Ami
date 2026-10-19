@@ -79,19 +79,25 @@ func (s *server) searchUsers(w http.ResponseWriter, r *http.Request, me *User) e
 		user      User
 		interests string
 	}
-	hits, err := queryAll(s.db, func(sc scanner) (hit, error) {
-		var h hit
-		return h, sc.Scan(fields(h.user.fields(), []any{&h.interests})...)
-	}, `SELECT `+userCols+`, u.interests FROM users u
+	type hitWithStatus struct {
+		hit
+		status string
+	}
+	hits, err := queryAll(s.db, func(sc scanner) (hitWithStatus, error) {
+		var h hitWithStatus
+		return h, sc.Scan(fields(h.user.fields(), []any{&h.interests, &h.status})...)
+	}, `SELECT `+userCols+`, u.interests,
+			COALESCE((SELECT CASE WHEN f.status = 'accepted' THEN 'friends' WHEN f.from_id = ? THEN 'outgoing' ELSE 'incoming' END
+				FROM friendships f WHERE (f.from_id = ? AND f.to_id = u.id) OR (f.from_id = u.id AND f.to_id = ?)), 'none')
+		FROM users u
 		WHERE u.id != ? AND (u.username LIKE ? OR u.display_name LIKE ?
 			OR JSON_SEARCH(LOWER(u.interests), 'one', ?) IS NOT NULL)
-		ORDER BY u.username LIMIT 25`, me.ID, like, like, strings.ToLower(like))
+		ORDER BY u.username LIMIT 25`, me.ID, me.ID, me.ID, me.ID, like, like, strings.ToLower(like))
 	if err != nil {
 		return err
 	}
-	return ok(w, mapSlice(hits, func(h hit) UserProfile {
-		status, _ := s.friendStatus(me.ID, h.user.ID)
-		return UserProfile{User: h.user, Interests: decodeInterests(h.interests), Links: []Link{}, FriendStatus: status}
+	return ok(w, mapSlice(hits, func(h hitWithStatus) UserProfile {
+		return UserProfile{User: h.user, Interests: decodeInterests(h.interests), Links: []Link{}, FriendStatus: h.status}
 	}))
 }
 
@@ -116,11 +122,12 @@ func (s *server) getUser(w http.ResponseWriter, r *http.Request, me *User) error
 func (s *server) profileOf(viewer string, u User) UserProfile {
 	p := UserProfile{User: u}
 	var interests, links string
-	_ = s.db.QueryRow(`SELECT bio, interests, links, cover_url, cover_crop FROM users WHERE id = ?`, u.ID).Scan(&p.Bio, &interests, &links, &p.CoverURL, &p.CoverCrop)
+	_ = s.db.QueryRow(`SELECT bio, interests, links, cover_url, cover_crop,
+			(SELECT COUNT(*) FROM friendships WHERE status = 'accepted' AND (from_id = u.id OR to_id = u.id)),
+			(SELECT COUNT(*) FROM posts WHERE author_id = u.id AND group_id IS NULL)
+		FROM users u WHERE u.id = ?`, u.ID).Scan(&p.Bio, &interests, &links, &p.CoverURL, &p.CoverCrop, &p.FriendCount, &p.PostCount)
 	p.Interests, p.Links = decodeInterests(interests), decodeLinks(links)
 	p.FriendStatus, _ = s.friendStatus(viewer, u.ID)
-	_ = s.db.QueryRow(`SELECT COUNT(*) FROM friendships WHERE status = 'accepted' AND (from_id = ? OR to_id = ?)`, u.ID, u.ID).Scan(&p.FriendCount)
-	_ = s.db.QueryRow(`SELECT COUNT(*) FROM posts WHERE author_id = ? AND group_id IS NULL`, u.ID).Scan(&p.PostCount)
 	return p
 }
 

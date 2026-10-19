@@ -28,10 +28,12 @@ Finds up to 25 accounts, other than yours, whose username, display name or one
 of whose interests contains `q`, ordered by username. The term is used in a
 `LIKE` pattern with `%` and `_` escaped, so searching for `a_b` finds that text
 literally; interests are searched with MariaDB's `JSON_SEARCH` over the
-lower-cased stored array, so that search is case-insensitive like the others. An empty `q` lists the first 25 accounts. Each result is a
-`UserProfile` with `friend_status` and `interests` filled in (no bio, cover,
-links or counts): what the Find list needs for its button and to show what
-matched.
+lower-cased stored array, so that search is case-insensitive like the others.
+An empty `q` lists the first 25 accounts. Each result is a `UserProfile` with
+`friend_status` and `interests` filled in (no bio, cover, links or counts):
+what the Find list needs for its button and to show what matched. The status
+is computed in the same query, a subquery on the friendships' primary key per
+row, rather than a lookup per result.
 
 ## GET /api/users/{id}
 

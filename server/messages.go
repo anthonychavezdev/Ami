@@ -1,8 +1,6 @@
 package main
 
 import (
-	"database/sql"
-	"errors"
 	"net/http"
 	"sort"
 	"strings"
@@ -327,25 +325,23 @@ func (s *server) mayDeleteMessage(userID string, m Message, c chat) bool {
 // unreadMessages counts messages to a user past each chat's read marker:
 // direct messages from each friend, and group messages from other people.
 // A marker is the id of the last message read; ids only ever grow, so a
-// marker left at a deleted message stays right.
+// marker left at a deleted message stays right. The count goes chat by chat
+// (each sender who ever wrote to the user, each group they are in) so that
+// every piece is an index range from the marker up: the work is the number
+// of unread messages, not of messages.
 func (s *server) unreadMessages(userID string) (int, error) {
 	var n int
 	err := s.db.QueryRow(`SELECT
-		(SELECT COUNT(*) FROM messages x WHERE x.group_id IS NULL AND x.recipient_id = ?
-			AND x.id > COALESCE((SELECT last_read_id FROM conversation_reads r WHERE r.user_id = ? AND r.peer_id = x.sender_id), ''))
-		+ (SELECT COUNT(*) FROM messages x JOIN group_members gm ON gm.group_id = x.group_id AND gm.user_id = ?
-			WHERE x.sender_id != ?
-			AND x.id > COALESCE((SELECT last_read_id FROM group_reads r WHERE r.user_id = ? AND r.group_id = x.group_id), ''))`,
+		(SELECT COALESCE(SUM((SELECT COUNT(*) FROM messages x WHERE x.recipient_id = ? AND x.sender_id = s.sender_id
+				AND x.group_id IS NULL AND x.id > COALESCE(r.last_read_id, ''))), 0)
+			FROM (SELECT DISTINCT sender_id FROM messages WHERE recipient_id = ? AND group_id IS NULL) s
+			LEFT JOIN conversation_reads r ON r.user_id = ? AND r.peer_id = s.sender_id)
+		+ (SELECT COALESCE(SUM((SELECT COUNT(*) FROM messages x WHERE x.group_id = gm.group_id
+				AND x.id > COALESCE(r.last_read_id, '') AND x.sender_id != ?)), 0)
+			FROM group_members gm LEFT JOIN group_reads r ON r.user_id = gm.user_id AND r.group_id = gm.group_id
+			WHERE gm.user_id = ?)`,
 		userID, userID, userID, userID, userID).Scan(&n)
 	return n, err
-}
-
-// groupUnread counts a group's messages from others past the user's read marker.
-func (s *server) groupUnread(userID, groupID string) int {
-	var n int
-	_ = s.db.QueryRow(`SELECT COUNT(*) FROM messages x WHERE x.group_id = ? AND x.sender_id != ?
-		AND x.id > COALESCE((SELECT last_read_id FROM group_reads r WHERE r.user_id = ? AND r.group_id = ?), '')`, groupID, userID, userID, groupID).Scan(&n)
-	return n
 }
 
 // readChat moves the chat's read marker to its latest message and tells the
@@ -415,23 +411,57 @@ func (s *server) directConversations(userID string) ([]Conversation, error) {
 		userID, userID, userID, userID, userID, userID)
 }
 
-// groupConversations: every group the user is in, with its newest message if any.
+// groupConversations: every group the user is in, with its newest message if
+// any and its unread count. Three queries however many groups: the groups,
+// the per-group unread count and newest message id, then those messages.
 func (s *server) groupConversations(userID string) ([]Conversation, error) {
 	groups, err := s.queryGroups(userID, `WHERE g.id IN (SELECT group_id FROM group_members WHERE user_id = ?)`, userID)
 	if err != nil {
 		return nil, err
 	}
+	type activity struct {
+		unread int
+		lastID *string
+	}
+	byGroup := map[string]activity{}
+	rows, err := s.db.Query(`SELECT gm.group_id,
+			(SELECT COUNT(*) FROM messages x WHERE x.group_id = gm.group_id AND x.sender_id != ? AND x.id > COALESCE(r.last_read_id, '')),
+			(SELECT MAX(id) FROM messages WHERE group_id = gm.group_id)
+		FROM group_members gm LEFT JOIN group_reads r ON r.user_id = gm.user_id AND r.group_id = gm.group_id
+		WHERE gm.user_id = ?`, userID, userID)
+	if err != nil {
+		return nil, err
+	}
+	var lastIDs []any
+	for rows.Next() {
+		var id string
+		var a activity
+		if err := rows.Scan(&id, &a.unread, &a.lastID); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		byGroup[id] = a
+		if a.lastID != nil {
+			lastIDs = append(lastIDs, *a.lastID)
+		}
+	}
+	rows.Close()
+	last := map[string]Message{} // group -> its newest message
+	if len(lastIDs) > 0 {
+		messages, err := queryAll(s.db, scanMessage, `SELECT `+messageCols+`, `+userCols+` FROM messages m JOIN users u ON u.id = m.sender_id
+			WHERE m.id IN (`+placeholders(len(lastIDs))+`)`, lastIDs...)
+		if err != nil {
+			return nil, err
+		}
+		for _, m := range messages {
+			last[*m.GroupID] = m
+		}
+	}
 	out := make([]Conversation, 0, len(groups))
 	for i := range groups {
-		g := &groups[i]
-		c := Conversation{Group: g, Unread: s.groupUnread(userID, g.ID)}
-		m, err := scanMessage(s.db.QueryRow(`SELECT `+messageCols+`, `+userCols+` FROM messages m JOIN users u ON u.id = m.sender_id
-			WHERE m.group_id = ? ORDER BY m.id DESC LIMIT 1`, g.ID))
-		switch {
-		case err == nil:
+		c := Conversation{Group: &groups[i], Unread: byGroup[groups[i].ID].unread}
+		if m, ok := last[groups[i].ID]; ok {
 			c.LastMessage = &m
-		case !errors.Is(err, sql.ErrNoRows):
-			return nil, err
 		}
 		out = append(out, c)
 	}

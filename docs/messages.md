@@ -85,7 +85,11 @@ recipient_id, group_id, unread}` with their own recomputed total. 204.
 
 A message is unread for a user when its id is above that user's read marker for
 the chat, and, in a group, when someone else wrote it. `unreadMessages(user)`
-sums both kinds in one query; `groupUnread` counts one group. The markers:
+sums both kinds in one query that goes chat by chat: each sender who ever wrote
+to the user, each group they are in, joined to its marker, so every piece is
+an index range from the marker up (`messages_sender`, `messages_group`) and
+the work grows with the unread messages, not with the chat history. The
+markers:
 
 | Table | Key | Set by |
 | --- | --- | --- |
@@ -103,8 +107,10 @@ users a `messages.read` for that group with their new total (`refreshBadge`).
 
 The Messages tab's list: for direct chats, the newest message with each person
 (one row per peer, found with `MAX(id) ... GROUP BY peer`) and the unread count;
-for groups, every group you belong to with its newest message if any. Sorted
-most recent message first; silent groups last, by name.
+for groups, every group you belong to with its newest message if any. The
+groups take three queries however many there are: the groups, then one row
+per membership with the unread count and the newest message id, then those
+messages. Sorted most recent message first; silent groups last, by name.
 
 ## In the app
 
