@@ -1,20 +1,22 @@
 import { File, UploadType } from 'expo-file-system';
 
-import type { UploadProgress } from './types';
+import type { UploadOptions } from './types';
 
 // Sends a picked file as the request body, streamed from disk by the OS.
 // Expo's fetch would first read the whole file into memory, and uploads can
-// be 20 GB. Progress arrives from the OS at most ten times a second.
+// be 20 GB. Progress arrives from the OS at most ten times a second; an
+// aborted signal cancels the task, which then rejects with an AbortError.
 export function uploadFile(
   url: string,
   file: { uri: string; type: string },
   headers: Record<string, string>,
-  onProgress?: (progress: UploadProgress) => void,
+  { onProgress, signal }: UploadOptions = {},
 ): Promise<{ status: number; body: string }> {
   return new File(file.uri).upload(url, {
     httpMethod: 'POST',
     uploadType: UploadType.BINARY_CONTENT,
     headers: { ...headers, 'Content-Type': file.type },
     onProgress: onProgress && (({ bytesSent, totalBytes }) => onProgress({ sent: bytesSent, total: totalBytes })),
+    signal,
   });
 }

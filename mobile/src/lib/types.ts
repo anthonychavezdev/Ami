@@ -133,5 +133,7 @@ export interface Conversation {
   unread: number;
 }
 
-// How far an upload has got, in bytes (upload.ts / upload.web.ts).
+// How far an upload has got, in bytes, and how to follow or cancel one
+// (upload.ts / upload.web.ts).
 export type UploadProgress = { sent: number; total: number };
+export type UploadOptions = { onProgress?: (progress: UploadProgress) => void; signal?: AbortSignal };

@@ -15,10 +15,12 @@ export function AttachmentChips({
   items,
   upload,
   onRemove,
+  onCancelUpload,
 }: {
   items: Attachment[];
   upload: Upload | null;
   onRemove: (index: number) => void;
+  onCancelUpload: () => void;
 }) {
   const styles = useStyles(makeStyles);
   const { colors } = useTheme();
@@ -41,7 +43,11 @@ export function AttachmentChips({
         </View>
       ))}
       {upload && (
-        <UploadBar label={`Uploading ${upload.kind}${upload.waiting > 0 ? ` (${upload.waiting} more waiting)` : ''}`} progress={upload} />
+        <UploadBar
+          label={`Uploading ${upload.kind}${upload.waiting > 0 ? ` (${upload.waiting} more waiting)` : ''}`}
+          progress={upload}
+          onCancel={onCancelUpload}
+        />
       )}
     </View>
   );

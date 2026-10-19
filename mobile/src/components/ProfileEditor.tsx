@@ -1,7 +1,7 @@
 import { Feather } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import * as ImagePicker from 'expo-image-picker';
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { COVER_RATIO, Cover } from './Cover';
@@ -26,7 +26,7 @@ import { useStyles, useTheme } from '@/lib/theme';
 import { toast } from '@/lib/toast';
 import type { Crop, UploadProgress } from '@/lib/types';
 import { radius, spacing, type ThemeColors } from '@/theme';
-import { errorMessage } from '@/lib/errors';
+import { errorMessage, isAbort } from '@/lib/errors';
 
 type Picture = 'avatar' | 'cover';
 
@@ -55,6 +55,7 @@ export function ProfileEditor({ onDone }: { onDone: () => void }) {
   );
   const [uploading, setUploading] = useState<Picture | null>(null);
   const [progress, setProgress] = useState<UploadProgress | null>(null);
+  const uploadTask = useRef<AbortController | null>(null); // the upload in flight, for Cancel
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [interest, setInterest] = useState('');
@@ -68,21 +69,27 @@ export function ProfileEditor({ onDone }: { onDone: () => void }) {
     const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], quality: 1 });
     if (result.canceled) return;
     const asset = result.assets[0];
+    const controller = new AbortController();
+    uploadTask.current = controller;
     setUploading(which);
     setProgress({ sent: 0, total: 0 });
     setError(null);
     try {
-      const att = await api.uploadMedia({ uri: asset.uri, type: asset.mimeType ?? 'image/jpeg' }, setProgress);
+      const att = await api.uploadMedia(
+        { uri: asset.uri, type: asset.mimeType ?? 'image/jpeg' },
+        { signal: controller.signal, onProgress: setProgress },
+      );
       if (att.type !== 'image') throw new Error('Profile pictures must be pictures');
       const crop = att.width && att.height ? defaultCrop(att.width / att.height, which === 'cover' ? COVER_RATIO : 1) : null;
       set(which === 'cover' ? { cover: att.url, coverCrop: crop } : { avatarUrl: att.url, crop });
     } catch (e) {
-      setError(errorMessage(e));
+      if (!isAbort(e)) setError(errorMessage(e));
     } finally {
       setUploading(null);
       setProgress(null);
     }
   };
+  const cancelUpload = () => uploadTask.current?.abort();
 
   const save = async () => {
     setSaving(true);
@@ -148,7 +155,7 @@ export function ProfileEditor({ onDone }: { onDone: () => void }) {
             />
           )}
         </View>
-        {uploading === 'cover' && progress && <UploadBar label="Uploading cover" progress={progress} />}
+        {uploading === 'cover' && progress && <UploadBar label="Uploading cover" progress={progress} onCancel={cancelUpload} />}
         <PictureCrop uri={form.cover} crop={form.coverCrop} ratio={COVER_RATIO} onChange={(coverCrop) => set({ coverCrop })} />
 
         <SectionLabel style={{ marginTop: spacing.md }}>Picture</SectionLabel>
@@ -183,7 +190,7 @@ export function ProfileEditor({ onDone }: { onDone: () => void }) {
             />
           )}
         </View>
-        {uploading === 'avatar' && progress && <UploadBar label="Uploading picture" progress={progress} />}
+        {uploading === 'avatar' && progress && <UploadBar label="Uploading picture" progress={progress} onCancel={cancelUpload} />}
         <PictureCrop uri={form.avatarUrl} crop={form.crop} ratio={1} onChange={(crop) => set({ crop })} />
         <Text style={styles.hint}>JPG, PNG, WebP or GIF (animated GIFs play). The small circle above is what others see.</Text>
 
