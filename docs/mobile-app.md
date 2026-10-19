@@ -92,7 +92,7 @@ On such a window:
   | Tab | Param | Pane content | Stand-alone route that redirects into it |
   | --- | --- | --- | --- |
   | Feed | `?post=<id>` | `PostView` | `/post/<id>` |
-  | Friends | `?user=<id>` | `UserView` | `/user/<id>` |
+  | Friends | `?user=<id>` | `UserView` | `/user/<id>` (your own id goes to Me instead) |
   | Groups | `?group=<id>` | `GroupView` | `/group/<id>` |
   | Messages | `?chat=u:<id>` or `g:<id>` | `ChatView` | `/chat/<id>`, `/chat/group/<id>` |
   | Me | `?show=edit-profile` or `change-password` | `ProfileEditor` or `PasswordForm`, else your own `UserView` | `/edit-profile`, `/change-password` (unless forced) |
