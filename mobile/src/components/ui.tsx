@@ -232,6 +232,18 @@ export function WideColumn({ children, width = COLUMN_WIDTH }: { children: React
 // indicator. Padding on both platforms: Android draws edge to edge, so the
 // window no longer shrinks for the keyboard by itself. The offset is the
 // header's real height, which varies by phone.
+// A list in a pane of its own beside what it opened: how Messages, Groups and
+// Friends lay out on a wide window.
+export function Panes({ list, children }: { list: React.ReactNode; children: React.ReactNode }) {
+  const styles = useStyles(makeStyles);
+  return (
+    <View style={styles.panes}>
+      <View style={styles.listPane}>{list}</View>
+      <View style={styles.detailPane}>{children}</View>
+    </View>
+  );
+}
+
 export function KeyboardScreen({ children }: { children: React.ReactNode }) {
   const headerHeight = useHeaderHeight();
   return (
@@ -300,6 +312,18 @@ export function Segmented<T extends string>({
 
 const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
+    panes: {
+      flex: 1,
+      flexDirection: 'row',
+      margin: spacing.lg,
+      marginTop: 0,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      overflow: 'hidden',
+    },
+    listPane: { width: 340, borderRightWidth: 1, borderRightColor: colors.border, backgroundColor: colors.card },
+    detailPane: { flex: 1 },
     btn: { paddingVertical: 12, paddingHorizontal: 18, borderRadius: radius.md, alignItems: 'center', justifyContent: 'center' },
     btnSmall: { paddingVertical: 7, paddingHorizontal: 12, borderRadius: radius.pill },
     btnContent: { flexDirection: 'row', alignItems: 'center', gap: 6 },

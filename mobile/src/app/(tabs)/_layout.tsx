@@ -22,7 +22,7 @@ export default function TabsLayout() {
   return (
     <Tabs
       screenLayout={({ route, children }) => (
-        <WideColumn width={route.name === 'messages' || route.name === 'groups' ? 1200 : undefined}>{children}</WideColumn>
+        <WideColumn width={['messages', 'groups', 'friends'].includes(route.name) ? 1200 : undefined}>{children}</WideColumn>
       )}
       screenOptions={{
         tabBarActiveTintColor: colors.accent,
