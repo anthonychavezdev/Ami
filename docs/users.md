@@ -67,5 +67,7 @@ see them ([posts.md](posts.md#the-post-shape)).
   so acting from a list beside it keeps it right.
 - The route `user/[id]` renders `UserView` full screen on phones and, on a wide
   window, redirects to `/friends?user=<id>` so the profile opens beside the
-  Friends list ([mobile-app.md](mobile-app.md#wide-windows)). Links from post
-  authors, group members and the Me tab's *View my profile* all go through it.
+  Friends list, or to `/profile` when the id is your own, since the Me tab
+  already shows your profile beside the settings
+  ([mobile-app.md](mobile-app.md#wide-windows)). Links from post authors,
+  group members and the Me tab's *View my profile* all go through it.
