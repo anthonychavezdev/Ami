@@ -143,7 +143,7 @@ for calls.
 `fetch` with the JSON body and the Bearer token, treats 204 as `undefined`, and
 turns any non-2xx into an `ApiError(status, message)` using the server's
 `{error}`. A network failure is `ApiError(0, "Cannot reach server at ...")`.
-`upload` posts `FormData`. The `api` object lists one function per route, typed
+`upload` sends a file as the request body (a platform twin, below). The `api` object lists one function per route, typed
 with the shapes in [`lib/types.ts`](../mobile/src/lib/types.ts), which mirror the
 server's structs. `mediaUrl(att)` makes an attachment's absolute URL.
 
@@ -161,7 +161,7 @@ pair exports the same names, so the rest of the code never checks the platform:
 | --- | --- | --- |
 | `storage` | `expo-secure-store` (Keychain / Keystore) | `localStorage` |
 | `confirm` | `Alert.alert` with a destructive button | `window.confirm` |
-| `upload` | an `expo-file-system` `File` as the Blob | `fetch(blob:)` → Blob |
+| `upload` | `expo-file-system` `File.upload`, streamed by the OS | `fetch(blob:)` → a Blob as the body |
 | `save` | download to cache, `expo-media-library` | an `<a download>` click |
 | `notifications` | `expo-notifications`, push tokens, app badge | Notification API, `(n)` in the tab title |
 | `webrtc` | `react-native-webrtc` classes, `RTCView`, the ReplayKit picker | the browser's WebRTC, `<video>` / `<audio>` |

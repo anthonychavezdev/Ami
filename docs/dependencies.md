@@ -26,7 +26,7 @@ server, the method-and-pattern router, `MaxBytesReader`, `ServeFile`),
 `database/sql`, `crypto/pbkdf2` and `crypto/subtle` (passwords),
 `crypto/rand` and `crypto/sha256` (tokens), `encoding/json`, `image` with
 `image/png`, `image/jpeg`, `image/gif` (picture sizes, demo pictures; no WebP
-decoder exists there), `mime/multipart` (uploads), `reflect` (presence),
+decoder exists there), `reflect` (presence),
 `os/signal` and `context` (shutdown), `log`, `flag`.
 
 ## The app
@@ -52,7 +52,7 @@ Runtime dependencies from [`mobile/package.json`](../mobile/package.json):
 | `expo-image-picker` | 57 | Picking pictures and videos from the library, for posts, messages and profile pictures. | The system picker with permission handling and multiple selection. |
 | `expo-video` | 57 | Playing attached videos inline (first frame) and fullscreen with native controls. | The current Expo video module (`expo-av` is deprecated). |
 | `expo-media-library` | 57 | Saving a picture or video to the photo library. | The permissioned way to write to the library. |
-| `expo-file-system` | 57 | `File` objects: the Blob for uploads, downloads to the cache before saving. | Expo's `fetch` only accepts its own `File` as a multipart part; the new `File`/`Paths` API is the maintained one. |
+| `expo-file-system` | 57 | `File.upload` streams uploads from disk; downloads to the cache before saving. | Expo's `fetch` reads a whole file into memory before sending it, which 20 GB uploads cannot afford; the `File`/`Paths` API is the maintained one. |
 | `expo-notifications` | 57 | Local notifications, the Android channel, the badge, push tokens, tap handling. | The Expo way to both local and push notifications, with Expo's push service on the server side. |
 | `react-native-webrtc` | 124 | `RTCPeerConnection`, `mediaDevices`, `RTCView`, screen capture on devices. | The only maintained WebRTC implementation for React Native. Its API mirrors the browser's, which is what lets `webrtc.web.tsx` be a thin twin. |
 | `@config-plugins/react-native-webrtc` | 15 | Config plugin adding the camera and microphone permissions and settings react-native-webrtc needs to the native projects. | Keeps those native changes declarative in `app.json` instead of hand edits. |

@@ -42,7 +42,9 @@ at. This page explains how it is put together; the pages linked from
 
 The `http.Server` is configured with `MaxHeaderBytes` 64 KB, `ReadHeaderTimeout`
 10 s, `ReadTimeout` 30 s, `WriteTimeout` 60 s, `IdleTimeout` 2 min and TLS 1.2 as
-the minimum version.
+the minimum version. Uploads and `/media/` downloads are the exception to the
+read and write timeouts: they extend their connection's deadline while bytes
+keep moving and give up after a two-minute stall ([media.md](media.md)).
 
 ### The `server` struct
 

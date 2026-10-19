@@ -1,7 +1,16 @@
-import { File } from 'expo-file-system';
+import { File, UploadType } from 'expo-file-system';
 
-// A picked file as a Blob for FormData: Expo's fetch wants one and File is
-// one (its MIME type comes from the extension).
-export async function fileBlob(uri: string): Promise<Blob> {
-  return new File(uri);
+// Sends a picked file as the request body, streamed from disk by the OS.
+// Expo's fetch would first read the whole file into memory, and uploads can
+// be 20 GB.
+export function uploadFile(
+  url: string,
+  file: { uri: string; type: string },
+  headers: Record<string, string>,
+): Promise<{ status: number; body: string }> {
+  return new File(file.uri).upload(url, {
+    httpMethod: 'POST',
+    uploadType: UploadType.BINARY_CONTENT,
+    headers: { ...headers, 'Content-Type': file.type },
+  });
 }

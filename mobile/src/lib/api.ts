@@ -1,5 +1,5 @@
 import { API_URL } from './config';
-import { fileBlob } from './upload';
+import { uploadFile } from './upload';
 import type { Attachment, ChatTarget, Comment, Conversation, Group, GroupDetail, Me, Message, Post, User, UserProfile } from './types';
 import { errorMessage } from './errors';
 
@@ -33,20 +33,24 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return data as T;
 }
 
-// Multipart upload of a picked file.
-async function upload<T>(path: string, file: { uri: string; name: string; type: string }): Promise<T> {
-  const form = new FormData();
-  form.append('file', await fileBlob(file.uri), file.name);
+// Upload of a picked file: the file is the request body, streamed from disk
+// (upload.ts on phones, upload.web.ts in the browser).
+async function upload<T>(path: string, file: { uri: string; type: string }): Promise<T> {
   const headers: Record<string, string> = {};
   if (authToken) headers.Authorization = `Bearer ${authToken}`;
-  let res: Response;
+  let res: { status: number; body: string };
   try {
-    res = await fetch(API_URL + path, { method: 'POST', headers, body: form });
+    res = await uploadFile(API_URL + path, file, headers);
   } catch (e) {
     throw new ApiError(0, `Cannot reach server at ${API_URL} (${errorMessage(e)})`);
   }
-  const data = await res.json().catch(() => null);
-  if (!res.ok) throw new ApiError(res.status, data?.error ?? res.statusText);
+  let data: (T & { error?: string }) | null = null;
+  try {
+    data = res.body ? JSON.parse(res.body) : null;
+  } catch {
+    data = null;
+  }
+  if (res.status < 200 || res.status >= 300) throw new ApiError(res.status, data?.error ?? `HTTP ${res.status}`);
   return data as T;
 }
 
@@ -96,7 +100,7 @@ export const api = {
   feed: (before?: string) => get<Post[]>(`/api/feed${q({ before })}`),
   createPost: (body: string, group_id?: string, attachments: Attachment[] = []) =>
     post<Post>('/api/posts', { body, group_id, attachments }),
-  uploadMedia: (file: { uri: string; name: string; type: string }) => upload<Attachment>('/api/media', file),
+  uploadMedia: (file: { uri: string; type: string }) => upload<Attachment>('/api/media', file),
   post: (id: string) => get<Post>(`/api/posts/${id}`),
   deletePost: (id: string) => del<void>(`/api/posts/${id}`),
   updatePost: (id: string, body: string, attachments: Attachment[]) => put<Post>(`/api/posts/${id}`, { body, attachments }),

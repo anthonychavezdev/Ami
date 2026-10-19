@@ -23,11 +23,16 @@ by the server.
 
 ## POST /api/media
 
-A `multipart/form-data` body with one `file` field. Session required; 30 uploads
-per minute per user (`uploadLimiter`, `429` beyond).
+The picture or video is the request body, with its `Content-Type`. Session
+required; 30 uploads per minute per user (`uploadLimiter`, `429` beyond).
 
-1. The body is capped at 64 MB with `http.MaxBytesReader`; going over surfaces as
-   `413 file too large (max 64 MB)` once the copy fails.
+1. The body is capped at 20 GB (`maxUploadBytes`): a declared `Content-Length`
+   over that is `413 file too large (max 20 GB)` at once, and a streamed body
+   that grows past it gets the same once the copy fails (`http.MaxBytesReader`).
+   An empty body is a 400. The server's read and write timeouts are sized for
+   ordinary requests, so the handler keeps extending them while bytes arrive
+   (`pacedReader`, at most once a second) and drops a transfer that stalls for
+   two minutes (`transferIdle`). A full disk is `507 no space left for uploads`.
 2. The first 512 bytes are sniffed. `sniffMedia` trusts `http.DetectContentType`
    when it recognises a supported type; otherwise, for a declared `video/*` type
    whose bytes start with an ISO media `ftyp` box (iPhone MOV/MP4 brands Go does
@@ -55,7 +60,10 @@ notifications. The name may not contain path separators or start with a dot
 (404 otherwise). Responses are `Cache-Control: public, max-age=31536000, immutable`
 (a name never changes content) and carry a Content Security Policy with
 `sandbox`, so a picture opened as a page cannot run anything. The default
-security headers still apply ([security.md](security.md#headers)).
+security headers still apply ([security.md](security.md#headers)). The file is
+served by `http.ServeFile` (so `Range` requests work, which is how video players
+seek) through a `pacedWriter` that extends the write deadline while bytes flow:
+a 20 GB video outlasts the server's 60 s `WriteTimeout` many times over.
 
 ## Attachments on posts and messages
 
@@ -79,10 +87,11 @@ Errors are `400` with the reason. Profile pictures go through a stricter check
   remaining slots, quality 0.85) and uploads each asset in turn through
   `api.uploadMedia`, counting in-flight uploads so the send button waits. Links
   are added from a small URL field. `AttachmentChips` shows what is queued, with
-  thumbnails for pictures and a remove button. On devices the file goes to
-  `FormData` as an `expo-file-system` `File` (the only Blob Expo's fetch accepts);
-  in the browser the picker's `blob:` URL is fetched into a Blob
-  (`upload.ts` / `upload.web.ts`).
+  thumbnails for pictures and a remove button. On devices the file is handed
+  to the OS to stream from disk as the request body (`expo-file-system`'s
+  `File.upload`; Expo's `fetch` would read it all into memory first); in the
+  browser the picker's `blob:` URL is fetched into a file-backed Blob that the
+  browser streams (`upload.ts` / `upload.web.ts`).
 - **Showing**: `AttachmentList` lays pictures and videos out in a grid (one per
   row when alone, sized from the measured width because percentage widths and
   aspect ratios do not mix in a wrapping row), videos as a first frame with a

@@ -16,8 +16,8 @@ that explains it in full. The route table itself is `routes()` in
   `403 {"error":"set a new password first"}` ([passwords.md](passwords.md#the-forced-change)).
 - **Ids** in paths, bodies and events are UUIDs, 36-character strings like
   `019a0c2e-7b3a-7c21-9f4e-6a0d3b1c2e55`. A malformed one in a path is a 400.
-- **Bodies** are JSON both ways, except the upload (`multipart/form-data`) and
-  `/media/` (the file itself). Request bodies are capped at 1 MB; uploads at 64 MB.
+- **Bodies** are JSON both ways, except the upload and `/media/`, which carry
+  the file itself. Request bodies are capped at 1 MB; uploads at 20 GB.
 - **Errors** are `{"error": "<message>"}` with the status in the table below.
   Internal errors are always `500 {"error":"internal error"}`.
 - **Pagination**: `?before=<id>&limit=<n>` on lists marked *paged*: items older
@@ -40,9 +40,10 @@ that explains it in full. The route table itself is `routes()` in
 | 403 | Not allowed: not a member, not the author, origin refused, temporary password. |
 | 404 | No such thing, or not yours to see (a message outside the chat you named). |
 | 409 | Conflict: username taken, friend request already sent, already friends. |
-| 413 | Upload over 64 MB. |
+| 413 | Upload over 20 GB. |
 | 415 | Upload is not a supported picture or video. |
 | 429 | Rate limited. |
+| 507 | No disk space left for the upload. |
 
 ## Health and the web build
 
@@ -101,7 +102,7 @@ that explains it in full. The route table itself is `routes()` in
 
 | Route | Auth | Request | Response | Summary | Details |
 | --- | --- | --- | --- | --- | --- |
-| `POST /api/media` | session | multipart field `file` | 201 `Attachment` | Uploads one picture or video (JPEG, PNG, GIF, WebP, MP4, MOV, WebM, 64 MB max). | [media.md](media.md#post-apimedia) |
+| `POST /api/media` | session | the file, with its `Content-Type` | 201 `Attachment` | Uploads one picture or video (JPEG, PNG, GIF, WebP, MP4, MOV, WebM, 20 GB max). | [media.md](media.md#post-apimedia) |
 | `GET /media/{name}` | none | | the file | Serves an upload; names are random, so no session is needed. | [media.md](media.md#get-medianame) |
 
 ## Friends

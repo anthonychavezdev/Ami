@@ -154,8 +154,8 @@ project id the app simply never registers a push token.
   strict `Content-Security-Policy` (relaxed only for the web build and media),
   `Permissions-Policy`, `Cross-Origin-Opener-Policy`, and HSTS when serving TLS
   or behind a proxy with `-trust-proxy`.
-- Limits: 1 MB JSON bodies, 64 MB uploads (content sniffed, random names, no
-  SVG), 64 KB WebSocket messages, 64 KB headers, read/write/idle timeouts,
+- Limits: 1 MB JSON bodies, 20 GB uploads (streamed to disk, content sniffed,
+  random names, no SVG), 64 KB WebSocket messages, 64 KB headers, read/write/idle timeouts,
   TLS 1.2+. Internal errors are logged, never returned to clients.
 
 ## Features
@@ -203,7 +203,7 @@ GET    /api/feed?before=&limit=
 POST   /api/posts {body, group_id?}    GET|PUT|DELETE /api/posts/{id}   (PUT: author, {body, attachments})
 GET|POST /api/posts/{id}/comments {body, parent_id?}   PUT|DELETE /api/comments/{id} (author)
 PUT|DELETE /api/posts/{id}/reaction {emoji}
-POST   /api/media (multipart "file") -> {type, url, width, height}   GET /media/{name}
+POST   /api/media (the file as the body) -> {type, url, width, height}   GET /media/{name}
 GET    /api/friends   /api/friends/requests
 POST   /api/friends/{id}/request   /api/friends/{id}/accept    DELETE /api/friends/{id}
 GET    /api/groups?mine=1|q=       POST /api/groups {name, description, private?, member_ids?}

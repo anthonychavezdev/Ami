@@ -32,11 +32,14 @@ that come with it.
   `X-Forwarded-Proto: https` as secure (for HSTS). Only set it when the proxy is
   the only way to reach the port, or clients can spoof those headers.
 - The proxy must pass WebSocket upgrades on `/ws` (`Upgrade` and `Connection`
-  headers) and allow request bodies of 64 MB for uploads, and should not buffer
-  the WebSocket. For nginx that is `proxy_http_version 1.1`,
-  `proxy_set_header Upgrade $http_upgrade`, `proxy_set_header Connection "upgrade"`,
-  `client_max_body_size 64m`, plus the usual `X-Forwarded-For` and
-  `X-Forwarded-Proto` headers.
+  headers), allow request bodies of 20 GB for uploads without spooling them to
+  its own disk first, and should not buffer the WebSocket. For nginx that is
+  `proxy_http_version 1.1`, `proxy_set_header Upgrade $http_upgrade`,
+  `proxy_set_header Connection "upgrade"`, `client_max_body_size 20g`,
+  `proxy_request_buffering off`, plus the usual `X-Forwarded-For` and
+  `X-Forwarded-Proto` headers. nginx's `proxy_read_timeout` and
+  `proxy_send_timeout` count between successive chunks, so a moving transfer
+  of any size is fine at their defaults.
 - Health: `GET /api/health` answers `{"status":"ok"}` without a session.
 - Logs go to stderr, one line per request; a supervisor (systemd, process
   managers) captures them. `-verbose` is for debugging sessions, not for
