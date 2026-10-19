@@ -17,7 +17,7 @@ import { radius, spacing, type ThemeColors } from '@/theme';
 type Tab = 'mine' | 'discover';
 
 // How a list opens a group: the group screen, or, on wide windows, the pane beside the list.
-type Opening = { selectedId: number | null; onOpen?: (group: Group) => void };
+type Opening = { selectedId: string | null; onOpen?: (group: Group) => void };
 
 // My groups and public groups to discover. On a wide window the open group
 // sits beside the list, named by ?group= so a reload or a link (/group/...
@@ -26,11 +26,11 @@ export default function GroupsScreen() {
   const router = useRouter();
   const wide = useWide();
   const { group: groupParam } = useLocalSearchParams<{ group?: string }>();
-  const openId = wide && Number(groupParam) > 0 ? Number(groupParam) : null;
+  const openId = wide && groupParam ? groupParam : null;
   const [tab, setTab] = useState<Tab>('mine');
   const [creating, setCreating] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
-  const opening: Opening = { selectedId: openId, onOpen: wide ? (g) => router.setParams({ group: String(g.id) }) : undefined };
+  const opening: Opening = { selectedId: openId, onOpen: wide ? (g) => router.setParams({ group: g.id }) : undefined };
 
   const lists = (
     <View style={{ flex: 1 }}>

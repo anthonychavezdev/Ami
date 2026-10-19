@@ -100,7 +100,8 @@ apps are simply not pushed ([notifications.md](notifications.md)).
 2. Replace the binary (and the web build if served from it).
 3. Restart. Migrations run before the server listens; a failed migration
    leaves the database at its previous version and the server exits with the
-   error in its log.
+   error in its log. The id migration (version 3) rewrites every table once,
+   which takes a moment on a large database and needs room for the copy.
 
 The app and the server should be upgraded together when a release changes the
 API or an event; the event contract is checked by the compiler on the app side

@@ -29,13 +29,13 @@ var requestSeq atomic.Int64
 // its number, and the user once auth has resolved the session.
 type requestInfo struct {
 	n    int64
-	user int64
+	user string
 }
 
 type requestInfoKey struct{}
 
 // noteUser records whose session a request carries, for its log line.
-func noteUser(r *http.Request, userID int64) {
+func noteUser(r *http.Request, userID string) {
 	if info, ok := r.Context().Value(requestInfoKey{}).(*requestInfo); ok {
 		info.user = userID
 	}
@@ -62,8 +62,8 @@ func logTraffic(next http.Handler) http.Handler {
 		cw := &captureWriter{statusWriter: statusWriter{ResponseWriter: w, status: http.StatusOK}}
 		next.ServeHTTP(cw, r)
 		who := ""
-		if info.user != 0 {
-			who = fmt.Sprintf(" user %d", info.user)
+		if info.user != "" {
+			who = " user " + info.user
 		}
 		log.Printf("#%d ← %d in %s%s\n%s%s", info.n, cw.status, time.Since(start).Round(time.Millisecond), who,
 			headerLines(cw.Header()), bodyLines(cw.Header().Get("Content-Type"), cw.body.Bytes(), cw.size, secrets))

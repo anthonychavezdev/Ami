@@ -10,5 +10,5 @@ export default function GroupScreen() {
   const router = useRouter();
   const wide = useWide();
   if (wide) return <Redirect href={{ pathname: '/groups', params: { group: id } }} />;
-  return <GroupView id={Number(id)} onGone={() => router.back()} />;
+  return <GroupView id={id} onGone={() => router.back()} />;
 }

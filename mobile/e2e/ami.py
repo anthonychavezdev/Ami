@@ -42,6 +42,11 @@ def login(user):
     return api('POST', '/api/login', {'username': user, 'password': PASSWORD})['token']
 
 
+def group_id(token, name):
+    """The id of one of the token's groups, by name (ids are UUIDs, so they are looked up, never typed)."""
+    return next(g['id'] for g in api('GET', '/api/groups?mine=1', token=token) if g['name'] == name)
+
+
 class Dev:
     """One emulator (or phone) by adb serial; `tag` names it in messages."""
 

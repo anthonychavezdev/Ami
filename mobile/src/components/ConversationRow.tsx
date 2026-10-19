@@ -20,7 +20,7 @@ export function ConversationRow({
   onOpen,
 }: {
   conversation: Conversation;
-  me: number | undefined;
+  me: string | undefined;
   selected?: boolean;
   onOpen?: (chat: ChatTarget) => void;
 }) {

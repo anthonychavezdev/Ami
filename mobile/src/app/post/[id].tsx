@@ -10,5 +10,5 @@ export default function PostScreen() {
   const router = useRouter();
   const wide = useWide();
   if (wide) return <Redirect href={{ pathname: '/', params: { post: id } }} />;
-  return <PostView id={Number(id)} onGone={() => router.back()} />;
+  return <PostView id={id} onGone={() => router.back()} />;
 }

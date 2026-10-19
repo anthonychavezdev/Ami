@@ -50,10 +50,10 @@ func TestPush(t *testing.T) {
 	ts.put("/api/push-token", J{"token": "ExponentPushToken[live]"}, t2.token)
 
 	// t2 has no connection, so a message to them goes out as a push with their badge count.
-	ts.post(path("/api/messages/%d", t2.id), J{"body": "¿Estás ahí?"}, t1.token)
+	ts.post(path("/api/messages/%s", t2.id), J{"body": "¿Estás ahí?"}, t1.token)
 	select {
 	case msgs := <-batches:
-		ts.check("a message to an offline user is pushed to every device", len(msgs) == 2 && msgs[0].Title == "Tom" && msgs[0].Body == "¿Estás ahí?" && msgs[0].Badge == 1 && msgs[0].Data["chat"] == float64(t1.id), msgs)
+		ts.check("a message to an offline user is pushed to every device", len(msgs) == 2 && msgs[0].Title == "Tom" && msgs[0].Body == "¿Estás ahí?" && msgs[0].Badge == 1 && msgs[0].Data["chat"] == t1.id, msgs)
 	case <-time.After(wsTimeout):
 		t.Error("no push was sent")
 	}
@@ -65,7 +65,7 @@ func TestPush(t *testing.T) {
 
 	// Online users are not pushed.
 	ts.connect(t2)
-	ts.post(path("/api/messages/%d", t2.id), J{"body": "otra"}, t1.token)
+	ts.post(path("/api/messages/%s", t2.id), J{"body": "otra"}, t1.token)
 	select {
 	case msgs := <-batches:
 		t.Errorf("a connected user was pushed: %v", msgs)

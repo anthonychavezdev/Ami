@@ -12,7 +12,6 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 )
 
@@ -49,7 +48,7 @@ func (s *server) uploadExists(name string) bool {
 // uploadMedia stores one picture or video under a random name and returns the
 // attachment to put on a post.
 func (s *server) uploadMedia(w http.ResponseWriter, r *http.Request, me *User) error {
-	if !s.uploadLimiter.allow(strconv.FormatInt(me.ID, 10)) {
+	if !s.uploadLimiter.allow(me.ID) {
 		w.Header().Set("Retry-After", "60")
 		return fail(http.StatusTooManyRequests, "too many uploads, try again in a minute")
 	}

@@ -83,51 +83,51 @@ export const api = {
 
   // users
   searchUsers: (query: string) => get<UserProfile[]>(`/api/users${q({ q: query })}`),
-  user: (id: number) => get<UserProfile>(`/api/users/${id}`),
-  userPosts: (id: number, before?: number) => get<Post[]>(`/api/users/${id}/posts${q({ before })}`),
+  user: (id: string) => get<UserProfile>(`/api/users/${id}`),
+  userPosts: (id: string, before?: string) => get<Post[]>(`/api/users/${id}/posts${q({ before })}`),
 
   // posts
-  feed: (before?: number) => get<Post[]>(`/api/feed${q({ before })}`),
-  createPost: (body: string, group_id?: number, attachments: Attachment[] = []) =>
+  feed: (before?: string) => get<Post[]>(`/api/feed${q({ before })}`),
+  createPost: (body: string, group_id?: string, attachments: Attachment[] = []) =>
     post<Post>('/api/posts', { body, group_id, attachments }),
   uploadMedia: (file: { uri: string; name: string; type: string }) => upload<Attachment>('/api/media', file),
-  post: (id: number) => get<Post>(`/api/posts/${id}`),
-  deletePost: (id: number) => del<void>(`/api/posts/${id}`),
-  updatePost: (id: number, body: string, attachments: Attachment[]) => put<Post>(`/api/posts/${id}`, { body, attachments }),
-  comments: (postId: number) => get<Comment[]>(`/api/posts/${postId}/comments`),
-  addComment: (postId: number, body: string, parentId?: number) =>
+  post: (id: string) => get<Post>(`/api/posts/${id}`),
+  deletePost: (id: string) => del<void>(`/api/posts/${id}`),
+  updatePost: (id: string, body: string, attachments: Attachment[]) => put<Post>(`/api/posts/${id}`, { body, attachments }),
+  comments: (postId: string) => get<Comment[]>(`/api/posts/${postId}/comments`),
+  addComment: (postId: string, body: string, parentId?: string) =>
     post<Comment>(`/api/posts/${postId}/comments`, { body, parent_id: parentId ?? null }),
-  updateComment: (id: number, body: string) => put<Comment>(`/api/comments/${id}`, { body }),
-  deleteComment: (id: number) => del<void>(`/api/comments/${id}`),
-  react: (postId: number, emoji: string) => put<Post>(`/api/posts/${postId}/reaction`, { emoji }),
-  unreact: (postId: number) => del<Post>(`/api/posts/${postId}/reaction`),
+  updateComment: (id: string, body: string) => put<Comment>(`/api/comments/${id}`, { body }),
+  deleteComment: (id: string) => del<void>(`/api/comments/${id}`),
+  react: (postId: string, emoji: string) => put<Post>(`/api/posts/${postId}/reaction`, { emoji }),
+  unreact: (postId: string) => del<Post>(`/api/posts/${postId}/reaction`),
 
   // friends
   friends: () => get<User[]>('/api/friends'),
   friendRequests: () => get<{ incoming: User[]; outgoing: User[] }>('/api/friends/requests'),
-  sendFriendRequest: (id: number) => post<{ friend_status: string }>(`/api/friends/${id}/request`),
-  acceptFriendRequest: (id: number) => post<{ friend_status: string }>(`/api/friends/${id}/accept`),
-  removeFriend: (id: number) => del<{ friend_status: string }>(`/api/friends/${id}`),
+  sendFriendRequest: (id: string) => post<{ friend_status: string }>(`/api/friends/${id}/request`),
+  acceptFriendRequest: (id: string) => post<{ friend_status: string }>(`/api/friends/${id}/accept`),
+  removeFriend: (id: string) => del<{ friend_status: string }>(`/api/friends/${id}`),
 
   // groups
   myGroups: () => get<Group[]>('/api/groups?mine=1'),
   discoverGroups: (query: string) => get<Group[]>(`/api/groups${q({ q: query })}`),
-  createGroup: (name: string, description: string, options: { private?: boolean; member_ids?: number[] } = {}) =>
+  createGroup: (name: string, description: string, options: { private?: boolean; member_ids?: string[] } = {}) =>
     post<GroupDetail>('/api/groups', { name, description, ...options }),
-  group: (id: number) => get<GroupDetail>(`/api/groups/${id}`),
-  joinGroup: (id: number) => post<GroupDetail>(`/api/groups/${id}/join`),
-  leaveGroup: (id: number) => post<GroupDetail>(`/api/groups/${id}/leave`),
-  deleteGroup: (id: number) => del<void>(`/api/groups/${id}`),
-  groupPosts: (id: number, before?: number) => get<Post[]>(`/api/groups/${id}/posts${q({ before })}`),
-  addGroupMembers: (id: number, user_ids: number[]) => post<GroupDetail>(`/api/groups/${id}/members`, { user_ids }),
-  removeGroupMember: (id: number, uid: number) => del<GroupDetail>(`/api/groups/${id}/members/${uid}`),
+  group: (id: string) => get<GroupDetail>(`/api/groups/${id}`),
+  joinGroup: (id: string) => post<GroupDetail>(`/api/groups/${id}/join`),
+  leaveGroup: (id: string) => post<GroupDetail>(`/api/groups/${id}/leave`),
+  deleteGroup: (id: string) => del<void>(`/api/groups/${id}`),
+  groupPosts: (id: string, before?: string) => get<Post[]>(`/api/groups/${id}/posts${q({ before })}`),
+  addGroupMembers: (id: string, user_ids: string[]) => post<GroupDetail>(`/api/groups/${id}/members`, { user_ids }),
+  removeGroupMember: (id: string, uid: string) => del<GroupDetail>(`/api/groups/${id}/members/${uid}`),
 
   // messages (direct and group chats)
   conversations: () => get<Conversation[]>('/api/conversations'),
-  messages: (chat: ChatTarget, before?: number) => get<Message[]>(`${chatApi(chat)}${q({ before })}`),
+  messages: (chat: ChatTarget, before?: string) => get<Message[]>(`${chatApi(chat)}${q({ before })}`),
   sendMessage: (chat: ChatTarget, body: string, attachments: Attachment[] = []) => post<Message>(chatApi(chat), { body, attachments }),
-  updateMessage: (chat: ChatTarget, messageId: number, body: string) => put<Message>(`${chatApi(chat)}/${messageId}`, { body }),
-  deleteMessage: (chat: ChatTarget, messageId: number) => del<void>(`${chatApi(chat)}/${messageId}`),
+  updateMessage: (chat: ChatTarget, messageId: string, body: string) => put<Message>(`${chatApi(chat)}/${messageId}`, { body }),
+  deleteMessage: (chat: ChatTarget, messageId: string) => del<void>(`${chatApi(chat)}/${messageId}`),
   markRead: (chat: ChatTarget) => post<{ unread: number }>(`${chatApi(chat)}/read`),
   setPushToken: (token: string) => put<void>('/api/push-token', { token }),
   deletePushToken: (token: string) => del<void>('/api/push-token', { token }),

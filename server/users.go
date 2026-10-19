@@ -8,7 +8,7 @@ import (
 // User is what everyone sees of an account. Me adds the private settings,
 // UserProfile what a profile page shows.
 type User struct {
-	ID          int64      `json:"id"`
+	ID          string     `json:"id"`
 	Username    string     `json:"username"`
 	DisplayName string     `json:"display_name"`
 	CreatedAt   string     `json:"created_at"`
@@ -32,7 +32,7 @@ func scanUser(sc scanner) (User, error) {
 	return u, sc.Scan(u.fields()...)
 }
 
-func (s *server) userByID(id int64) (User, error) {
+func (s *server) userByID(id string) (User, error) {
 	return scanUser(s.db.QueryRow(`SELECT `+userCols+` FROM users u WHERE u.id = ?`, id))
 }
 
@@ -90,7 +90,7 @@ func (s *server) getUser(w http.ResponseWriter, r *http.Request, me *User) error
 }
 
 // profileOf is a user as seen by viewer: bio, friendship and counts included.
-func (s *server) profileOf(viewer int64, u User) UserProfile {
+func (s *server) profileOf(viewer string, u User) UserProfile {
 	p := UserProfile{User: u}
 	_ = s.db.QueryRow(`SELECT bio FROM users WHERE id = ?`, u.ID).Scan(&p.Bio)
 	p.FriendStatus, _ = s.friendStatus(viewer, u.ID)

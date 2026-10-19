@@ -20,8 +20,8 @@ export default function FeedScreen() {
   const router = useRouter();
   const wide = useWide();
   const { post: postParam } = useLocalSearchParams<{ post?: string }>();
-  const openId = wide && Number(postParam) > 0 ? Number(postParam) : null;
-  const fetchPage = useCallback((before?: number) => api.feed(before), []);
+  const openId = wide && postParam ? postParam : null;
+  const fetchPage = useCallback((before?: string) => api.feed(before), []);
   const { posts, loading, refreshing, error, refresh, loadMore, update, remove, prepend } = usePosts(fetchPage);
 
   const list = (
@@ -34,7 +34,7 @@ export default function FeedScreen() {
           onChange={update}
           onDelete={remove}
           selected={item.id === openId}
-          onComment={wide ? () => router.setParams({ post: String(item.id) }) : undefined}
+          onComment={wide ? () => router.setParams({ post: item.id }) : undefined}
         />
       )}
       ListHeaderComponent={

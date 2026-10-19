@@ -47,18 +47,18 @@ export const IDLE: CallState = {
 
 export const inCall = (status: CallStatus) => status === 'outgoing' || status === 'connecting' || status === 'active';
 
-export const participantOf = (state: CallState, id: number) => state.participants.find((p) => p.user.id === id);
+export const participantOf = (state: CallState, id: string) => state.participants.find((p) => p.user.id === id);
 
 export function withParticipant(state: CallState, user: User): CallState {
   if (participantOf(state, user.id)) return state;
   return { ...state, participants: [...state.participants, { user, streams: [], screenId: null, connected: false }] };
 }
 
-export function withoutParticipant(state: CallState, id: number): CallState {
+export function withoutParticipant(state: CallState, id: string): CallState {
   return { ...state, participants: state.participants.filter((p) => p.user.id !== id) };
 }
 
-export function updateParticipant(state: CallState, id: number, change: (p: Participant) => Participant): CallState {
+export function updateParticipant(state: CallState, id: string, change: (p: Participant) => Participant): CallState {
   return { ...state, participants: state.participants.map((p) => (p.user.id === id ? change(p) : p)) };
 }
 

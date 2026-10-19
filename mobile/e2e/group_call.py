@@ -6,11 +6,11 @@ from A, camera on B, leaving.
 """
 import sys, time
 
-from ami import WS, Dev, check, login, report, step
+from ami import WS, Dev, check, group_id, login, report, step
 
 A = Dev(sys.argv[1] if len(sys.argv) > 1 else 'emulator-5554', 'A')
 B = Dev(sys.argv[2] if len(sys.argv) > 2 else 'emulator-5556', 'B')
-ROOM = 'g:1'  # Fútbol los domingos (server/demo.go)
+ROOM = 'g:' + group_id(login('luis'), 'Fútbol los domingos')  # the group's call room (server/demo.go)
 
 B.restart()
 A.restart()

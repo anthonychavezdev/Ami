@@ -78,7 +78,7 @@ func (s *server) pictureAspect(url string) float64 {
 // avatarPatch adds the picture and its crop to a profile change. The picture
 // decides its aspect ratio and a new picture without a crop gets the centred
 // square, so every avatar always has a usable crop; no picture means no crop.
-func (s *server) avatarPatch(p columnPatch, userID int64, in profileInput) (columnPatch, error) {
+func (s *server) avatarPatch(p columnPatch, userID string, in profileInput) (columnPatch, error) {
 	url, changed := "", false
 	if in.AvatarURL != nil {
 		a, err := s.validAvatar(*in.AvatarURL)
@@ -123,7 +123,7 @@ func (s *server) validAvatar(raw string) (string, error) {
 	return a, nil
 }
 
-func (s *server) currentAvatar(userID int64) (string, error) {
+func (s *server) currentAvatar(userID string) (string, error) {
 	var url string
 	if err := s.db.QueryRow(`SELECT avatar_url FROM users WHERE id = ?`, userID).Scan(&url); err != nil || url == "" {
 		return "", badRequest("no profile picture to position")

@@ -38,7 +38,7 @@ export function PostCard({
 }: {
   post: Post;
   onChange: (p: Post) => void;
-  onDelete?: (id: number) => void;
+  onDelete?: (id: string) => void;
   onComment?: () => void; // instead of opening the post screen: focus the comment box (post screen) or open the post beside the feed
   canDelete?: boolean;
   showGroup?: boolean;
@@ -169,7 +169,7 @@ function ReactionSummary({ post }: { post: Post }) {
 
 // Sets or clears the viewer's reaction, one request at a time; a post that
 // vanished meanwhile is reported and dropped.
-function useReact(post: Post, onChange: (p: Post) => void, onDelete?: (id: number) => void) {
+function useReact(post: Post, onChange: (p: Post) => void, onDelete?: (id: string) => void) {
   const [busy, setBusy] = useState(false);
   return async (emoji: string | null) => {
     if (busy) return;
@@ -189,7 +189,7 @@ function useReact(post: Post, onChange: (p: Post) => void, onDelete?: (id: numbe
   };
 }
 
-async function deletePost(id: number, onDelete?: (id: number) => void) {
+async function deletePost(id: string, onDelete?: (id: string) => void) {
   try {
     await api.deletePost(id);
     onDelete?.(id);

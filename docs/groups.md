@@ -11,9 +11,9 @@ Groups have members with roles, a feed of posts, a chat and a call. Code:
 ## The shapes
 
 ```json
-Group:       { "id": 1, "name": "...", "description": "...", "owner_id": 2, "private": false,
+Group:       { "id": "019a0b20-…", "name": "...", "description": "...", "owner_id": "019a0b10-…", "private": false,
                "created_at": "...", "member_count": 4, "my_role": "member" }
-GroupDetail: { "group": Group, "members": [ { "...User", "role": "admin" } ], "call": [2, 4] }
+GroupDetail: { "group": Group, "members": [ { "...User", "role": "admin" } ], "call": ["019a0b10-…"] }
 ```
 
 `my_role` is `admin`, `member` or `""` (not a member), from the viewer's side.

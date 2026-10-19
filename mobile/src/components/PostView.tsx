@@ -22,7 +22,7 @@ type Mode = { kind: 'new' } | { kind: 'reply'; to: Comment } | { kind: 'edit'; c
 // A post, its comments and a box to add one; the post screen, and the pane
 // beside the feed on a wide window. `onGone` is called once the post has
 // been deleted from here.
-export function PostView({ id: postId, onGone }: { id: number; onGone: () => void }) {
+export function PostView({ id: postId, onGone }: { id: string; onGone: () => void }) {
   const styles = useStyles(makeStyles);
   const { user: me } = useAuth();
   const { post, setPost, threaded, error, loading, add, edit, remove } = useComments(postId, onGone);

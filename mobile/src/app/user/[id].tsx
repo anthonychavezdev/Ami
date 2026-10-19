@@ -9,5 +9,5 @@ export default function UserScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const wide = useWide();
   if (wide) return <Redirect href={{ pathname: '/friends', params: { user: id } }} />;
-  return <UserView id={Number(id)} />;
+  return <UserView id={id} />;
 }

@@ -34,11 +34,11 @@ const RECONNECT_GRACE = 6_000; // the server frees our seat a few seconds after 
 // one Peer connection each. State changes go through pure helpers in
 // callState.ts; this class only sequences them and talks to the server.
 class CallManager {
-  private peers = new Map<number, Peer>();
-  private early = new Map<number, unknown[]>(); // ICE candidates from people we have no connection with yet
+  private peers = new Map<string, Peer>();
+  private early = new Map<string, unknown[]>(); // ICE candidates from people we have no connection with yet
   private state: CallState = IDLE;
   private listeners = new Set<() => void>();
-  private myId = 0;
+  private myId = '';
   private facing: 'user' | 'environment' = 'user';
   private ringTimer: ReturnType<typeof setTimeout> | null = null;
   private lostTimer: ReturnType<typeof setTimeout> | null = null;
@@ -254,14 +254,14 @@ class CallManager {
     if (localScreen) peer.addStream(localScreen);
   }
 
-  private onPeerConnected(id: number) {
+  private onPeerConnected(id: string) {
     if (this.ringTimer) clearTimeout(this.ringTimer);
     this.update((s) => ({ ...updateParticipant(s, id, connected), status: 'active' }));
     this.announceStreams(id);
   }
 
   /** Forgets a participant; a one-to-one call is over without the other person. */
-  private dropPeer(id: number, reason: string | null) {
+  private dropPeer(id: string, reason: string | null) {
     this.peers.get(id)?.close();
     this.peers.delete(id);
     this.update((s) => withoutParticipant(s, id));
@@ -269,21 +269,21 @@ class CallManager {
     else this.bump();
   }
 
-  private peerIs(id: number) {
+  private peerIs(id: string) {
     return this.peers.has(id);
   }
 
   /** The connection a signaling event is for, if it belongs to our room. */
-  private peerIn(e: { room: string; from: number }) {
+  private peerIn(e: { room: string; from: string }) {
     return e.room === this.state.room ? this.peers.get(e.from) : undefined;
   }
 
-  private signal(to: number, msg: CallSignal) {
+  private signal(to: string, msg: CallSignal) {
     if (this.state.room) socket.send({ ...msg, room: this.state.room, to });
   }
 
   /** Tells participants which of our streams is the camera and which the screen. */
-  private announceStreams(to?: number) {
+  private announceStreams(to?: string) {
     const msg: CallSignal = {
       type: 'call.streams',
       camera: this.state.localStream?.id ?? null,

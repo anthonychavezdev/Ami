@@ -33,7 +33,7 @@ export function ChatView({ kind, id, embedded = false }: ChatTarget & { embedded
   const { state: callState, call } = useCall();
   const router = useRouter();
   const [editing, setEditing] = useState<Message | null>(null);
-  const [selected, setSelected] = useState<number | null>(null); // message showing Edit / Delete (native)
+  const [selected, setSelected] = useState<string | null>(null); // message showing Edit / Delete (native)
   const { open: openMenu, menu } = useContextMenu();
   const list = useRef<FlatList<Message>>(null);
   useInvertedWheel(list, chat.messages !== null);
@@ -134,7 +134,7 @@ export function ChatView({ kind, id, embedded = false }: ChatTarget & { embedded
 }
 
 // Voice and video call buttons, plus the group's details for group chats.
-function HeaderButtons({ isGroup, groupId, onCall }: { isGroup: boolean; groupId: number; onCall: (video: boolean) => void }) {
+function HeaderButtons({ isGroup, groupId, onCall }: { isGroup: boolean; groupId: string; onCall: (video: boolean) => void }) {
   const { colors } = useTheme();
   const router = useRouter();
   return (

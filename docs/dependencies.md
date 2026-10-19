@@ -6,16 +6,17 @@ and to prefer what Expo and the standard library already provide.
 
 ## Go
 
-The server is standard library except for two modules ([`server/go.mod`](../server/go.mod)):
+The server is standard library except for three modules ([`server/go.mod`](../server/go.mod)):
 
 | Module | Version | Used for | Why |
 | --- | --- | --- | --- |
 | `modernc.org/sqlite` | 1.60 | The database driver behind `database/sql` ([`db.go`](../server/db.go)). | A pure-Go translation of SQLite: no cgo, so the binary is static and cross-compiles with `CGO_ENABLED=0`, and `go test` needs no C toolchain. SQLite itself because one file, no service to run, and the write volume of a friends-scale network needs nothing more. |
+| `github.com/google/uuid` | 1.6 | Version 7 UUIDs for every row id (`newID` in [`util.go`](../server/util.go)). | Already in the module graph through the SQLite driver. Its v7 generator is monotonic within a process, which keeps ids ordered by creation time, the property every list and read marker relies on. |
 | `github.com/gorilla/websocket` | 1.5 | The WebSocket server: the upgrade, framing, ping/pong, read limits ([`ws.go`](../server/ws.go), [`hub.go`](../server/hub.go)). | The standard library has no WebSocket implementation (`golang.org/x/net/websocket` is minimal and unmaintained). gorilla is small, stable and the de facto choice. Its one rule, a single writer per connection, is what `writeLoop` exists for. |
 
 The indirect modules (`modernc.org/libc`, `modernc.org/mathutil`,
 `modernc.org/memory`, `github.com/ncruces/go-strftime`,
-`github.com/remyoudompheng/bigfft`, `github.com/google/uuid`,
+`github.com/remyoudompheng/bigfft`,
 `github.com/dustin/go-humanize`, `github.com/mattn/go-isatty`,
 `golang.org/x/sys`) all come with `modernc.org/sqlite`; nothing imports them
 directly.

@@ -9,5 +9,5 @@ export default function ChatScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const wide = useWide();
   if (wide) return <Redirect href={{ pathname: '/messages', params: { chat: `u:${id}` } }} />;
-  return <ChatView kind="user" id={Number(id)} />;
+  return <ChatView kind="user" id={id} />;
 }

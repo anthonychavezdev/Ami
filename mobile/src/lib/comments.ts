@@ -4,9 +4,9 @@ export type Threaded = Comment & { depth: number };
 
 // Replies go under their parent, oldest first, like Reddit.
 export function thread(comments: Comment[]): Threaded[] {
-  const children = new Map<number | null, Comment[]>();
+  const children = new Map<string | null, Comment[]>();
   comments.forEach((c) => children.set(c.parent_id ?? null, [...(children.get(c.parent_id ?? null) ?? []), c]));
-  const walk = (parent: number | null, depth: number): Threaded[] =>
+  const walk = (parent: string | null, depth: number): Threaded[] =>
     (children.get(parent) ?? []).flatMap((c) => [{ ...c, depth }, ...walk(c.id, depth + 1)]);
   return walk(null, 0);
 }

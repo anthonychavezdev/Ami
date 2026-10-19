@@ -77,7 +77,7 @@ func (ts *testServer) check(name string, cond bool, info ...any) {
 type J map[string]any
 
 func (j J) num(k string) float64 { v, _ := j[k].(float64); return v }
-func (j J) id(k string) int64    { return int64(j.num(k)) }
+func (j J) id(k string) string   { return j.str(k) }
 func (j J) str(k string) string  { v, _ := j[k].(string); return v }
 func (j J) obj(k string) J {
 	v, _ := j[k].(map[string]any)
@@ -107,7 +107,7 @@ func objects(v any) []J {
 	return out
 }
 
-func ids(list []J, k string) []int64   { return mapSlice(list, func(j J) int64 { return j.id(k) }) }
+func ids(list []J, k string) []string  { return mapSlice(list, func(j J) string { return j.id(k) }) }
 func strs(list []J, k string) []string { return mapSlice(list, func(j J) string { return j.str(k) }) }
 
 func equal[T comparable](a, b []T) bool {
@@ -237,7 +237,7 @@ func (ts *testServer) upload(token string, data []byte, name, contentType string
 type account struct {
 	token string
 	user  J
-	id    int64
+	id    string
 }
 
 func (ts *testServer) register(username string) account {
@@ -265,10 +265,10 @@ func accountOf(j J) account {
 // befriend makes a and b friends (a asks, b accepts).
 func (ts *testServer) befriend(a, b account) {
 	ts.t.Helper()
-	if r := ts.post(fmt.Sprintf("/api/friends/%d/request", b.id), nil, a.token); r.status != 200 {
+	if r := ts.post(fmt.Sprintf("/api/friends/%s/request", b.id), nil, a.token); r.status != 200 {
 		ts.t.Fatalf("friend request: %s", r)
 	}
-	if r := ts.post(fmt.Sprintf("/api/friends/%d/accept", a.id), nil, b.token); r.status != 200 {
+	if r := ts.post(fmt.Sprintf("/api/friends/%s/accept", a.id), nil, b.token); r.status != 200 {
 		ts.t.Fatalf("accept request: %s", r)
 	}
 }

@@ -24,7 +24,7 @@ type Tab = 'posts' | 'members';
 // A group: its header and actions, then its posts or its members. `embedded`
 // is the pane of the wide Groups view, which has no navigator header to set;
 // `onGone` runs once the group has been deleted.
-export function GroupView({ id: groupId, embedded = false, onGone }: { id: number; embedded?: boolean; onGone: () => void }) {
+export function GroupView({ id: groupId, embedded = false, onGone }: { id: string; embedded?: boolean; onGone: () => void }) {
   const { colors } = useTheme();
   const { user: me } = useAuth();
   const { call } = useCall();
@@ -32,7 +32,7 @@ export function GroupView({ id: groupId, embedded = false, onGone }: { id: numbe
   const { group, members, error, reload, change } = useGroup(groupId);
   const [tab, setTab] = useState<Tab>('posts');
 
-  const fetchPage = useCallback((before?: number) => api.groupPosts(groupId, before), [groupId]);
+  const fetchPage = useCallback((before?: string) => api.groupPosts(groupId, before), [groupId]);
   const accept = useCallback((p: Post) => p.group_id === groupId, [groupId]);
   const { posts, loading, refreshing, refresh, loadMore, update, remove, prepend } = usePosts(fetchPage, accept);
 

@@ -97,7 +97,7 @@ export function Avatar({
   size = 40,
   status = true,
 }: {
-  user: Pick<User, 'display_name' | 'username'> & { id?: number; online?: boolean; avatar_url?: string; avatar_crop?: AvatarCrop };
+  user: Pick<User, 'display_name' | 'username'> & { id?: string; online?: boolean; avatar_url?: string; avatar_crop?: AvatarCrop };
   size?: number;
   status?: boolean;
 }) {

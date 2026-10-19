@@ -12,7 +12,7 @@ import "encoding/json"
 
 // groupRef is what events say about a group.
 type groupRef struct {
-	ID   int64  `json:"id"`
+	ID   string `json:"id"`
 	Name string `json:"name"`
 }
 
@@ -21,15 +21,15 @@ type groupRef struct {
 // helloEvent opens every connection: who you are, your unread total and who
 // is online right now.
 type helloEvent struct {
-	Type   string  `json:"type"` // "hello"
-	User   *User   `json:"user"`
-	Unread int     `json:"unread"`
-	Online []int64 `json:"online"`
+	Type   string   `json:"type"` // "hello"
+	User   *User    `json:"user"`
+	Unread int      `json:"unread"`
+	Online []string `json:"online"`
 }
 
 type presenceEvent struct {
 	Type   string `json:"type"` // "presence"
-	UserID int64  `json:"user_id"`
+	UserID string `json:"user_id"`
 	Online bool   `json:"online"`
 }
 
@@ -61,21 +61,21 @@ type messageUpdatedEvent struct {
 // messageDeletedEvent names the chat the message was in, and the receiver's
 // new unread total.
 type messageDeletedEvent struct {
-	Type        string `json:"type"` // "message.deleted"
-	ID          int64  `json:"id"`
-	SenderID    int64  `json:"sender_id"`
-	RecipientID *int64 `json:"recipient_id"`
-	GroupID     *int64 `json:"group_id"`
-	Unread      int    `json:"unread"`
+	Type        string  `json:"type"` // "message.deleted"
+	ID          string  `json:"id"`
+	SenderID    string  `json:"sender_id"`
+	RecipientID *string `json:"recipient_id"`
+	GroupID     *string `json:"group_id"`
+	Unread      int     `json:"unread"`
 }
 
 // messagesReadEvent tells a user's devices a chat was read (or stopped
 // counting), with the new unread total.
 type messagesReadEvent struct {
-	Type    string `json:"type"` // "messages.read"
-	PeerID  *int64 `json:"peer_id,omitempty"`
-	GroupID *int64 `json:"group_id,omitempty"`
-	Unread  int    `json:"unread"`
+	Type    string  `json:"type"` // "messages.read"
+	PeerID  *string `json:"peer_id,omitempty"`
+	GroupID *string `json:"group_id,omitempty"`
+	Unread  int     `json:"unread"`
 }
 
 type groupAddedEvent struct {
@@ -102,9 +102,9 @@ type postEvent struct {
 }
 
 type postDeletedEvent struct {
-	Type    string `json:"type"` // "post.deleted"
-	ID      int64  `json:"id"`
-	GroupID *int64 `json:"group_id"`
+	Type    string  `json:"type"` // "post.deleted"
+	ID      string  `json:"id"`
+	GroupID *string `json:"group_id"`
 }
 
 // commentEvent is "comment.created" or "comment.updated".
@@ -115,8 +115,8 @@ type commentEvent struct {
 
 type commentDeletedEvent struct {
 	Type   string `json:"type"` // "comment.deleted"
-	PostID int64  `json:"post_id"`
-	ID     int64  `json:"id"`
+	PostID string `json:"post_id"`
+	ID     string `json:"id"`
 }
 
 // callRingEvent: a call you may join was started.
@@ -146,13 +146,13 @@ type callPeerJoinedEvent struct {
 type callPeerLeftEvent struct {
 	Type   string `json:"type"` // "call.peer_left"
 	Room   string `json:"room"`
-	UserID int64  `json:"user_id"`
+	UserID string `json:"user_id"`
 }
 
 type callDeclinedEvent struct {
 	Type   string `json:"type"` // "call.declined"
 	Room   string `json:"room"`
-	UserID int64  `json:"user_id"`
+	UserID string `json:"user_id"`
 	Reason string `json:"reason"`
 }
 
@@ -161,7 +161,7 @@ type callDeclinedEvent struct {
 type callRoomEvent struct {
 	Type   string `json:"type"`
 	Room   string `json:"room"`
-	UserID int64  `json:"user_id,omitempty"`
+	UserID string `json:"user_id,omitempty"`
 }
 
 // callSignal is a relayed call.offer, call.answer, call.ice or call.streams:
@@ -169,7 +169,7 @@ type callRoomEvent struct {
 type callSignal struct {
 	Type      string          `json:"type"`
 	Room      string          `json:"room"`
-	From      int64           `json:"from"`
+	From      string          `json:"from"`
 	FromUser  *User           `json:"from_user,omitempty"`
 	SDP       json.RawMessage `json:"sdp,omitempty"`
 	Candidate json.RawMessage `json:"candidate,omitempty"`
@@ -184,11 +184,11 @@ type callSignal struct {
 type clientMessage struct {
 	Type      string          `json:"type"`
 	Room      string          `json:"room"`
-	UserID    int64           `json:"user_id"`
-	GroupID   int64           `json:"group_id"`
+	UserID    string          `json:"user_id"`
+	GroupID   string          `json:"group_id"`
 	Video     bool            `json:"video"`
 	Reason    string          `json:"reason"`
-	To        int64           `json:"to"`
+	To        string          `json:"to"`
 	SDP       json.RawMessage `json:"sdp"`
 	Candidate json.RawMessage `json:"candidate"`
 	Camera    json.RawMessage `json:"camera"`

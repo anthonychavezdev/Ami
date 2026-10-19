@@ -9,12 +9,38 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 var errUnauthorized = errors.New("unauthorized")
 
 func now() time.Time    { return time.Now().UTC() }
 func nowString() string { return now().Format(time.RFC3339Nano) }
+
+// ---- ids
+//
+// Every row has a version 7 UUID for its id, made here: random, so nothing
+// can be guessed or counted, but ordered by creation time, so "newer" is
+// still "greater" for every list, cursor and read marker. Ids are stored and
+// compared as their canonical text (lowercase, hyphenated, 36 characters).
+
+// maxID sorts after every id: the cursor for "the newest page".
+const maxID = "ffffffff-ffff-ffff-ffff-ffffffffffff"
+
+func newID() string {
+	id, err := uuid.NewV7()
+	if err != nil {
+		panic(err) // only when the random source fails, which nothing recovers from
+	}
+	return id.String()
+}
+
+// isID says whether s is an id in the form the database stores.
+func isID(s string) bool {
+	u, err := uuid.Parse(s)
+	return err == nil && u.String() == s
+}
 
 // presenceHook marks users as online/offline in every response (see presence.go).
 var presenceHook func(v any) any
@@ -94,13 +120,21 @@ func readJSON(w http.ResponseWriter, r *http.Request, v any) error {
 	return nil
 }
 
-// pathID parses an integer path value.
-func pathID(r *http.Request, name string) (int64, error) {
-	id, err := strconv.ParseInt(r.PathValue(name), 10, 64)
-	if err != nil || id <= 0 {
-		return 0, badRequest("invalid " + name)
+// pathID reads a path value that must be an id.
+func pathID(r *http.Request, name string) (string, error) {
+	id := r.PathValue(name)
+	if !isID(id) {
+		return "", badRequest("invalid " + name)
 	}
 	return id, nil
+}
+
+// queryID reads an id parameter, or def when it is absent or malformed.
+func queryID(r *http.Request, name, def string) string {
+	if v := r.URL.Query().Get(name); isID(v) {
+		return v
+	}
+	return def
 }
 
 func queryInt(r *http.Request, name string, def int64) int64 {
@@ -110,9 +144,10 @@ func queryInt(r *http.Request, name string, def int64) int64 {
 	return def
 }
 
-// pagination reads ?before=<id>&limit=<n> cursor parameters.
-func pagination(r *http.Request) (before, limit int64) {
-	return queryInt(r, "before", 1<<62), min(queryInt(r, "limit", 30), 100)
+// pagination reads ?before=<id>&limit=<n> cursor parameters: items older
+// than the one with id before (by default, everything), at most limit.
+func pagination(r *http.Request) (before string, limit int64) {
+	return queryID(r, "before", maxID), min(queryInt(r, "limit", 30), 100)
 }
 
 func clampLen(s string, max int) bool { return len(s) > 0 && len(s) <= max }
@@ -180,13 +215,13 @@ func queryAll[T any](db *sql.DB, scan func(scanner) (T, error), query string, ar
 	return out, rows.Err()
 }
 
-func scanID(sc scanner) (int64, error) {
-	var id int64
+func scanID(sc scanner) (string, error) {
+	var id string
 	return id, sc.Scan(&id)
 }
 
-// queryIDs collects a single integer column; a failing query reads as empty.
-func queryIDs(db *sql.DB, query string, args ...any) []int64 {
+// queryIDs collects a single id column; a failing query reads as empty.
+func queryIDs(db *sql.DB, query string, args ...any) []string {
 	ids, _ := queryAll(db, scanID, query, args...)
 	return ids
 }

@@ -8,9 +8,9 @@ import (
 )
 
 type Post struct {
-	ID           int64          `json:"id"`
+	ID           string         `json:"id"`
 	Author       User           `json:"author"`
-	GroupID      *int64         `json:"group_id"`
+	GroupID      *string        `json:"group_id"`
 	GroupName    string         `json:"group_name,omitempty"`
 	Body         string         `json:"body"`
 	Attachments  []Attachment   `json:"attachments"`
@@ -22,9 +22,9 @@ type Post struct {
 }
 
 type Comment struct {
-	ID        int64   `json:"id"`
-	PostID    int64   `json:"post_id"`
-	ParentID  *int64  `json:"parent_id"` // reply to another comment of the same post
+	ID        string  `json:"id"`
+	PostID    string  `json:"post_id"`
+	ParentID  *string `json:"parent_id"` // reply to another comment of the same post
 	Author    User    `json:"author"`
 	Body      string  `json:"body"`
 	CreatedAt string  `json:"created_at"`
@@ -69,15 +69,15 @@ func decodeAttachments(raw string) []Attachment {
 }
 
 // queryPosts runs postSelect + tail for viewer, binding args after the viewer id.
-func (s *server) queryPosts(viewer int64, tail string, args ...any) ([]Post, error) {
+func (s *server) queryPosts(viewer string, tail string, args ...any) ([]Post, error) {
 	return queryAll(s.db, scanPost, postSelect+tail, append([]any{viewer}, args...)...)
 }
 
-func (s *server) getPost(viewer, id int64) (Post, error) {
+func (s *server) getPost(viewer, id string) (Post, error) {
 	return scanPost(s.db.QueryRow(postSelect+`WHERE p.id = ?`, viewer, id))
 }
 
-func (s *server) respondPost(w http.ResponseWriter, code int, viewer, id int64) error {
+func (s *server) respondPost(w http.ResponseWriter, code int, viewer, id string) error {
 	p, err := s.getPost(viewer, id)
 	if err != nil {
 		return orNotFound(err, "post not found")
@@ -88,11 +88,11 @@ func (s *server) respondPost(w http.ResponseWriter, code int, viewer, id int64) 
 
 // postOwner is who wrote a post and which group it was posted in.
 type postOwner struct {
-	author  int64
-	groupID *int64
+	author  string
+	groupID *string
 }
 
-func (s *server) postOwner(id int64) (postOwner, error) {
+func (s *server) postOwner(id string) (postOwner, error) {
 	var o postOwner
 	err := s.db.QueryRow(`SELECT author_id, group_id FROM posts WHERE id = ?`, id).Scan(&o.author, &o.groupID)
 	return o, orNotFound(err, "post not found")
@@ -100,17 +100,17 @@ func (s *server) postOwner(id int64) (postOwner, error) {
 
 // postAudience lists who sees a post in their feed: the author and their
 // friends for profile posts, every member for group posts.
-func (s *server) postAudience(authorID int64, groupID *int64) []int64 {
+func (s *server) postAudience(authorID string, groupID *string) []string {
 	if groupID != nil {
-		return append([]int64{authorID}, without(s.groupMemberIDs(*groupID), authorID)...)
+		return append([]string{authorID}, without(s.groupMemberIDs(*groupID), authorID)...)
 	}
-	return append([]int64{authorID}, s.friendIDs(authorID)...)
+	return append([]string{authorID}, s.friendIDs(authorID)...)
 }
 
 // broadcastPost pushes a post's current state to everyone who sees it, each
 // with their own reaction filled in, so feeds update without a refresh.
-func (s *server) broadcastPost(typ string, id int64) {
-	base, err := s.getPost(0, id)
+func (s *server) broadcastPost(typ string, id string) {
+	base, err := s.getPost("", id)
 	if err != nil {
 		return
 	}
@@ -153,7 +153,7 @@ func (s *server) getPostHandler(w http.ResponseWriter, r *http.Request, me *User
 // postInput is the body of POST /api/posts and PUT /api/posts/{id}.
 type postInput struct {
 	Body        string       `json:"body"`
-	GroupID     *int64       `json:"group_id"`
+	GroupID     *string      `json:"group_id"`
 	Attachments []Attachment `json:"attachments"`
 }
 
@@ -185,12 +185,11 @@ func (s *server) createPost(w http.ResponseWriter, r *http.Request, me *User) er
 			return forbidden("join the group to post in it")
 		}
 	}
-	res, err := s.db.Exec(`INSERT INTO posts(author_id, group_id, body, attachments, created_at) VALUES (?, ?, ?, ?, ?)`,
-		me.ID, in.GroupID, in.Body, jsonString(in.Attachments), nowString())
-	if err != nil {
+	id := newID()
+	if _, err := s.db.Exec(`INSERT INTO posts(id, author_id, group_id, body, attachments, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+		id, me.ID, in.GroupID, in.Body, jsonString(in.Attachments), nowString()); err != nil {
 		return err
 	}
-	id, _ := res.LastInsertId()
 	s.broadcastPost("post.created", id)
 	return s.respondPost(w, http.StatusCreated, me.ID, id)
 }
@@ -225,7 +224,7 @@ func (s *server) updatePost(w http.ResponseWriter, r *http.Request, me *User) er
 }
 
 // mayDeletePost: the author, or the admin of the group it was posted in.
-func (s *server) mayDeletePost(userID int64, o postOwner) bool {
+func (s *server) mayDeletePost(userID string, o postOwner) bool {
 	if o.author == userID {
 		return true
 	}
@@ -322,12 +321,12 @@ func scanComment(sc scanner) (Comment, error) {
 	return c, err
 }
 
-func (s *server) loadComment(id int64) (Comment, error) {
+func (s *server) loadComment(id string) (Comment, error) {
 	return scanComment(s.db.QueryRow(`SELECT `+commentCols+` FROM comments c JOIN users u ON u.id = c.author_id WHERE c.id = ?`, id))
 }
 
 // ownComment loads a live comment the caller wrote, for editing or deleting.
-func (s *server) ownComment(id, userID int64, verb string) (Comment, error) {
+func (s *server) ownComment(id, userID string, verb string) (Comment, error) {
 	c, err := s.loadComment(id)
 	if err = orNotFound(err, "comment not found"); err != nil {
 		return c, err
@@ -342,7 +341,7 @@ func (s *server) ownComment(id, userID int64, verb string) (Comment, error) {
 }
 
 // commentAudience is everyone who can see the comment's post.
-func (s *server) commentAudience(postID int64) []int64 {
+func (s *server) commentAudience(postID string) []string {
 	o, err := s.postOwner(postID)
 	if err != nil {
 		return nil
@@ -365,7 +364,7 @@ func (s *server) listComments(w http.ResponseWriter, r *http.Request, me *User) 
 	}
 	comments, err := queryAll(s.db, scanComment, `SELECT `+commentCols+`
 		FROM comments c JOIN users u ON u.id = c.author_id
-		WHERE c.post_id = ? AND c.id > ? ORDER BY c.id ASC LIMIT 500`, id, queryInt(r, "after", 0))
+		WHERE c.post_id = ? AND c.id > ? ORDER BY c.id ASC LIMIT 500`, id, queryID(r, "after", ""))
 	if err != nil {
 		return err
 	}
@@ -373,7 +372,7 @@ func (s *server) listComments(w http.ResponseWriter, r *http.Request, me *User) 
 }
 
 // validReplyTarget checks that a reply goes under a live comment of the same post.
-func (s *server) validReplyTarget(postID int64, parentID *int64) error {
+func (s *server) validReplyTarget(postID string, parentID *string) error {
 	if parentID == nil {
 		return nil
 	}
@@ -390,8 +389,8 @@ func (s *server) createComment(w http.ResponseWriter, r *http.Request, me *User)
 		return err
 	}
 	var in struct {
-		Body     string `json:"body"`
-		ParentID *int64 `json:"parent_id"`
+		Body     string  `json:"body"`
+		ParentID *string `json:"parent_id"`
 	}
 	if err := readJSON(w, r, &in); err != nil {
 		return err
@@ -407,12 +406,10 @@ func (s *server) createComment(w http.ResponseWriter, r *http.Request, me *User)
 	if err := s.validReplyTarget(id, in.ParentID); err != nil {
 		return err
 	}
-	c := Comment{PostID: id, ParentID: in.ParentID, Author: *me, Body: body, CreatedAt: nowString()}
-	res, err := s.db.Exec(`INSERT INTO comments(post_id, parent_id, author_id, body, created_at) VALUES (?, ?, ?, ?, ?)`, id, c.ParentID, me.ID, c.Body, c.CreatedAt)
-	if err != nil {
+	c := Comment{ID: newID(), PostID: id, ParentID: in.ParentID, Author: *me, Body: body, CreatedAt: nowString()}
+	if _, err := s.db.Exec(`INSERT INTO comments(id, post_id, parent_id, author_id, body, created_at) VALUES (?, ?, ?, ?, ?, ?)`, c.ID, id, c.ParentID, me.ID, c.Body, c.CreatedAt); err != nil {
 		return err
 	}
-	c.ID, _ = res.LastInsertId()
 	s.hub.sendToMany(s.postAudience(o.author, o.groupID), commentEvent{Type: "comment.created", Comment: c})
 	s.broadcastPost("post.updated", id)
 	return created(w, c)
@@ -485,10 +482,10 @@ func (s *server) removeComment(c Comment) error {
 
 // pruneDeletedAncestors walks up from a parent: a [deleted] placeholder with
 // nothing left under it goes too.
-func (s *server) pruneDeletedAncestors(parent *int64) error {
+func (s *server) pruneDeletedAncestors(parent *string) error {
 	for parent != nil {
 		var deleted *string
-		var next *int64
+		var next *string
 		var replies int
 		err := s.db.QueryRow(`SELECT deleted_at, parent_id, (SELECT COUNT(*) FROM comments x WHERE x.parent_id = c.id) FROM comments c WHERE id = ?`, *parent).
 			Scan(&deleted, &next, &replies)

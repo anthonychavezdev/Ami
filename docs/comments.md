@@ -10,7 +10,7 @@ Threaded comments under a post. Code: the comments half of
 ## The comment shape
 
 ```json
-{ "id": 7, "post_id": 14, "parent_id": 5, "author": { "...User" }, "body": "...",
+{ "id": "019a0c31-…", "post_id": "019a0c2e-…", "parent_id": "019a0c30-…", "author": { "...User" }, "body": "...",
   "created_at": "...", "edited_at": null, "deleted": false }
 ```
 

@@ -9,5 +9,5 @@ export default function GroupChatScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const wide = useWide();
   if (wide) return <Redirect href={{ pathname: '/messages', params: { chat: `g:${id}` } }} />;
-  return <ChatView kind="group" id={Number(id)} />;
+  return <ChatView kind="group" id={id} />;
 }

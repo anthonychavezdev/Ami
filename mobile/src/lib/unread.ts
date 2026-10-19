@@ -10,13 +10,13 @@ import { socket } from './ws';
 // of truth (hello / message / messages.read events carry the total); this
 // store also decides when an incoming message deserves an OS notification.
 const count = createStore(0);
-let me: number | null = null;
+let me: string | null = null;
 let activeChat: string | null = null; // chat screen currently open (see chatKey)
 
 count.subscribe(() => setBadge(count.get()));
 
 export const unread = {
-  setUser(id: number | null) {
+  setUser(id: string | null) {
     me = id;
     if (id === null) count.set(0);
   },
@@ -30,7 +30,7 @@ export const useUnread = count.use;
 // What to do with a message that just arrived.
 type Reaction = 'ignore' | 'read' | 'notify';
 
-function reactionTo(m: Message, viewer: number | null, open: string | null, hidden: boolean): Reaction {
+function reactionTo(m: Message, viewer: string | null, open: string | null, hidden: boolean): Reaction {
   if (viewer === null || m.sender_id === viewer) return 'ignore'; // our own message, echoed to this device
   if (chatKey(chatOf(m, viewer)) === open && !hidden) return 'read'; // being read right now
   return 'notify';

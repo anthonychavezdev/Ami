@@ -22,7 +22,7 @@ func (s *server) seedIfEmpty() error {
 		return nil
 	}
 	err := s.inTx(func(tx *sql.Tx) error {
-		sd := &seeder{tx: tx, base: now(), mediaDir: s.mediaDir, users: map[string]int64{}, groups: map[string]int64{}}
+		sd := &seeder{tx: tx, base: now(), mediaDir: s.mediaDir, users: map[string]string{}, groups: map[string]string{}}
 		for _, step := range []func() error{sd.insertUsers, sd.insertFriendships, sd.insertGroups, sd.writePictures, sd.insertPosts, sd.insertMessages, sd.markRead} {
 			if err := step(); err != nil {
 				return err
@@ -43,8 +43,8 @@ type seeder struct {
 	tx       *sql.Tx
 	base     time.Time
 	mediaDir string
-	users    map[string]int64 // username -> id
-	groups   map[string]int64 // group name -> id
+	users    map[string]string // username -> id
+	groups   map[string]string // group name -> id
 }
 
 // ts is a timestamp `ago` before the seed time.
@@ -52,13 +52,12 @@ func (sd *seeder) ts(ago time.Duration) string { return sd.base.Add(-ago).Format
 
 func (sd *seeder) insertUsers() error {
 	for i, u := range demoUsers {
-		salt := randomBytes(16)
-		res, err := sd.tx.Exec(`INSERT INTO users(username, display_name, password_hash, salt, password_iterations, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-			u.username, u.name, hashPassword(demoPassword, salt, pbkdf2Iterations), salt, pbkdf2Iterations, sd.ts(time.Duration(14-i)*24*hour))
-		if err != nil {
+		salt, id := randomBytes(16), newID()
+		if _, err := sd.tx.Exec(`INSERT INTO users(id, username, display_name, password_hash, salt, password_iterations, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+			id, u.username, u.name, hashPassword(demoPassword, salt, pbkdf2Iterations), salt, pbkdf2Iterations, sd.ts(time.Duration(14-i)*24*hour)); err != nil {
 			return err
 		}
-		sd.users[u.username], _ = res.LastInsertId()
+		sd.users[u.username] = id
 		if p, ok := demoProfiles[u.username]; ok {
 			if _, err := sd.tx.Exec(`UPDATE users SET pronouns = ?, bio = ? WHERE id = ?`, p[0], p[1], sd.users[u.username]); err != nil {
 				return err
@@ -81,12 +80,11 @@ func (sd *seeder) insertFriendships() error {
 
 func (sd *seeder) insertGroups() error {
 	for _, g := range demoGroups {
-		res, err := sd.tx.Exec(`INSERT INTO groups(name, description, owner_id, private, created_at) VALUES (?, ?, ?, ?, ?)`,
-			g.name, g.description, sd.users[g.owner], g.private, sd.ts(6*24*hour))
-		if err != nil {
+		id := newID()
+		if _, err := sd.tx.Exec(`INSERT INTO groups(id, name, description, owner_id, private, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+			id, g.name, g.description, sd.users[g.owner], g.private, sd.ts(6*24*hour)); err != nil {
 			return err
 		}
-		id, _ := res.LastInsertId()
 		sd.groups[g.name] = id
 		if _, err := sd.tx.Exec(`INSERT INTO group_members(group_id, user_id, role, joined_at) VALUES (?, ?, 'admin', ?)`, id, sd.users[g.owner], sd.ts(6*24*hour)); err != nil {
 			return err
@@ -123,12 +121,11 @@ func (sd *seeder) insertPosts() error {
 		if atts == nil {
 			atts = []Attachment{}
 		}
-		res, err := sd.tx.Exec(`INSERT INTO posts(author_id, group_id, body, attachments, created_at) VALUES (?, ?, ?, ?, ?)`,
-			sd.users[p.author], sd.groupIDOf(p.group), p.body, jsonString(atts), sd.ts(p.ago))
-		if err != nil {
+		postID := newID()
+		if _, err := sd.tx.Exec(`INSERT INTO posts(id, author_id, group_id, body, attachments, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+			postID, sd.users[p.author], sd.groupIDOf(p.group), p.body, jsonString(atts), sd.ts(p.ago)); err != nil {
 			return err
 		}
-		postID, _ := res.LastInsertId()
 		if err := sd.insertComments(postID, p); err != nil {
 			return err
 		}
@@ -141,10 +138,10 @@ func (sd *seeder) insertPosts() error {
 	return nil
 }
 
-func (sd *seeder) insertComments(postID int64, p demoPost) error {
+func (sd *seeder) insertComments(postID string, p demoPost) error {
 	for i, c := range p.comments {
-		if _, err := sd.tx.Exec(`INSERT INTO comments(post_id, author_id, body, created_at) VALUES (?, ?, ?, ?)`,
-			postID, sd.users[c.author], c.body, sd.ts(p.ago-time.Duration(i+1)*7*time.Minute)); err != nil {
+		if _, err := sd.tx.Exec(`INSERT INTO comments(id, post_id, author_id, body, created_at) VALUES (?, ?, ?, ?, ?)`,
+			newID(), postID, sd.users[c.author], c.body, sd.ts(p.ago-time.Duration(i+1)*7*time.Minute)); err != nil {
 			return err
 		}
 	}
@@ -157,14 +154,14 @@ func (sd *seeder) insertMessages() error {
 		if m.image != "" {
 			atts = []Attachment{demoImage(m.image)}
 		}
-		if _, err := sd.tx.Exec(`INSERT INTO messages(sender_id, recipient_id, body, attachments, created_at) VALUES (?, ?, ?, ?, ?)`,
-			sd.users[m.from], sd.users[m.to], m.body, jsonString(atts), sd.ts(m.ago)); err != nil {
+		if _, err := sd.tx.Exec(`INSERT INTO messages(id, sender_id, recipient_id, body, attachments, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
+			newID(), sd.users[m.from], sd.users[m.to], m.body, jsonString(atts), sd.ts(m.ago)); err != nil {
 			return err
 		}
 	}
 	for _, m := range demoGroupMessages {
-		if _, err := sd.tx.Exec(`INSERT INTO messages(sender_id, group_id, body, attachments, created_at) VALUES (?, ?, ?, '[]', ?)`,
-			sd.users[m.from], sd.groups[m.group], m.body, sd.ts(m.ago)); err != nil {
+		if _, err := sd.tx.Exec(`INSERT INTO messages(id, sender_id, group_id, body, attachments, created_at) VALUES (?, ?, ?, ?, '[]', ?)`,
+			newID(), sd.users[m.from], sd.groups[m.group], m.body, sd.ts(m.ago)); err != nil {
 			return err
 		}
 	}

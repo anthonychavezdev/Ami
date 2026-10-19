@@ -31,7 +31,7 @@ erDiagram
     users ||--o{ push_tokens : "devices"
 
     users {
-        INTEGER id PK
+        TEXT id PK "UUID, version 7"
         TEXT username UK "COLLATE NOCASE"
         TEXT display_name
         BLOB password_hash
@@ -47,86 +47,90 @@ erDiagram
     }
     sessions {
         TEXT token PK "SHA-256 of the client token"
-        INTEGER user_id FK
+        TEXT user_id FK
         TEXT expires_at
     }
     groups {
-        INTEGER id PK
+        TEXT id PK "UUID, version 7"
         TEXT name
         TEXT description
-        INTEGER owner_id FK
+        TEXT owner_id FK
         INTEGER private "invite only"
         TEXT created_at
     }
     group_members {
-        INTEGER group_id PK, FK
-        INTEGER user_id PK, FK
+        TEXT group_id PK, FK
+        TEXT user_id PK, FK
         TEXT role "admin | member"
         TEXT joined_at
     }
     posts {
-        INTEGER id PK
-        INTEGER author_id FK
-        INTEGER group_id FK "NULL for profile posts"
+        TEXT id PK "UUID, version 7"
+        TEXT author_id FK
+        TEXT group_id FK "NULL for profile posts"
         TEXT body
         TEXT attachments "JSON array"
         TEXT edited_at "NULL until edited"
         TEXT created_at
     }
     comments {
-        INTEGER id PK
-        INTEGER post_id FK
-        INTEGER author_id FK
-        INTEGER parent_id FK "reply target"
+        TEXT id PK "UUID, version 7"
+        TEXT post_id FK
+        TEXT author_id FK
+        TEXT parent_id FK "reply target"
         TEXT body
         TEXT created_at
         TEXT edited_at
         TEXT deleted_at "placeholder when set"
     }
     reactions {
-        INTEGER post_id PK, FK
-        INTEGER user_id PK, FK
+        TEXT post_id PK, FK
+        TEXT user_id PK, FK
         TEXT emoji
     }
     friendships {
-        INTEGER from_id PK, FK "who asked"
-        INTEGER to_id PK, FK
+        TEXT from_id PK, FK "who asked"
+        TEXT to_id PK, FK
         TEXT status "pending | accepted"
         TEXT created_at
     }
     messages {
-        INTEGER id PK
-        INTEGER sender_id FK
-        INTEGER recipient_id FK "direct message"
-        INTEGER group_id FK "group chat"
+        TEXT id PK "UUID, version 7"
+        TEXT sender_id FK
+        TEXT recipient_id FK "direct message"
+        TEXT group_id FK "group chat"
         TEXT body
         TEXT attachments "JSON array"
         TEXT edited_at
         TEXT created_at
     }
     conversation_reads {
-        INTEGER user_id PK, FK
-        INTEGER peer_id PK, FK
-        INTEGER last_read_id "highest message id read"
+        TEXT user_id PK, FK
+        TEXT peer_id PK, FK
+        TEXT last_read_id "id of the last message read"
     }
     group_reads {
-        INTEGER user_id PK, FK
-        INTEGER group_id PK, FK
-        INTEGER last_read_id
+        TEXT user_id PK, FK
+        TEXT group_id PK, FK
+        TEXT last_read_id
     }
     push_tokens {
         TEXT token PK "Expo push token"
-        INTEGER user_id FK
+        TEXT user_id FK
         TEXT updated_at
     }
 ```
 
 ## Conventions
 
-- **Ids** are SQLite `INTEGER PRIMARY KEY` rowids. They increase, so "newer" means
-  "higher id" and every list is paged by id (`?before=`). One consequence: SQLite
-  hands out the highest id again after the highest row is deleted, which the
-  read-marker code has to account for (see [messages](#messages-and-read-markers)).
+- **Ids** are version 7 UUIDs stored as `TEXT` in their canonical form (lowercase,
+  hyphenated, 36 characters), made by `newID()` in `server/util.go` before each
+  insert. The first 48 bits are the creation time, so ids sort by age as plain
+  strings: "newer" means "greater", every list is paged by id (`?before=`) and
+  read markers compare ids. The rest is random, so ids cannot be guessed or
+  counted. Ids made by one process never go backwards; after a restart they
+  continue from the clock, so only a clock set back by more than a millisecond
+  could place a new row before older ones.
 - **Timestamps** are `TEXT` in RFC 3339 with nanoseconds, UTC (`2026-10-18T22:45:31.123456789Z`),
   written by `nowString()`. They compare correctly as strings, which the
   conversations sort relies on.
@@ -208,12 +212,12 @@ covers group chats.
 Unread counts come from read markers: `conversation_reads(user_id, peer_id, last_read_id)`
 for direct chats and `group_reads(user_id, group_id, last_read_id)` for groups.
 A message counts as unread for a user when its id is above their marker for that
-chat (and, for groups, when someone else wrote it). Marking a chat read moves
-the marker to the chat's highest id. Joining a group writes a marker at the
-current highest id, so what was said before does not count. Because SQLite can
-reuse the highest id after a delete, deleting the newest message pulls markers
-sitting at or past it back to what remains, so a later message that reuses the
-id still counts as unread ([messages.md](messages.md#unread-counts)).
+chat (and, for groups, when someone else wrote it); an empty marker means
+nothing was read. Marking a chat read moves the marker to the chat's highest id.
+Joining a group writes a marker at the current highest id, so what was said
+before does not count. Ids are never reused, so a marker left at a deleted
+message stays right: anything said later has a greater id
+([messages.md](messages.md#unread-counts)).
 
 ### push_tokens
 
@@ -258,6 +262,7 @@ The list today:
 | --- | --- | --- |
 | 1 | everything up to group chats | For databases from before versioning, which were upgraded piecemeal: creates any missing tables from `schema`, adds the columns in `addedColumns` that `CREATE TABLE IF NOT EXISTS` would not add, rebuilds `messages` so `recipient_id` can be NULL and `group_id` exists (SQLite cannot relax a constraint in place, so a copy is made), creates `lateIndexes` (on columns that only exist after this step), and writes read markers so chats older than unread tracking start out read. |
 | 2 | password resets | Adds `users.must_change_password`. |
+| 3 | ids become UUIDs | Turns every integer id into a UUID while keeping every reference: the tables are copied aside, dropped, recreated from `schema` and refilled through a map from each old id to a new one (`toUUIDs`, `refill`). New ids are handed out in the old order, so what was newer stays newer, and a read marker lands on the newest message at or before where it was. A database whose ids are already text is left alone. |
 
 `lateIndexes` are separate from `schema` only because they index columns that an
 old database gains in migration 1; a new database gets both at once.
