@@ -1,4 +1,4 @@
-import type { CallGroup, Comment, Me, Message, Post, User } from './types';
+import type { CallGroup, Comment, FriendStatus, Me, Message, Post, User } from './types';
 
 // Everything that travels over the WebSocket, mirroring server/events.go field
 // for field: a change there is a change here. `socket.on` and `socket.send`
@@ -19,8 +19,8 @@ export type ServerEvent =
   | { type: 'message.deleted'; id: number; sender_id: number; recipient_id: number | null; group_id: number | null; unread: number }
   | { type: 'messages.read'; peer_id?: number; group_id?: number; unread: number }
   | { type: 'group.added'; group: CallGroup; by: User }
-  | { type: 'friend.request'; user: User }
-  | { type: 'friend.accepted'; user: User }
+  // Both people get one on every change, the one who acted included; status is from the receiver's side.
+  | { type: 'friend.changed'; user: User; status: FriendStatus }
   | { type: 'post.created'; post: Post }
   | { type: 'post.updated'; post: Post }
   | { type: 'post.deleted'; id: number; group_id: number | null }

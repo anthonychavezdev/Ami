@@ -13,6 +13,7 @@ import { useTheme } from '@/lib/theme';
 import { toast } from '@/lib/toast';
 import type { Post, UserProfile } from '@/lib/types';
 import { usePosts } from '@/lib/usePosts';
+import { socket } from '@/lib/ws';
 import { spacing } from '@/theme';
 
 // Someone's profile followed by their posts. `embedded` means it sits in the
@@ -29,10 +30,15 @@ export function UserView({ id: userId, embedded = false }: { id: number; embedde
   const accept = useCallback((p: Post) => p.author.id === userId && p.group_id === null, [userId]);
   const { posts, loading, refreshing, refresh, loadMore, update, remove } = usePosts(fetchPage, accept);
 
+  // The profile, loaded again whenever the friendship with this person changes
+  // (from here, from a list beside, or from their side).
   const loadProfile = useCallback(() => api.user(userId).then(setProfile, (e) => setError(errorMessage(e))), [userId]);
   useEffect(() => {
     void loadProfile();
-  }, [loadProfile]);
+    return socket.on('friend.changed', (e) => {
+      if (e.user.id === userId) void loadProfile();
+    });
+  }, [userId, loadProfile]);
 
   // Applies a friendship change (request, accept, remove) to the profile shown.
   const changeFriendship = async (fn: () => Promise<{ friend_status: string }>) => {

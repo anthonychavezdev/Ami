@@ -84,10 +84,14 @@ type groupAddedEvent struct {
 	By    *User    `json:"by"`
 }
 
-// friendEvent is "friend.request" (user asked you) or "friend.accepted" (user said yes).
-type friendEvent struct {
-	Type string `json:"type"`
-	User *User  `json:"user"`
+// friendChangedEvent is "friend.changed": the friendship with User now has
+// Status (none, outgoing, incoming or friends) as the receiver sees it. Both
+// people get one, the one who acted included, so every list and profile
+// showing the other follows.
+type friendChangedEvent struct {
+	Type   string `json:"type"`
+	User   *User  `json:"user"`
+	Status string `json:"status"`
 }
 
 // postEvent is "post.created" or "post.updated", with the post as the
