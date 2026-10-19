@@ -1,11 +1,13 @@
 import { Feather } from '@expo/vector-icons';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useCallback, useEffect, useState } from 'react';
 import { FlatList, Modal, StyleSheet, Switch, Text, View } from 'react-native';
 
+import { GroupView } from '@/components/GroupView';
 import { Button, Empty, Fab, Input, Loading, Row, Segmented } from '@/components/ui';
 import { api } from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
+import { useWide } from '@/lib/layout';
 import type { Group } from '@/lib/types';
 import { useDebounced } from '@/lib/useDebounced';
 import { useStyles, useTheme } from '@/lib/theme';
@@ -14,11 +16,24 @@ import { radius, spacing, type ThemeColors } from '@/theme';
 
 type Tab = 'mine' | 'discover';
 
+// How a list opens a group: the group screen, or, on wide windows, the pane beside the list.
+type Opening = { selectedId: number | null; onOpen?: (group: Group) => void };
+
+// My groups and public groups to discover. On a wide window the open group
+// sits beside the list, named by ?group= so a reload or a link (/group/...
+// redirects here) lands on it.
 export default function GroupsScreen() {
+  const styles = useStyles(makeStyles);
+  const router = useRouter();
+  const wide = useWide();
+  const { group: groupParam } = useLocalSearchParams<{ group?: string }>();
+  const openId = wide && Number(groupParam) > 0 ? Number(groupParam) : null;
   const [tab, setTab] = useState<Tab>('mine');
   const [creating, setCreating] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
-  return (
+  const opening: Opening = { selectedId: openId, onOpen: wide ? (g) => router.setParams({ group: String(g.id) }) : undefined };
+
+  const lists = (
     <View style={{ flex: 1 }}>
       <Segmented
         value={tab}
@@ -28,7 +43,7 @@ export default function GroupsScreen() {
           { key: 'discover', label: 'Discover' },
         ]}
       />
-      {tab === 'mine' ? <MyGroups key={reloadKey} /> : <Discover />}
+      {tab === 'mine' ? <MyGroups key={reloadKey} {...opening} /> : <Discover {...opening} />}
       <Fab label="New group" onPress={() => setCreating(true)} />
       <CreateGroupModal
         visible={creating}
@@ -41,9 +56,30 @@ export default function GroupsScreen() {
       />
     </View>
   );
+  if (!wide) return lists;
+  return (
+    <View style={styles.panes}>
+      <View style={styles.listPane}>{lists}</View>
+      <View style={styles.groupPane}>
+        {openId ? (
+          <GroupView
+            key={openId}
+            id={openId}
+            embedded
+            onGone={() => {
+              router.setParams({ group: undefined });
+              setReloadKey((k) => k + 1);
+            }}
+          />
+        ) : (
+          <Empty text="Pick a group." />
+        )}
+      </View>
+    </View>
+  );
 }
 
-function GroupRow({ group }: { group: Group }) {
+function GroupRow({ group, selectedId, onOpen }: { group: Group } & Opening) {
   const { colors } = useTheme();
   const styles = useStyles(makeStyles);
   const router = useRouter();
@@ -59,12 +95,13 @@ function GroupRow({ group }: { group: Group }) {
       title={group.name}
       subtitle={subtitle}
       right={<Feather name="chevron-right" size={20} color={colors.muted} />}
-      onPress={() => router.push(`/group/${group.id}`)}
+      selected={group.id === selectedId}
+      onPress={() => (onOpen ? onOpen(group) : router.push(`/group/${group.id}`))}
     />
   );
 }
 
-function MyGroups() {
+function MyGroups(opening: Opening) {
   const [groups, setGroups] = useState<Group[] | null>(null);
   useFocusEffect(
     useCallback(() => {
@@ -79,14 +116,14 @@ function MyGroups() {
     <FlatList
       data={groups}
       keyExtractor={(g) => String(g.id)}
-      renderItem={({ item }) => <GroupRow group={item} />}
+      renderItem={({ item }) => <GroupRow group={item} {...opening} />}
       ListEmptyComponent={<Empty text="You haven't joined any groups. Discover some, or create your own with the + button." />}
       contentContainerStyle={{ flexGrow: 1, paddingBottom: 90 }}
     />
   );
 }
 
-function Discover() {
+function Discover(opening: Opening) {
   const [query, setQuery] = useState('');
   const q = useDebounced(query);
   const [groups, setGroups] = useState<Group[] | null>(null);
@@ -107,7 +144,7 @@ function Discover() {
         <FlatList
           data={groups}
           keyExtractor={(g) => String(g.id)}
-          renderItem={({ item }) => <GroupRow group={item} />}
+          renderItem={({ item }) => <GroupRow group={item} {...opening} />}
           ListEmptyComponent={<Empty text="No groups found." />}
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={{ flexGrow: 1, paddingBottom: 90 }}
@@ -171,6 +208,18 @@ function CreateGroupModal({ visible, onClose, onCreated }: { visible: boolean; o
 
 const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
+    panes: {
+      flex: 1,
+      flexDirection: 'row',
+      margin: spacing.lg,
+      marginTop: 0,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 12,
+      overflow: 'hidden',
+    },
+    listPane: { width: 340, borderRightWidth: 1, borderRightColor: colors.border, backgroundColor: colors.card },
+    groupPane: { flex: 1 },
     groupIcon: {
       width: 44,
       height: 44,
