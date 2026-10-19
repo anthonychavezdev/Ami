@@ -18,6 +18,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { API_URL } from '@/lib/config';
+import { COLUMN_WIDTH, useWide } from '@/lib/layout';
 import { useOnline } from '@/lib/presence';
 import { useStyles, useTheme } from '@/lib/theme';
 import { radius, spacing, type ThemeColors } from '@/theme';
@@ -210,6 +211,18 @@ export function Fab({ label, onPress }: { label: string; onPress: () => void }) 
 export function SectionLabel({ children, style }: { children: React.ReactNode; style?: StyleProp<TextStyle> }) {
   const styles = useStyles(makeStyles);
   return <Text style={[styles.sectionLabel, style]}>{children}</Text>;
+}
+
+// On wide windows a screen sits in a column of readable width instead of
+// stretching across the window; on phones it is the whole screen.
+export function WideColumn({ children }: { children: React.ReactNode }) {
+  const wide = useWide();
+  if (!wide) return <>{children}</>;
+  return (
+    <View style={{ flex: 1, alignItems: 'center' }}>
+      <View style={{ flex: 1, width: '100%', maxWidth: COLUMN_WIDTH }}>{children}</View>
+    </View>
+  );
 }
 
 // A screen with a text box at the bottom (chat, comments, a form): the box
