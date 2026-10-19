@@ -42,12 +42,7 @@ export function useAttachments(initial: Attachment[] = []) {
   return { attachments, uploading, pickMedia, addLink, removeAt, clear };
 }
 
-// What to upload for a picked asset, with sensible names for assets without one.
+// What to upload for a picked asset, with a sensible type for assets without one.
 function uploadOf(asset: ImagePicker.ImagePickerAsset) {
-  const video = asset.type === 'video';
-  return {
-    uri: asset.uri,
-    name: asset.fileName ?? (video ? 'video.mp4' : 'photo.jpg'),
-    type: asset.mimeType ?? (video ? 'video/mp4' : 'image/jpeg'),
-  };
+  return { uri: asset.uri, type: asset.mimeType ?? (asset.type === 'video' ? 'video/mp4' : 'image/jpeg') };
 }

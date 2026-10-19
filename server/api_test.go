@@ -1,7 +1,11 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"io"
+	"net/http"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -98,17 +102,17 @@ func TestPosts(t *testing.T) {
 	ts.check("create markdown post", r.status == 201 && len(r.obj().list("attachments")) == 0 && !r.obj().isNull("attachments"), r)
 	p1 := r.obj().id("id")
 
-	up := ts.upload(t1.token, tinyPNG(), "pic.png", "image/png")
+	up := ts.upload(t1.token, tinyPNG(), "image/png")
 	ts.check("upload png", up.status == 201 && up.obj().str("type") == "image" && up.obj().num("width") == 2 && strings.HasPrefix(up.obj().str("url"), "/media/"), up)
 	pic := up.obj()
 	r = ts.get(pic.str("url"), "")
 	ts.check("media served with a sandboxing CSP", r.status == 200 && strings.Contains(r.header.Get("Content-Security-Policy"), "sandbox"), r.status, r.header)
 	var codes []int
 	for i := 0; i < 31; i++ {
-		codes = append(codes, ts.upload(t2.token, tinyPNG(), "p.png", "image/png").status)
+		codes = append(codes, ts.upload(t2.token, tinyPNG(), "image/png").status)
 	}
 	ts.check("upload budget per user (30/min)", codes[0] == 201 && codes[30] == 429, codes[28:])
-	r = ts.upload(t1.token, []byte("not really a video"), "x.mp4", "video/mp4")
+	r = ts.upload(t1.token, []byte("not really a video"), "video/mp4")
 	ts.check("upload disguised text -> 415", r.status == 415, r)
 
 	r = ts.post("/api/posts", J{"body": "", "attachments": []J{pic, {"type": "link", "url": "https://example.com/a"}}}, t1.token)
@@ -160,7 +164,7 @@ func TestProfile(t *testing.T) {
 	r = ts.post("/api/login", J{"username": "tom", "password": testPassword}, "")
 	ts.check("old username no longer logs in", r.status == 401, r)
 
-	g := ts.upload(t1.token, tinyGIF(), "anim.gif", "image/gif")
+	g := ts.upload(t1.token, tinyGIF(), "image/gif")
 	ts.check("upload an animated GIF", g.status == 201 && g.obj().str("type") == "image" && strings.HasSuffix(g.obj().str("url"), ".gif"), g)
 	gifURL := g.obj().str("url")
 	square := J{"x": 0.0, "y": 0.0, "w": 1.0, "aspect": 1.0}
@@ -205,7 +209,7 @@ func TestProfile(t *testing.T) {
 	r = ts.get(path("/api/users/%s", t1.id), t2.token)
 	ts.check("the profile shows interests, links and the Markdown bio", len(r.obj().list("links")) == 2 && len(stringsOf(r.obj()["interests"])) == 3 && r.obj().str("bio") == "**Hola**, _soy tester_", r)
 
-	cover := ts.upload(t1.token, tinyPNG(), "cover.png", "image/png").obj().str("url")
+	cover := ts.upload(t1.token, tinyPNG(), "image/png").obj().str("url")
 	r = me(J{"cover_url": cover})
 	ts.check("set a cover picture (gets the widest centred 3:1 window)", r.status == 200 && r.obj().str("cover_url") == cover && cropIs(r.obj().obj("cover_crop"), 0, 0.3333, 1, 1), r)
 	r = me(J{"cover_crop": J{"x": 0.25, "y": 0.1, "w": 0.6, "aspect": 1}})
@@ -304,7 +308,7 @@ func TestMessages(t *testing.T) {
 	ts := newTestServer(t, false)
 	t1, t2 := ts.register("tom"), ts.register("tia")
 	ts.befriend(t1, t2)
-	pic := ts.upload(t1.token, tinyPNG(), "pic.png", "image/png").obj()
+	pic := ts.upload(t1.token, tinyPNG(), "image/png").obj()
 	to2, to1 := path("/api/messages/%s", t2.id), path("/api/messages/%s", t1.id)
 
 	r := ts.post(to2, J{"body": "Hola t2"}, t1.token)
@@ -760,4 +764,35 @@ func TestServeStopsWhenContextEnds(t *testing.T) {
 	case <-time.After(wsTimeout):
 		t.Error("serve did not stop")
 	}
+}
+
+// Uploads over the limit are refused up front when the length is declared and
+// while streaming when it is not; nothing is left on disk either way.
+func TestUploadLimit(t *testing.T) {
+	ts := newTestServer(t, false)
+	tom := ts.register("tom")
+	old := maxUploadBytes
+	maxUploadBytes = 1 << 10
+	t.Cleanup(func() { maxUploadBytes = old })
+	big := append(tinyPNG(), make([]byte, 4<<10)...)
+
+	r := ts.upload(tom.token, big, "image/png")
+	ts.check("declared length over the limit -> 413", r.status == 413 && strings.Contains(string(r.body), "too large"), r)
+
+	req, _ := http.NewRequest("POST", ts.url+"/api/media", io.NopCloser(bytes.NewReader(big))) // no length: sent chunked
+	req.Header.Set("Content-Type", "image/png")
+	req.Header.Set("Authorization", "Bearer "+tom.token)
+	res, err := http.DefaultClient.Do(req)
+	ts.check("streamed body over the limit -> 413", err == nil && res.StatusCode == 413, err, res)
+	if err == nil {
+		res.Body.Close()
+	}
+
+	r = ts.upload(tom.token, big[:512], "image/png")
+	ts.check("under the limit still works", r.status == 201, r)
+	files, _ := os.ReadDir(ts.s.mediaDir)
+	ts.check("only the accepted upload is on disk", len(files) == 1, len(files))
+
+	r = ts.do("POST", "/api/media", raw{nil, "image/png"}, tom.token)
+	ts.check("empty body -> 400", r.status == 400, r)
 }

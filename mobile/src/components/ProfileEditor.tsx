@@ -69,7 +69,7 @@ export function ProfileEditor({ onDone }: { onDone: () => void }) {
     setUploading(which);
     setError(null);
     try {
-      const att = await api.uploadMedia({ uri: asset.uri, name: asset.fileName ?? 'photo.jpg', type: asset.mimeType ?? 'image/jpeg' });
+      const att = await api.uploadMedia({ uri: asset.uri, type: asset.mimeType ?? 'image/jpeg' });
       if (att.type !== 'image') throw new Error('Profile pictures must be pictures');
       const crop = att.width && att.height ? defaultCrop(att.width / att.height, which === 'cover' ? COVER_RATIO : 1) : null;
       set(which === 'cover' ? { cover: att.url, coverCrop: crop } : { avatarUrl: att.url, crop });

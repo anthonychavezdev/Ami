@@ -81,7 +81,7 @@ carries a URL that was not produced by the server, except links, which must be
 | What | Limit | Where |
 | --- | --- | --- |
 | JSON request body | 1 MB | `readJSON` |
-| Upload | 64 MB | `uploadMedia` |
+| Upload | 20 GB, streamed to disk; a transfer that stalls for 2 min is dropped | `uploadMedia` |
 | Request headers | 64 KB | `http.Server` |
 | WebSocket message | 64 KB | `wsUpgrade` |
 | WebSocket messages | 300 per 10 s per connection | `handleWS` |

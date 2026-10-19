@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"image"
 	_ "image/gif"
 	_ "image/jpeg"
@@ -13,6 +14,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
+	"time"
 )
 
 // Attachment is a picture, video or link carried by a post. Pictures and
@@ -25,9 +28,21 @@ type Attachment struct {
 }
 
 const (
-	maxUploadBytes = 64 << 20
+	maxUploadGB    = 20
 	maxAttachments = 10
+	// transferIdle is how long an upload or download may stall before its
+	// connection is dropped. While bytes keep moving there is no overall limit:
+	// a 20 GB transfer takes hours on an ordinary link, far past the server's
+	// read and write timeouts, which are sized for ordinary requests.
+	transferIdle = 2 * time.Minute
 )
+
+// maxUploadBytes caps one upload; a variable so tests can lower it.
+var maxUploadBytes int64 = maxUploadGB << 30
+
+func tooLarge() error {
+	return fail(http.StatusRequestEntityTooLarge, fmt.Sprintf("file too large (max %d GB)", maxUploadGB))
+}
 
 var mediaExt = map[string]string{
 	"image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif", "image/webp": ".webp",
@@ -45,33 +60,77 @@ func (s *server) uploadExists(name string) bool {
 	return err == nil
 }
 
-// uploadMedia stores one picture or video under a random name and returns the
-// attachment to put on a post.
+// uploadMedia stores one picture or video, sent as the request body, under a
+// random name and returns the attachment to put on a post. The body streams to
+// disk as it arrives: nothing is held in memory or spooled to a temporary file.
 func (s *server) uploadMedia(w http.ResponseWriter, r *http.Request, me *User) error {
 	if !s.uploadLimiter.allow(me.ID) {
 		w.Header().Set("Retry-After", "60")
 		return fail(http.StatusTooManyRequests, "too many uploads, try again in a minute")
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes)
-	file, header, err := r.FormFile("file")
-	if err != nil {
-		return badRequest(`multipart form with a "file" field required (max 64 MB)`)
+	if r.ContentLength > maxUploadBytes {
+		return tooLarge()
 	}
-	defer file.Close()
+	rc := http.NewResponseController(w)
+	body := &pacedReader{Reader: http.MaxBytesReader(w, r.Body, maxUploadBytes)}
+	body.extend = func() { _ = rc.SetReadDeadline(time.Now().Add(transferIdle)) }
 	head := make([]byte, 512)
-	n, _ := io.ReadFull(file, head)
+	n, _ := io.ReadFull(body, head)
+	if n == 0 {
+		return badRequest("send the picture or video as the request body")
+	}
 	head = head[:n]
-	mime := sniffMedia(head, header.Header.Get("Content-Type"))
+	mime := sniffMedia(head, r.Header.Get("Content-Type"))
 	ext, known := mediaExt[mime]
 	if !known {
 		return fail(http.StatusUnsupportedMediaType, "only JPEG, PNG, GIF and WebP pictures or MP4, MOV and WebM videos are accepted")
 	}
 	name := hex.EncodeToString(randomBytes(16)) + ext
-	if err := s.storeUpload(name, head, file); err != nil {
+	if err := s.storeUpload(name, head, body); err != nil {
 		return err
 	}
+	_ = rc.SetWriteDeadline(time.Now().Add(transferIdle)) // the request's own write deadline may be hours gone
 	return created(w, s.attachmentFor(mime, name))
 }
+
+// pacer calls extend as bytes pass through a transfer, at most once a second,
+// so one that keeps moving is never cut off by the server's timeouts while one
+// that stalls still is (see transferIdle).
+type pacer struct {
+	extend func()
+	last   time.Time
+}
+
+func (p *pacer) tick() {
+	if now := time.Now(); now.Sub(p.last) >= time.Second {
+		p.last = now
+		p.extend()
+	}
+}
+
+// pacedReader paces a request body (an upload).
+type pacedReader struct {
+	io.Reader
+	pacer
+}
+
+func (p *pacedReader) Read(b []byte) (int, error) {
+	p.tick()
+	return p.Reader.Read(b)
+}
+
+// pacedWriter paces a response (a download from /media/).
+type pacedWriter struct {
+	http.ResponseWriter
+	pacer
+}
+
+func (p *pacedWriter) Write(b []byte) (int, error) {
+	p.tick()
+	return p.ResponseWriter.Write(b)
+}
+
+func (p *pacedWriter) Unwrap() http.ResponseWriter { return p.ResponseWriter }
 
 // storeUpload writes the sniffed head and the rest of the body to a new file.
 func (s *server) storeUpload(name string, head []byte, rest io.Reader) error {
@@ -90,7 +149,10 @@ func (s *server) storeUpload(name string, head []byte, rest io.Reader) error {
 	os.Remove(path)
 	var tooBig *http.MaxBytesError
 	if errors.As(err, &tooBig) {
-		return fail(http.StatusRequestEntityTooLarge, "file too large (max 64 MB)")
+		return tooLarge()
+	}
+	if errors.Is(err, syscall.ENOSPC) {
+		return fail(http.StatusInsufficientStorage, "no space left for uploads")
 	}
 	return err
 }
@@ -164,7 +226,11 @@ func (s *server) serveMedia(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
 	// Uploads are only ever images and videos; if one is opened as a page it cannot run anything.
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; img-src 'self'; media-src 'self'; style-src 'unsafe-inline'; sandbox")
-	http.ServeFile(w, r, filepath.Join(s.mediaDir, name))
+	// A 20 GB video outlasts the server's write timeout; keep extending it while bytes move.
+	rc := http.NewResponseController(w)
+	out := &pacedWriter{ResponseWriter: w}
+	out.extend = func() { _ = rc.SetWriteDeadline(time.Now().Add(transferIdle)) }
+	http.ServeFile(out, r, filepath.Join(s.mediaDir, name))
 }
 
 // cleanAttachments checks a post's attachments (uploads must exist in the

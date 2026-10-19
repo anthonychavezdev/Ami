@@ -19,7 +19,7 @@ Helpers worth knowing:
 - `J` is a decoded JSON object with forgiving accessors (`str`, `num`, `id`,
   `obj`, `list`, `isTrue`, `isNull`, `has`), so checks read like the JSON they inspect.
 - `ts.get/post/put/del` send requests with a token; `ts.upload` posts a
-  multipart file; `ts.register`, `ts.login`, `ts.befriend` set up accounts.
+  file as the body; `ts.register`, `ts.login`, `ts.befriend` set up accounts.
 - `ts.check(name, cond, info...)` records a failed expectation without stopping
   the test, so one run lists every broken promise.
 - `ts.connect(account)` opens a WebSocket and consumes its `hello`; `expect(type)`

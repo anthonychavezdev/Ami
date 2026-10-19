@@ -10,7 +10,6 @@ import (
 	"image/png"
 	"io"
 	"log"
-	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -218,17 +217,9 @@ func (ts *testServer) put(path string, body any, token string) response {
 }
 func (ts *testServer) del(path, token string) response { return ts.do("DELETE", path, nil, token) }
 
-// upload posts a file to /api/media.
-func (ts *testServer) upload(token string, data []byte, name, contentType string) response {
-	var buf bytes.Buffer
-	w := multipart.NewWriter(&buf)
-	part, _ := w.CreatePart(map[string][]string{
-		"Content-Disposition": {fmt.Sprintf(`form-data; name="file"; filename="%s"`, name)},
-		"Content-Type":        {contentType},
-	})
-	part.Write(data)
-	w.Close()
-	return ts.do("POST", "/api/media", raw{buf.Bytes(), w.FormDataContentType()}, token)
+// upload posts a file to /api/media: the file is the body.
+func (ts *testServer) upload(token string, data []byte, contentType string) response {
+	return ts.do("POST", "/api/media", raw{data, contentType}, token)
 }
 
 // ---- accounts
