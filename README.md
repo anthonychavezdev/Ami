@@ -29,15 +29,18 @@ On Linux the emulator needs `/dev/kvm` access (NixOS: add your user to the
 `kvm` group). If `android` reports that no emulator could be started, run
 `emulator -avd ami` by hand to see the emulator's own error.
 
-`server` runs with `-dev`, which fills an empty database with demo accounts
-(`ana`, `luis`, `sofia`, `diego`, `valentina`, `mateo`, `camila`, `javier`,
-password `amigo-demo`) plus friendships, groups, posts and chats. Log in as
-`ana` to see every state. Production never seeds.
+`server -dev` fills an empty database with demo accounts (`ana`, `luis`,
+`sofia`, `diego`, `valentina`, `mateo`, `camila`, `javier`, password
+`amigo-demo`) plus friendships, groups, posts and chats, and allows any
+browser origin, which the web app served by Metro needs. Log in as `ana` to
+see every state. `server` alone runs with the production defaults: no demo
+data, no CORS.
 
-To watch what a client sends and gets back, run `server -verbose`: every
-request and response is logged with headers and body, and every WebSocket
-message in and out. Passwords and tokens are redacted and bodies are cut at
-4 KB, so the output is safe to paste into an issue.
+To watch what a client sends and gets back, add `-verbose` to either
+(`server -dev -verbose`): every request and response is logged with headers
+and body, and every WebSocket message in and out. Passwords and tokens are
+redacted and bodies are cut at 4 KB, so the output is safe to paste into an
+issue.
 
 The app needs a development build (not Expo Go) because of `react-native-webrtc`.
 `android` produces one and installs it on the emulator, or on a USB-connected
@@ -82,7 +85,7 @@ at the repo root (`NAME=value` per line, loaded when you enter the shell), in
 
 Unless `EXPO_PUBLIC_API_URL` is set, the app calls the API on the machine it was
 loaded from, at `AMI_PORT`: the web page uses the host in the browser's address
-bar, native dev builds use the machine running Metro. So with `server` and `web`
+bar, native dev builds use the machine running Metro. So with `server -dev` and `web`
 running here, another device just opens `http://<this machine's IP>:8081`.
 
 ## Production

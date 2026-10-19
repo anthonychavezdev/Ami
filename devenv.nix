@@ -130,8 +130,10 @@ in
     go vet ./... && go test ./...
     cd "$DEVENV_ROOT/mobile" && { [ -d node_modules ] || npm install; } && npm test
   '';
+  # The API with the production defaults; `server -dev` adds the demo data and
+  # open CORS the web app on Metro needs, `-verbose` the full request log.
   scripts.server.exec = ''
-    cd "$DEVENV_ROOT/server" && go run . -dev -addr ":$AMI_PORT" "$@"
+    cd "$DEVENV_ROOT/server" && go run . -addr ":$AMI_PORT" "$@"
   '';
   scripts.mobile.exec = ''
     ${expoEnv}
