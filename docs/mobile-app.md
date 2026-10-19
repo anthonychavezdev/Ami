@@ -167,6 +167,7 @@ pair exports the same names, so the rest of the code never checks the platform:
 | `notifications` | `expo-notifications`, push tokens, app badge | Notification API, `(n)` in the tab title |
 | `webrtc` | `react-native-webrtc` classes, `RTCView`, the ReplayKit picker | the browser's WebRTC, `<video>` / `<audio>` |
 | `components/ContextMenu` | no menu (hold-to-select and inline controls) | a right-click / ⋯ menu in a portal |
+| `components/ReactionSummary` | holding a reaction pill opens a sheet of who reacted | resting the pointer on one shows a tip with the names, in a portal |
 
 `Platform.OS === 'web'` checks remain in a few places where the difference is a
 detail rather than an implementation: hover-only ⋯ buttons, the arrow keys in

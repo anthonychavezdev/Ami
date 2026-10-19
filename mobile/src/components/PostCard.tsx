@@ -9,6 +9,7 @@ import { contextMenuProps, useContextMenu } from './ContextMenu';
 import { DotsButton } from './DotsButton';
 import { deleteItem, editItem, menuItems } from './menu';
 import { ReactionButton } from './ReactionButton';
+import { ReactionSummary } from './ReactionSummary';
 import { Avatar } from './ui';
 import { ApiError, api } from '@/lib/api';
 import { confirmAction } from '@/lib/confirm';
@@ -23,9 +24,6 @@ import { radius, spacing, type ThemeColors } from '@/theme';
 import { errorMessage } from '@/lib/errors';
 
 type PostActions = { edit?: () => void; remove?: () => void };
-
-// Reactions sorted by count, biggest first.
-const sortedReactions = (post: Post) => Object.entries(post.reactions).sort((a, b) => b[1] - a[1]);
 
 export function PostCard({
   post,
@@ -150,23 +148,6 @@ function AuthorLine({ post, showGroup }: { post: Post; showGroup: boolean }) {
   );
 }
 
-function ReactionSummary({ post }: { post: Post }) {
-  const styles = useStyles(makeStyles);
-  const reactions = sortedReactions(post);
-  if (reactions.length === 0) return null;
-  return (
-    <View style={styles.reactions}>
-      {reactions.map(([emoji, count]) => (
-        <View key={emoji} style={[styles.reactionPill, emoji === post.my_reaction && styles.reactionMine]}>
-          <Text style={{ fontSize: 14 }}>
-            {emoji} {count}
-          </Text>
-        </View>
-      ))}
-    </View>
-  );
-}
-
 // Sets or clears the viewer's reaction, one request at a time; a post that
 // vanished meanwhile is reported and dropped.
 function useReact(post: Post, onChange: (p: Post) => void, onDelete?: (id: string) => void) {
@@ -216,16 +197,6 @@ const makeStyles = (colors: ThemeColors) =>
     name: { fontWeight: '700', color: colors.text, fontSize: 15 },
     meta: { color: colors.muted, fontSize: 13 },
     body: { marginTop: spacing.md },
-    reactions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: spacing.md },
-    reactionPill: {
-      backgroundColor: colors.bg,
-      borderRadius: radius.pill,
-      paddingHorizontal: 8,
-      paddingVertical: 3,
-      borderWidth: 1,
-      borderColor: colors.border,
-    },
-    reactionMine: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
     footer: {
       flexDirection: 'row',
       alignItems: 'center',

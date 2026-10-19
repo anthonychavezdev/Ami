@@ -145,3 +145,6 @@ export type ServerStats = {
   cpu: { cores: number; load_1: number; load_5: number; load_15: number; server_percent: number };
   memory: { total: number; available: number; server: number };
 };
+
+// GET /api/posts/{id}/reactions: who reacted with one emoji, the most used first.
+export type ReactionGroup = { emoji: string; users: User[] };

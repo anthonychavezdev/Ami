@@ -822,3 +822,27 @@ func TestStats(t *testing.T) {
 	ts.check("the server's own memory is known", st.obj("memory").num("server") > 0, st.obj("memory"))
 	ts.check("tia has nothing yet", ts.get("/api/stats", tia.token).obj().obj("storage").num("yours") == 0)
 }
+
+// Who reacted with what: grouped by emoji, the most used first, people by name.
+func TestWhoReacted(t *testing.T) {
+	ts := newTestServer(t, false)
+	ana, bea, cai := ts.register("ana"), ts.register("bea"), ts.register("cai")
+	post := ts.post("/api/posts", J{"body": "hola"}, ana.token).obj().id("id")
+	ts.check("no reactions yet", string(ts.get("/api/posts/"+post+"/reactions", ana.token).body) == "[]\n")
+	ts.put("/api/posts/"+post+"/reaction", J{"emoji": "👍"}, bea.token)
+	ts.put("/api/posts/"+post+"/reaction", J{"emoji": "👍"}, cai.token)
+	ts.put("/api/posts/"+post+"/reaction", J{"emoji": "❤️"}, ana.token)
+	r := ts.get("/api/posts/"+post+"/reactions", ana.token)
+	groups := r.list()
+	ts.check("two groups, the bigger first", r.status == 200 && len(groups) == 2 && groups[0].str("emoji") == "👍" && groups[1].str("emoji") == "❤️", r)
+	if len(groups) == 2 {
+		names := []string{}
+		for _, u := range groups[0].list("users") {
+			names = append(names, u.str("username"))
+		}
+		ts.check("thumbs are bea and cai by name", len(names) == 2 && names[0] == "bea" && names[1] == "cai", names)
+		ts.check("the heart is ana", len(groups[1].list("users")) == 1 && groups[1].list("users")[0].str("username") == "ana", groups[1])
+	}
+	ts.check("unknown post -> 404", ts.get("/api/posts/"+newID()+"/reactions", ana.token).status == 404)
+	ts.check("needs a session", ts.get("/api/posts/"+post+"/reactions", "").status == 401)
+}
