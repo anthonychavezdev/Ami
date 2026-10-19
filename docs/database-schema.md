@@ -1,9 +1,12 @@
 # Database schema
 
-Ami keeps everything in one SQLite file (`-db`, default `ami.db`). Uploaded
-pictures and videos are files in the media directory (`-media-dir`, default
-`media`); the database only stores their URLs. The schema and the migrations are
-in [`server/db.go`](../server/db.go).
+Ami keeps everything in a MariaDB database (`-db`, a connection string such as
+`ami:password@tcp(127.0.0.1:3306)/ami`; see [server.md](server.md#flags)).
+Uploaded pictures and videos are files in the media directory (`-media-dir`,
+default `media`); the database only stores their URLs. The schema and the
+migrations are in [`server/db.go`](../server/db.go). MariaDB rather than an
+embedded database because many requests write at once (posts, messages, read
+markers, presence) and InnoDB lets them, row by row, while readers carry on.
 
 ## Diagram
 
@@ -31,97 +34,97 @@ erDiagram
     users ||--o{ push_tokens : "devices"
 
     users {
-        TEXT id PK "UUID, version 7"
-        TEXT username UK "COLLATE NOCASE"
-        TEXT display_name
-        BLOB password_hash
-        BLOB salt
-        INTEGER password_iterations "PBKDF2 rounds used"
-        INTEGER invisible "appear offline"
-        TEXT avatar_url "under /media, or empty"
-        TEXT bio
-        TEXT pronouns
-        TEXT avatar_crop "JSON {x,y,w,aspect}"
-        INTEGER must_change_password "after -reset-password"
-        TEXT cover_url "under /media, or empty"
-        TEXT cover_crop "JSON, a 3:1 window"
-        TEXT interests "JSON array of tags"
-        TEXT links "JSON array of {label, url}"
-        TEXT created_at
+        uuid id PK "UUID, version 7"
+        string username UK "unique, case-insensitive"
+        string display_name
+        bytes password_hash
+        bytes salt
+        int password_iterations "PBKDF2 rounds used"
+        bool invisible "appear offline"
+        string avatar_url "under /media, or empty"
+        string bio
+        string pronouns
+        string avatar_crop "JSON {x,y,w,aspect}"
+        bool must_change_password "after -reset-password"
+        string cover_url "under /media, or empty"
+        string cover_crop "JSON, a 3:1 window"
+        string interests "JSON array of tags"
+        string links "JSON array of {label, url}"
+        string created_at
     }
     sessions {
-        TEXT token PK "SHA-256 of the client token"
-        TEXT user_id FK
-        TEXT expires_at
+        string token PK "SHA-256 of the client token"
+        uuid user_id FK
+        string expires_at
     }
     groups {
-        TEXT id PK "UUID, version 7"
-        TEXT name
-        TEXT description
-        TEXT owner_id FK
-        INTEGER private "invite only"
-        TEXT created_at
+        uuid id PK "UUID, version 7"
+        string name
+        string description
+        uuid owner_id FK
+        bool private "invite only"
+        string created_at
     }
     group_members {
-        TEXT group_id PK, FK
-        TEXT user_id PK, FK
-        TEXT role "admin | member"
-        TEXT joined_at
+        uuid group_id PK, FK
+        uuid user_id PK, FK
+        string role "admin | member"
+        string joined_at
     }
     posts {
-        TEXT id PK "UUID, version 7"
-        TEXT author_id FK
-        TEXT group_id FK "NULL for profile posts"
-        TEXT body
-        TEXT attachments "JSON array"
-        TEXT edited_at "NULL until edited"
-        TEXT created_at
+        uuid id PK "UUID, version 7"
+        uuid author_id FK
+        uuid group_id FK "NULL for profile posts"
+        string body
+        string attachments "JSON array"
+        string edited_at "NULL until edited"
+        string created_at
     }
     comments {
-        TEXT id PK "UUID, version 7"
-        TEXT post_id FK
-        TEXT author_id FK
-        TEXT parent_id FK "reply target"
-        TEXT body
-        TEXT created_at
-        TEXT edited_at
-        TEXT deleted_at "placeholder when set"
+        uuid id PK "UUID, version 7"
+        uuid post_id FK
+        uuid author_id FK
+        uuid parent_id FK "reply target"
+        string body
+        string created_at
+        string edited_at
+        string deleted_at "placeholder when set"
     }
     reactions {
-        TEXT post_id PK, FK
-        TEXT user_id PK, FK
-        TEXT emoji
+        uuid post_id PK, FK
+        uuid user_id PK, FK
+        string emoji
     }
     friendships {
-        TEXT from_id PK, FK "who asked"
-        TEXT to_id PK, FK
-        TEXT status "pending | accepted"
-        TEXT created_at
+        uuid from_id PK, FK "who asked"
+        uuid to_id PK, FK
+        string status "pending | accepted"
+        string created_at
     }
     messages {
-        TEXT id PK "UUID, version 7"
-        TEXT sender_id FK
-        TEXT recipient_id FK "direct message"
-        TEXT group_id FK "group chat"
-        TEXT body
-        TEXT attachments "JSON array"
-        TEXT edited_at
-        TEXT created_at
+        uuid id PK "UUID, version 7"
+        uuid sender_id FK
+        uuid recipient_id FK "direct message"
+        uuid group_id FK "group chat"
+        string body
+        string attachments "JSON array"
+        string edited_at
+        string created_at
     }
     conversation_reads {
-        TEXT user_id PK, FK
-        TEXT peer_id PK, FK
-        TEXT last_read_id "id of the last message read"
+        uuid user_id PK, FK
+        uuid peer_id PK, FK
+        uuid last_read_id "id of the last message read"
     }
     group_reads {
-        TEXT user_id PK, FK
-        TEXT group_id PK, FK
-        TEXT last_read_id
+        uuid user_id PK, FK
+        uuid group_id PK, FK
+        uuid last_read_id
     }
     push_tokens {
-        TEXT token PK "Expo push token"
-        TEXT user_id FK
-        TEXT updated_at
+        string token PK "Expo push token"
+        uuid user_id FK
+        string updated_at
     }
 ```
 
@@ -232,71 +235,69 @@ current user; tokens Expo reports as unregistered are deleted
 
 ## How the database is opened
 
-```go
-dsn := "file:" + path + "?_pragma=journal_mode(WAL)&_pragma=foreign_keys(ON)&_pragma=busy_timeout(5000)"
-db.SetMaxOpenConns(1)
-```
+`openDB` parses the connection string with the driver, forces `utf8mb4` on
+the wire (names and posts carry emoji), keeps timestamps as the strings the
+server writes, and sets a pool of up to 32 connections (8 idle, recycled after
+5 minutes). It then pings the server for up to 30 s before giving up, since
+after a reboot the database may still be starting, and runs the migrations.
 
-- **WAL** lets readers proceed while a write is in flight and makes the
-  `-reset-password` command safe to run beside a running server.
-- **One connection** per process: SQLite allows one writer at a time, and a
-  single connection turns "wait for the lock" into "wait in the pool", so no
-  code path has to handle `SQLITE_BUSY`.
-- **busy_timeout 5000** covers the second process case (the reset command, or a
-  `sqlite3` shell) by waiting up to 5 s for a lock.
+Tables are InnoDB with `utf8mb4` and the `utf8mb4_bin` collation, so ids,
+tokens and emoji compare byte for byte, as they did in SQLite. The columns
+people search carry `utf8mb4_unicode_ci` instead: `username` (which also
+makes its unique key case-insensitive), `display_name`, and a group's `name`
+and `description`. Timestamps are RFC 3339 strings in UTC (`VARCHAR(35)`),
+which sort as time; ids are `CHAR(36)` UUIDs. Booleans are `TINYINT(1)`, JSON
+(crops, interests, links, attachments) is `TEXT` the server encodes and
+decodes. Foreign keys cascade on delete, so deleting an account or a group
+takes everything under it along.
 
-The driver is `modernc.org/sqlite`, pure Go, so the binary cross-compiles with
-`CGO_ENABLED=0` ([dependencies.md](dependencies.md#go)).
+The driver is `github.com/go-sql-driver/mysql`, pure Go, so the binary still
+cross-compiles with `CGO_ENABLED=0` ([dependencies.md](dependencies.md#go)).
 
 ## Migrations
 
-A database records its schema version in `PRAGMA user_version`. On start,
-`migrate` does one of two things:
+A database records its schema version in the `schema_version` table. On
+start, `migrate` does one of two things:
 
-- **A new file** (version 0 and no `users` table) gets the whole current `schema`
-  plus `lateIndexes`, and its version is set to the number of migrations. New
-  databases never run migrations.
-- **An existing file** runs every migration past its version, in order, each in
-  its own transaction that also bumps the version. A failure rolls that
-  migration back and the server refuses to start with
-  `migration N (<name>): <error>`.
+- **A new database** (no `users` table) gets the whole current `schema`, one
+  statement at a time, and its version is set to the number of migrations.
+  New databases never run migrations.
+- **An existing database** runs every migration past its version, in order,
+  each bumping the version when it is done. A failure stops the server with
+  `migration N (<name>): <error>`. MariaDB commits DDL as it goes and cannot
+  roll it back, so a migration that fails halfway leaves its earlier
+  statements in place: write them so that running again is harmless
+  (`addColumn` and `CREATE ... IF NOT EXISTS` are).
 
-The list today:
-
-| Version | Name | What it does |
-| --- | --- | --- |
-| 1 | everything up to group chats | For databases from before versioning, which were upgraded piecemeal: creates any missing tables from `schema`, adds the columns in `addedColumns` that `CREATE TABLE IF NOT EXISTS` would not add, rebuilds `messages` so `recipient_id` can be NULL and `group_id` exists (SQLite cannot relax a constraint in place, so a copy is made), creates `lateIndexes` (on columns that only exist after this step), and writes read markers so chats older than unread tracking start out read. |
-| 2 | password resets | Adds `users.must_change_password`. |
-| 3 | ids become UUIDs | Turns every integer id into a UUID while keeping every reference: the tables are copied aside, dropped, recreated from `schema` and refilled through a map from each old id to a new one (`toUUIDs`, `refill`). New ids are handed out in the old order, so what was newer stays newer, and a read marker lands on the newest message at or before where it was. A database whose ids are already text is left alone. |
-| 4 | cover, interests and links | Adds `users.cover_url`, `cover_crop`, `interests` and `links`. |
-
-`lateIndexes` are separate from `schema` only because they index columns that an
-old database gains in migration 1; a new database gets both at once.
+The list is empty today: the MariaDB schema is version 0, the shape described
+above. (The SQLite era's migrations, up to UUID ids, went with SQLite; there
+is no path from an old SQLite file to MariaDB other than starting over.)
 
 ### Adding a migration
 
 1. Edit `schema` so a new database gets the final shape.
 2. Append to `migrations` a step that brings an existing database to the same
    place: for a new column, `addColumn(tx, "table", "column", "DEFINITION")`
-   (a no-op when the column exists); for anything else, SQL in the transaction.
+   (a no-op when the column exists); for anything else, SQL that is safe to
+   run twice.
 3. If the change touches `User`, update `userCols`, `User.fields()` and the
    app's `User` type too (see [server.md](server.md#database-access)).
-4. Run the tests: `migrate_test.go` upgrades a copy of the first-release schema
-   through every migration, checks that a new database is already current, and
-   takes a current database back one version to check the newest migration on
-   its own.
+4. Run the tests: `migrate_test.go` checks that a new database is current,
+   that a second start changes nothing, and that `addColumn` adds a column
+   once.
 
 The version number is the migration's position in the list, so nothing else
 needs bumping.
 
-## Working with the file
+## Working with the database
 
-- Inspect it from the dev shell: `sqlite3 server/ami.db` (the shell has the
-  `sqlite3` CLI). In WAL mode there may be `ami.db-wal` and `ami.db-shm` next to it;
-  they belong to the database.
-- Back it up with `sqlite3 ami.db ".backup ami-backup.db"` (safe while the server
-  runs) rather than copying the file, which can miss the WAL. The media directory
-  must be backed up alongside.
-- Reset the development database by stopping the server and deleting
-  `server/ami.db*`; `server -dev` seeds the demo content again on the next start
-  (the demo pictures are rewritten into the media directory too).
+- In development, `devenv up` runs MariaDB (its data under `.devenv/state/mysql`)
+  with an `ami` database and an `ami` user, password `ami`, that the server
+  reaches over the socket in `$AMI_DB`. `mysql -u ami -pami ami` in the shell
+  opens it; `SHOW TABLES`, `DESCRIBE posts` and plain SQL work as usual.
+- Back it up with `mariadb-dump --single-transaction ami > ami-$(date +%F).sql`
+  (consistent while the server runs). The media directory must be backed up
+  alongside.
+- Reset the development database with `mysql -u ami -pami ami -e 'DROP DATABASE ami; CREATE DATABASE ami'`
+  while the server is stopped; `server -dev` seeds the demo content again on the
+  next start (the demo pictures are rewritten into the media directory too).

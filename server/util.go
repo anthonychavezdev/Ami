@@ -7,10 +7,10 @@ import (
 	"log"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"os"
 )
 
 var errUnauthorized = errors.New("unauthorized")
@@ -71,9 +71,6 @@ func orNotFound(err error, msg string) error {
 	}
 	return err
 }
-
-// isUniqueViolation is a lost race for a UNIQUE column, such as a username.
-func isUniqueViolation(err error) bool { return err != nil && strings.Contains(err.Error(), "UNIQUE") }
 
 type handler func(w http.ResponseWriter, r *http.Request) error
 
@@ -239,4 +236,12 @@ func inTx(db *sql.DB, fn func(tx *sql.Tx) error) error {
 		return err
 	}
 	return tx.Commit()
+}
+
+// envOr is an environment variable, or def when it is unset or empty.
+func envOr(name, def string) string {
+	if v := os.Getenv(name); v != "" {
+		return v
+	}
+	return def
 }

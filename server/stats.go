@@ -25,7 +25,7 @@ type StorageStats struct {
 	DiskTotal   int64 `json:"disk_total"` // the volume holding the uploads
 	DiskFree    int64 `json:"disk_free"`
 	Uploads     int64 `json:"uploads"`      // everyone's pictures and videos
-	Database    int64 `json:"database"`     // the SQLite file and its write-ahead log
+	Database    int64 `json:"database"`     // the tables and indexes, as MariaDB keeps them
 	Yours       int64 `json:"yours"`        // the uploads your posts, messages and profile reference
 	UploadLimit int64 `json:"upload_limit"` // the most one upload may be
 }
@@ -61,7 +61,7 @@ func (s *server) stats(w http.ResponseWriter, r *http.Request, me *User) error {
 		Storage: StorageStats{
 			DiskTotal: diskTotal, DiskFree: diskFree,
 			Uploads:     dirSize(s.mediaDir),
-			Database:    fileSizes(s.dbPath, s.dbPath+"-wal"),
+			Database:    databaseSize(s.db),
 			Yours:       yours,
 			UploadLimit: maxUploadBytes,
 		},
@@ -123,17 +123,6 @@ func dirSize(dir string) int64 {
 	var total int64
 	for _, e := range entries {
 		if info, err := e.Info(); err == nil && info.Mode().IsRegular() {
-			total += info.Size()
-		}
-	}
-	return total
-}
-
-// fileSizes adds up the files that exist among paths.
-func fileSizes(paths ...string) int64 {
-	var total int64
-	for _, p := range paths {
-		if info, err := os.Stat(p); err == nil {
 			total += info.Size()
 		}
 	}

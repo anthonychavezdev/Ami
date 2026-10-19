@@ -309,7 +309,7 @@ func temporaryPassword() string {
 
 // printTemporaryPassword runs the -reset-password flag and exits the program.
 func printTemporaryPassword(cfg config) error {
-	db, err := openDB(cfg.dbPath)
+	db, err := openDB(cfg.dsn)
 	if err != nil {
 		return fmt.Errorf("open db: %w", err)
 	}

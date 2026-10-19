@@ -39,12 +39,14 @@ const postSelect = `
 SELECT p.id, p.body, p.attachments, p.created_at, p.edited_at, p.group_id, COALESCE(g.name, ''),
        ` + userCols + `,
        (SELECT COUNT(*) FROM comments c WHERE c.post_id = p.id AND c.deleted_at IS NULL),
-       COALESCE((SELECT json_group_object(emoji, n) FROM
-            (SELECT emoji, COUNT(*) AS n FROM reactions r WHERE r.post_id = p.id GROUP BY emoji)), '{}'),
+       COALESCE(rx.reactions, '{}'),
        COALESCE((SELECT emoji FROM reactions r WHERE r.post_id = p.id AND r.user_id = ?), '')
 FROM posts p
 JOIN users u ON u.id = p.author_id
 LEFT JOIN groups g ON g.id = p.group_id
+LEFT JOIN (SELECT post_id, JSON_OBJECTAGG(emoji, n) AS reactions
+           FROM (SELECT post_id, emoji, COUNT(*) AS n FROM reactions GROUP BY post_id, emoji) counts
+           GROUP BY post_id) rx ON rx.post_id = p.id
 `
 
 func scanPost(sc scanner) (Post, error) {
@@ -128,12 +130,12 @@ func (s *server) broadcastPost(typ string, id string) {
 func (s *server) feed(w http.ResponseWriter, r *http.Request, me *User) error {
 	before, limit := pagination(r)
 	posts, err := s.queryPosts(me.ID, `
-		WHERE p.id < ?2 AND (
-			(p.group_id IS NULL AND (p.author_id = ?1 OR p.author_id IN (
-				SELECT CASE WHEN from_id = ?1 THEN to_id ELSE from_id END FROM friendships
-				WHERE status = 'accepted' AND (from_id = ?1 OR to_id = ?1))))
-			OR p.group_id IN (SELECT group_id FROM group_members WHERE user_id = ?1))
-		ORDER BY p.id DESC LIMIT ?3`, before, limit)
+		WHERE p.id < ? AND (
+			(p.group_id IS NULL AND (p.author_id = ? OR p.author_id IN (
+				SELECT CASE WHEN from_id = ? THEN to_id ELSE from_id END FROM friendships
+				WHERE status = 'accepted' AND (from_id = ? OR to_id = ?))))
+			OR p.group_id IN (SELECT group_id FROM group_members WHERE user_id = ?))
+		ORDER BY p.id DESC LIMIT ?`, before, me.ID, me.ID, me.ID, me.ID, me.ID, limit)
 	if err != nil {
 		return err
 	}
@@ -285,7 +287,7 @@ func (s *server) setReaction(w http.ResponseWriter, r *http.Request, me *User) e
 		return err
 	}
 	if _, err := s.db.Exec(`INSERT INTO reactions(post_id, user_id, emoji) VALUES (?, ?, ?)
-		ON CONFLICT(post_id, user_id) DO UPDATE SET emoji = excluded.emoji`, id, me.ID, emoji); err != nil {
+		ON DUPLICATE KEY UPDATE emoji = VALUES(emoji)`, id, me.ID, emoji); err != nil {
 		return err
 	}
 	s.broadcastPost("post.updated", id)

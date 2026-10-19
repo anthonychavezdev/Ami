@@ -18,7 +18,11 @@ import (
 	"testing"
 	"time"
 
+	"database/sql"
+	"encoding/hex"
 	"github.com/gorilla/websocket"
+
+	"github.com/go-sql-driver/mysql"
 )
 
 // The tests drive a real server (routes, middleware, SQLite in a temp dir)
@@ -27,7 +31,9 @@ import (
 func TestMain(m *testing.M) {
 	pbkdf2Iterations = 1000                // the real count is slow and proves nothing here
 	presenceGrace = 300 * time.Millisecond // tests wait for it; keep them quick
-	log.SetOutput(io.Discard)              // request and call logging is noise here
+	if os.Getenv("AMI_TEST_LOG") == "" {   // request and call logging is noise, unless a failure needs it
+		log.SetOutput(io.Discard)
+	}
 	os.Exit(m.Run())
 }
 
@@ -39,11 +45,45 @@ type testServer struct {
 	url string
 }
 
+// testDatabase makes a database for one test on the MariaDB the tests are
+// pointed at: AMI_TEST_DSN, or the devenv service over its socket as root
+// (the `test` script starts one when `devenv up` has not). It is dropped
+// when the test ends.
+func testDatabase(t *testing.T) string {
+	t.Helper()
+	base := os.Getenv("AMI_TEST_DSN")
+	if base == "" {
+		sock := os.Getenv("MYSQL_UNIX_PORT")
+		if sock == "" {
+			t.Fatal("the tests need MariaDB: run them with `test` in the devenv shell, or set AMI_TEST_DSN to a server they may create databases on")
+		}
+		base = "root@unix(" + sock + ")/"
+	}
+	cfg, err := mysql.ParseDSN(base)
+	if err != nil {
+		t.Fatal("AMI_TEST_DSN:", err)
+	}
+	admin, err := sql.Open("mysql", base)
+	if err != nil {
+		t.Fatal(err)
+	}
+	name := "ami_test_" + hex.EncodeToString(randomBytes(4))
+	if _, err := admin.Exec("CREATE DATABASE `" + name + "` CHARACTER SET utf8mb4 COLLATE utf8mb4_bin"); err != nil {
+		t.Fatalf("create database on %s: %v", redactDSN(base), err)
+	}
+	t.Cleanup(func() {
+		_, _ = admin.Exec("DROP DATABASE `" + name + "`")
+		admin.Close()
+	})
+	cfg.DBName = name
+	return cfg.FormatDSN()
+}
+
 // newTestServer runs a server on a fresh database; dev seeds the demo content.
 func newTestServer(t *testing.T, dev bool) *testServer {
 	t.Helper()
 	dir := t.TempDir()
-	s, err := newServer(t.Context(), config{dbPath: filepath.Join(dir, "test.db"), mediaDir: filepath.Join(dir, "media"), dev: dev, origins: "http://good.example"})
+	s, err := newServer(t.Context(), config{dsn: testDatabase(t), mediaDir: filepath.Join(dir, "media"), dev: dev, origins: "http://good.example"})
 	if err != nil {
 		t.Fatal(err)
 	}

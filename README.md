@@ -3,10 +3,9 @@
 Ami (short for *amigo*) is a small social network: posts, comments, emoji reactions, friend requests,
 groups, direct messages, and peer-to-peer voice/video calls with screen sharing.
 
-- `server/` — Go backend. Standard library only, plus one dependency:
-  `modernc.org/sqlite` (pure-Go SQLite, no cgo). HTTP routing, auth
-  (PBKDF2 + session tokens) and WebRTC signaling are stdlib; the WebSocket
-  server uses gorilla/websocket.
+- `server/` — Go backend over MariaDB (`go-sql-driver/mysql`, pure Go, no
+  cgo). HTTP routing, auth (PBKDF2 + session tokens) and WebRTC signaling are
+  stdlib; the WebSocket server uses gorilla/websocket.
 - `mobile/` — Expo / React Native app (TypeScript, Expo Router, `react-native-webrtc`); runs on Android, iOS and in the browser.
 - `devenv.nix` — toolchains, env vars and the `server`, `web`, `android`, `test`, `build`
   scripts. Everything installs inside this repo (`.go/`, `.npm/`,
@@ -16,14 +15,15 @@ groups, direct messages, and peer-to-peer voice/video calls with screen sharing.
 ## Run
 
 ```sh
-devenv shell          # Go, Node, npm, sqlite3, watchman, Android SDK + emulator, JDK 17 (macOS: CocoaPods too)
+devenv shell          # Go, Node, npm, MariaDB, watchman, Android SDK + emulator, JDK 17 (macOS: CocoaPods too)
 setup                 # go mod tidy + npm install (first time)
-server                # API on :8080   (or `devenv up`)
+devenv up             # MariaDB (data in .devenv/state/mysql) + the API on :8080 in dev mode
+server                # the API alone, against that MariaDB (`devenv up mysql` runs just the database)
 android               # build the app, install it on the emulator (created on first run), start Metro
 ios                   # same, in the iOS Simulator (macOS with Xcode from the App Store; Linux gets everything but iOS)
 mobile                # Metro only — once the app is installed, for day-to-day JS work
 web                   # the same app in a browser tab (http://localhost:8081)
-test                  # gofmt, go vet, go test; tsc, eslint, prettier --check
+test                  # gofmt, go vet, go test (starts MariaDB if none is running); tsc, eslint, prettier --check
 ```
 
 On Linux the emulator needs `/dev/kvm` access (NixOS: add your user to the
@@ -80,6 +80,7 @@ at the repo root (`NAME=value` per line, loaded when you enter the shell), in
 | Variable              | Default | What it does                                                                                   |
 | --------------------- | ------- | ---------------------------------------------------------------------------------------------- |
 | `AMI_PORT`            | `8080`  | Port of the Go API (`server`, `devenv up`) and where the app looks for it.                      |
+| `AMI_DB`              | devenv's MariaDB | The server's database, `user:password@tcp(host:3306)/db` or `@unix(/path/mysql.sock)/db`. |
 | `AMI_METRO_PORT`      | `8081`  | Metro, which also serves the web app. Native dev builds bake it in: rebuild after changing it.  |
 | `AMI_HOST`            | LAN IP  | Address phones use to reach this machine, if Expo picks the wrong interface (VPNs, two networks). |
 | `EXPO_PUBLIC_API_URL` | empty   | Full URL of the API when it runs on another machine. Release builds require it (`https://`).   |
@@ -95,8 +96,9 @@ running here, another device just opens `http://<this machine's IP>:8081`.
 `build android` or `build ios` makes just one:
 
 - `dist/ami-server`: static, stripped binary (set `GOOS`/`GOARCH` to cross-compile).
-  Run it with `-db /var/lib/ami/ami.db` and either `-tls-cert`/`-tls-key`, or
-  behind a TLS-terminating reverse proxy plus `-trust-proxy`. Never pass `-dev`.
+  Run it with `AMI_DB` pointing at a MariaDB database of its own and either
+  `-tls-cert`/`-tls-key`, or behind a TLS-terminating reverse proxy plus
+  `-trust-proxy`. Never pass `-dev`.
   Other flags: `-addr`, `-allowed-origins` (CORS is off by default), `-web-dir`.
 - `dist/web`: the browser build (minified, hashed bundles). Serve it from the
   same binary with `-web-dir dist/web`: the page then talks to the origin it

@@ -20,8 +20,10 @@ Code: [`server/posts.go`](../server/posts.go) on the server; in the app
 
 Every post is rendered **for a viewer**: `postSelect` takes the viewer's id as
 its first parameter to fill `my_reaction`, counts live comments (placeholders
-excluded) and aggregates reactions into `{emoji: count}` with SQLite's
-`json_group_object`. `group_name` is present for group posts only, `group_id`
+excluded) and aggregates reactions into `{emoji: count}` with MariaDB's
+`JSON_OBJECTAGG` over a per-post, per-emoji count joined to the posts (a
+correlated subquery could not do it: MariaDB does not allow a derived table
+to see the outer row). `group_name` is present for group posts only, `group_id`
 is `null` for profile posts. `attachments` is never null.
 
 ## Who sees what

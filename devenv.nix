@@ -63,8 +63,25 @@ in
     extras = [ ];
   };
 
+  # MariaDB for the server: `devenv up` runs it (the `test` script starts one
+  # when nothing is running). Data lives under .devenv/state/mysql; the ami
+  # database and user are created on the first start. `mysql` in the shell
+  # opens it (`mysql -u ami -pami ami`).
+  services.mysql = {
+    enable = true;
+    package = pkgs.mariadb;
+    initialDatabases = [ { name = "ami"; } ];
+    ensureUsers = [
+      {
+        name = "ami";
+        password = "ami";
+        ensurePermissions = { "ami.*" = "ALL PRIVILEGES"; };
+      }
+    ];
+    settings.mysqld.character-set-server = "utf8mb4";
+  };
+
   packages = [
-    pkgs.sqlite   # `sqlite3 server/ami.db` to poke at the database
     pkgs.watchman # faster Metro file watching
     pkgs.python3  # the end-to-end scripts in mobile/e2e (standard library only)
   ] ++ lib.optionals pkgs.stdenv.isDarwin [
@@ -83,6 +100,7 @@ in
     AMI_METRO_PORT = lib.mkOptionDefault "8081"; # Metro, which also serves the web app; native dev builds bake it in, so rebuild (android/ios) after changing it
     AMI_HOST = lib.mkOptionDefault ""; # address phones use to reach this machine, when Expo's LAN detection picks the wrong interface (VPNs, several networks)
     EXPO_PUBLIC_API_URL = lib.mkOptionDefault ""; # full URL of the API when it runs on another machine; release builds require it (https)
+    AMI_DB = lib.mkOptionDefault "ami:ami@unix(${config.env.DEVENV_RUNTIME}/mysql.sock)/ami"; # the server's database: the devenv MariaDB over its socket (production: user:password@tcp(host:3306)/ami)
 
     # Go: module cache, build cache and `go install` binaries under ./.go
     # (devenv's Go module defaults GOPATH to .devenv/state/go; we keep it all in one place)
@@ -122,9 +140,18 @@ in
     (cd "$DEVENV_ROOT/mobile" && npm install)
   '';
   # Everything that must pass before a commit: gofmt, go vet and the Go tests;
-  # TypeScript, ESLint and Prettier for the app.
+  # TypeScript, ESLint and Prettier for the app. The Go tests make a database
+  # each on the devenv MariaDB; one is started for the run if `devenv up` is
+  # not keeping one up.
   scripts.test.exec = ''
     set -e
+    if ! MYSQL_PWD="" mysqladmin ping -u root --silent >/dev/null 2>&1; then
+      echo "» starting MariaDB for the tests (log: .devenv/state/mysql-test.log)"
+      ${config.processes.mysql.exec} > "$DEVENV_STATE/mysql-test.log" 2>&1 &
+      mysqld_pid=$!
+      trap 'kill "$mysqld_pid" 2>/dev/null; wait "$mysqld_pid" 2>/dev/null' EXIT
+      until MYSQL_PWD="" mysqladmin ping -u root --silent >/dev/null 2>&1; do sleep 0.5; done
+    fi
     cd "$DEVENV_ROOT/server"
     if [ -n "$(gofmt -l .)" ]; then echo "gofmt: these files need formatting:" >&2; gofmt -l . >&2; exit 1; fi
     go vet ./... && go test ./...
@@ -225,6 +252,9 @@ in
     ls -la "$DEVENV_ROOT/dist"
   '';
 
-  # `devenv up` runs the Go API with process-compose.
-  processes.server.exec = "cd $DEVENV_ROOT/server && go run . -dev -addr :$AMI_PORT -db ami.db";
+  # `devenv up` runs MariaDB (services.mysql above) and then the Go API, with process-compose.
+  processes.server = {
+    exec = "cd $DEVENV_ROOT/server && go run . -dev -addr :$AMI_PORT";
+    process-compose.depends_on.mysql.condition = "process_healthy";
+  };
 }

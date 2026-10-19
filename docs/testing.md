@@ -8,11 +8,16 @@ first two cannot reach. `test` in the dev shell runs the first two.
 
 `server/*_test.go` starts a real server for every test: `newTestServer`
 ([`helpers_test.go`](../server/helpers_test.go)) builds a `server` on a fresh
-SQLite file in a temporary directory, wraps it in the real handler chain, and
-serves it with `httptest`. Tests then talk HTTP and WebSocket exactly like the
+MariaDB database of its own (`testDatabase` creates `ami_test_<random>` and
+drops it when the test ends), wraps it in the real handler chain, and serves
+it with `httptest`. The database comes from `AMI_TEST_DSN`, or the devenv
+MariaDB over its socket as root; the `test` script starts one for the run
+when `devenv up` is not keeping one up, so `test` works on its own, while
+a bare `go test` needs the database running. Tests then talk HTTP and WebSocket exactly like the
 app, so routes, middleware, events and the database are all exercised together.
 `TestMain` lowers PBKDF2 to 1,000 rounds and the presence grace to 300 ms so the
-suite runs in a few seconds, and silences the request log.
+suite runs in a few seconds, and silences the request log unless `AMI_TEST_LOG`
+is set, which keeps it for reading a failure's SQL errors.
 
 Helpers worth knowing:
 

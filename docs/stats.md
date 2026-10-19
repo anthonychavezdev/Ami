@@ -23,8 +23,8 @@ Session required. Answers:
 
 - **storage**: `disk_total` and `disk_free` describe the volume the media
   directory sits on (`statfs`; free is what ordinary programs may still use).
-  `uploads` is the size of everything in the media directory, `database` the
-  SQLite file plus its write-ahead log. `yours` is the uploads the signed-in
+  `uploads` is the size of everything in the media directory, `database` what
+  MariaDB reports for the tables and indexes (`information_schema`). `yours` is the uploads the signed-in
   person's posts, messages, profile picture and cover reference, each file
   counted once however often it appears (`userStorage`). `upload_limit` is
   the most one upload may be ([media.md](media.md#post-apimedia)).

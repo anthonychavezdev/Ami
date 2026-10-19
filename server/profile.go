@@ -201,7 +201,7 @@ func (s *server) newUsername(raw string, userID string) (string, error) {
 		return "", badRequest("that username is reserved")
 	}
 	var other string
-	err := s.db.QueryRow(`SELECT id FROM users WHERE username = ? COLLATE NOCASE AND id != ?`, u, userID).Scan(&other)
+	err := s.db.QueryRow(`SELECT id FROM users WHERE username = ? AND id != ?`, u, userID).Scan(&other) // the column's collation ignores case
 	switch {
 	case err == nil:
 		return "", conflict("username already taken")

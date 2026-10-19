@@ -178,13 +178,13 @@ func (sd *seeder) markRead() error {
 		{`INSERT INTO conversation_reads(user_id, peer_id, last_read_id)
 			SELECT recipient_id, sender_id, MAX(id) FROM messages WHERE group_id IS NULL GROUP BY recipient_id, sender_id`, nil},
 		{`UPDATE conversation_reads SET last_read_id =
-			(SELECT id FROM messages WHERE sender_id = ?2 AND recipient_id = ?1 ORDER BY id DESC LIMIT 1 OFFSET 1)
-			WHERE user_id = ?1 AND peer_id = ?2`, []any{sd.users["ana"], sd.users["luis"]}},
+			(SELECT id FROM messages WHERE sender_id = ? AND recipient_id = ? ORDER BY id DESC LIMIT 1 OFFSET 1)
+			WHERE user_id = ? AND peer_id = ?`, []any{sd.users["luis"], sd.users["ana"], sd.users["ana"], sd.users["luis"]}},
 		{`INSERT INTO group_reads(user_id, group_id, last_read_id)
-			SELECT gm.user_id, gm.group_id, COALESCE((SELECT MAX(id) FROM messages WHERE group_id = gm.group_id), 0) FROM group_members gm`, nil},
+			SELECT gm.user_id, gm.group_id, COALESCE((SELECT MAX(id) FROM messages WHERE group_id = gm.group_id), '') FROM group_members gm`, nil},
 		{`UPDATE group_reads SET last_read_id =
-			(SELECT id FROM messages WHERE group_id = ?2 ORDER BY id DESC LIMIT 1 OFFSET 1)
-			WHERE user_id = ?1 AND group_id = ?2`, []any{sd.users["ana"], sd.groups["Fútbol los domingos"]}},
+			(SELECT id FROM messages WHERE group_id = ? ORDER BY id DESC LIMIT 1 OFFSET 1)
+			WHERE user_id = ? AND group_id = ?`, []any{sd.groups["Fútbol los domingos"], sd.users["ana"], sd.groups["Fútbol los domingos"]}},
 	}
 	for _, st := range statements {
 		if _, err := sd.tx.Exec(st.sql, st.args...); err != nil {
