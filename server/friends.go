@@ -64,6 +64,12 @@ func (s *server) listFriendRequests(w http.ResponseWriter, r *http.Request, me *
 	return ok(w, map[string][]User{"incoming": incoming, "outgoing": outgoing})
 }
 
+// friendChanged tells both people where their friendship stands now.
+func (s *server) friendChanged(me, other *User, mine, theirs string) {
+	s.hub.sendTo(me.ID, friendChangedEvent{Type: "friend.changed", User: other, Status: mine})
+	s.hub.sendTo(other.ID, friendChangedEvent{Type: "friend.changed", User: me, Status: theirs})
+}
+
 // friendStatusResponse answers a friendship change with the new status.
 func friendStatusResponse(w http.ResponseWriter, status string) error {
 	return ok(w, struct {
@@ -98,7 +104,7 @@ func (s *server) sendFriendRequest(w http.ResponseWriter, r *http.Request, me *U
 	if _, err := s.db.Exec(`INSERT INTO friendships(from_id, to_id, status, created_at) VALUES (?, ?, 'pending', ?)`, me.ID, other, nowString()); err != nil {
 		return err
 	}
-	s.hub.sendTo(other, friendEvent{Type: "friend.request", User: me})
+	s.friendChanged(me, &target, "outgoing", "incoming")
 	return friendStatusResponse(w, "outgoing")
 }
 
@@ -122,7 +128,7 @@ func (s *server) acceptFriend(w http.ResponseWriter, me *User, requester User) e
 	if n, _ := res.RowsAffected(); n == 0 {
 		return notFound("no pending request from that user")
 	}
-	s.hub.sendTo(requester.ID, friendEvent{Type: "friend.accepted", User: me})
+	s.friendChanged(me, &requester, "friends", "friends")
 	return friendStatusResponse(w, "friends")
 }
 
@@ -132,8 +138,14 @@ func (s *server) removeFriend(w http.ResponseWriter, r *http.Request, me *User) 
 	if err != nil {
 		return err
 	}
-	if _, err := s.db.Exec(`DELETE FROM friendships WHERE (from_id = ?1 AND to_id = ?2) OR (from_id = ?2 AND to_id = ?1)`, me.ID, other); err != nil {
+	res, err := s.db.Exec(`DELETE FROM friendships WHERE (from_id = ?1 AND to_id = ?2) OR (from_id = ?2 AND to_id = ?1)`, me.ID, other)
+	if err != nil {
 		return err
+	}
+	if n, _ := res.RowsAffected(); n > 0 {
+		if target, err := s.userByID(other); err == nil {
+			s.friendChanged(me, &target, "none", "none")
+		}
 	}
 	return friendStatusResponse(w, "none")
 }

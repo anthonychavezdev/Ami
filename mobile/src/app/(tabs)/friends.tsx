@@ -9,11 +9,12 @@ import { Button, Empty, Input, Loading, Panes, SectionLabel, Segmented } from '@
 import { api } from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
 import { useWide } from '@/lib/layout';
-import type { User, UserProfile } from '@/lib/types';
+import type { FriendStatus, User, UserProfile } from '@/lib/types';
 import { useDebounced } from '@/lib/useDebounced';
 import { useLiveLoad } from '@/lib/useLiveLoad';
 import { useTheme } from '@/lib/theme';
 import { toast } from '@/lib/toast';
+import { socket } from '@/lib/ws';
 import { spacing } from '@/theme';
 
 type Tab = 'friends' | 'requests' | 'find';
@@ -57,8 +58,7 @@ function PersonRow({ user, right, selectedId, onOpen }: { user: User; right?: Re
   return <UserRow user={user} right={right} selected={user.id === selectedId} onPress={onOpen && (() => onOpen(user))} />;
 }
 
-const FRIEND_EVENTS = ['friend.accepted'] as const;
-const REQUEST_EVENTS = ['friend.request', 'friend.accepted'] as const;
+const FRIEND_EVENTS = ['friend.changed'] as const;
 
 function FriendList(opening: Opening) {
   const { colors } = useTheme();
@@ -109,7 +109,7 @@ const requestRows = (data: { incoming: User[]; outgoing: User[] }): RequestItem[
 function Requests(opening: Opening) {
   const [data, setData] = useState<{ incoming: User[]; outgoing: User[] } | null>(null);
   const load = useCallback(async () => setData(await api.friendRequests()), []);
-  useLiveLoad(load, REQUEST_EVENTS);
+  useLiveLoad(load, FRIEND_EVENTS);
   if (!data) return <Loading />;
 
   const act = async (fn: () => Promise<unknown>) => {
@@ -153,7 +153,8 @@ function Requests(opening: Opening) {
   );
 }
 
-// Search results that follow the query after a short pause.
+// Search results that follow the query after a short pause, with each
+// result's friendship kept current as either side changes it.
 function useUserSearch(query: string) {
   const q = useDebounced(query);
   const [found, setFound] = useState<{ q: string | null; list: UserProfile[] }>({ q: null, list: [] }); // results and the query they answer
@@ -167,8 +168,12 @@ function useUserSearch(query: string) {
       current = false;
     };
   }, [q]);
-  const setStatus = (id: number, friend_status: UserProfile['friend_status']) =>
-    setFound((f) => ({ ...f, list: f.list.map((u) => (u.id === id ? { ...u, friend_status } : u)) }));
+  const setStatus = useCallback(
+    (id: number, friend_status: FriendStatus) =>
+      setFound((f) => ({ ...f, list: f.list.map((u) => (u.id === id ? { ...u, friend_status } : u)) })),
+    [],
+  );
+  useEffect(() => socket.on('friend.changed', (e) => setStatus(e.user.id, e.status)), [setStatus]);
   return { results: found.list, loading: found.q !== q, setStatus };
 }
 
@@ -199,11 +204,11 @@ function Find(opening: Opening) {
 }
 
 // The one action that fits the friendship state of a search result.
-function FriendStatusButton({ user, onStatus }: { user: UserProfile; onStatus: (s: UserProfile['friend_status']) => void }) {
+function FriendStatusButton({ user, onStatus }: { user: UserProfile; onStatus: (s: FriendStatus) => void }) {
   const { colors } = useTheme();
   const run = async (fn: () => Promise<{ friend_status: string }>) => {
     try {
-      onStatus((await fn()).friend_status as UserProfile['friend_status']);
+      onStatus((await fn()).friend_status as FriendStatus);
     } catch (e) {
       toast.error(errorMessage(e));
     }
