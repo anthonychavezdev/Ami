@@ -117,7 +117,8 @@ receives, and `canSave` requires a valid username, a non-empty display name,
 an http(s) URL on every link and at least one change. Picking either picture
 uses `expo-image-picker` (pictures only, no system cropping so GIFs stay
 animated), uploads it at once through `api.uploadMedia` with an `UploadBar`
-under the buttons, refuses anything that is not a picture, and sets
+under the buttons (its Cancel aborts the upload), refuses anything that is not
+a picture, and sets
 `defaultCrop(width/height, ratio)` from the upload's
 reported size. Older pictures without a size load once through an invisible
 `Image` to learn their aspect ratio. Saving calls `api.updateMe`, updates the

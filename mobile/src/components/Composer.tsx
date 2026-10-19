@@ -83,7 +83,12 @@ export function Composer({
   };
 
   const chips = allowMedia && (
-    <AttachmentChips items={attachments.attachments} upload={attachments.upload} onRemove={attachments.removeAt} />
+    <AttachmentChips
+      items={attachments.attachments}
+      upload={attachments.upload}
+      onRemove={attachments.removeAt}
+      onCancelUpload={attachments.cancelUpload}
+    />
   );
 
   return (
