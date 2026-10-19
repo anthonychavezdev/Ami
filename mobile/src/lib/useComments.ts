@@ -9,7 +9,7 @@ import { errorMessage } from './errors';
 
 // A post and its comments, kept live: comments come, change and go, the
 // post's counts and reactions update, and a deleted post calls onGone.
-export function useComments(postId: number, onGone: () => void) {
+export function useComments(postId: string, onGone: () => void) {
   const [post, setPost] = useState<Post | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -47,7 +47,7 @@ export function useComments(postId: number, onGone: () => void) {
   }, [postId]);
 
   const add = useCallback(
-    async (body: string, parentId?: number) => {
+    async (body: string, parentId?: string) => {
       const c = await api.addComment(postId, body, parentId);
       setComments((list) => addComment(list, c));
       setPost(await api.post(postId)); // the server counts; a local +1 could double up with its post.updated event

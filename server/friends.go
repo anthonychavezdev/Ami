@@ -7,11 +7,11 @@ import (
 )
 
 // friendStatus describes the relationship from me's point of view.
-func (s *server) friendStatus(me, other int64) (string, error) {
+func (s *server) friendStatus(me, other string) (string, error) {
 	if me == other {
 		return "self", nil
 	}
-	var from int64
+	var from string
 	var status string
 	err := s.db.QueryRow(`SELECT from_id, status FROM friendships
 		WHERE (from_id = ?1 AND to_id = ?2) OR (from_id = ?2 AND to_id = ?1)`, me, other).Scan(&from, &status)
@@ -29,13 +29,13 @@ func (s *server) friendStatus(me, other int64) (string, error) {
 	}
 }
 
-func (s *server) areFriends(a, b int64) (bool, error) {
+func (s *server) areFriends(a, b string) (bool, error) {
 	st, err := s.friendStatus(a, b)
 	return st == "friends", err
 }
 
 // friendIDs lists a user's accepted friends.
-func (s *server) friendIDs(userID int64) []int64 {
+func (s *server) friendIDs(userID string) []string {
 	return queryIDs(s.db, `SELECT CASE WHEN from_id = ?1 THEN to_id ELSE from_id END FROM friendships
 		WHERE status = 'accepted' AND (from_id = ?1 OR to_id = ?1)`, userID)
 }

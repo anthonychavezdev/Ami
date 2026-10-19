@@ -89,11 +89,13 @@ session, and `directChat`/`groupChat` on the chat routes.
 ## Routing
 
 Routes are registered with Go's pattern syntax, `mux.HandleFunc("GET /api/users/{id}", ...)`.
-`pathID(r, "id")` parses a path value into a positive `int64` or returns a 400.
+`pathID(r, "id")` checks that a path value is a UUID in its canonical form or
+returns a 400; `queryID` does the same for query parameters.
 Query parameters come through `queryInt` and `pagination`:
 
-- `?before=<id>&limit=<n>` is the cursor for every paginated list: items with an id
-  below `before`, newest first, at most `limit` (default 30, maximum 100; chats
+- `?before=<id>&limit=<n>` is the cursor for every paginated list: items older
+  than the one whose id is `before` (ids are time-ordered UUIDs, so "older" is
+  "smaller"), newest first, at most `limit` (default 30, maximum 100; chats
   default to 50). The app passes the id of the last item it has to load the next page.
 - Comments use `?after=<id>` instead, oldest first, up to 500.
 
@@ -144,7 +146,9 @@ SQLite serializes writers anyway, and a single connection means no
   from `users u` and `(*User).fields()` returns the matching pointers in the same
   order. When a row spans several types, `fields(a.fields(), b.fields())` joins the
   lists. Adding a user column means touching both, in the same position, plus the schema.
-- `queryIDs` collects a single integer column; a failing query reads as empty,
+- Ids are made in Go with `newID()` (a version 7 UUID) before the `INSERT`,
+  never by the database ([database-schema.md](database-schema.md#conventions)).
+- `queryIDs` collects a single id column; a failing query reads as empty,
   which is right for audience lists.
 - `inTx(fn)` runs `fn` in a transaction and commits when it returns nil; a
   rollback is deferred for every other path.

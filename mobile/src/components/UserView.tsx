@@ -18,7 +18,7 @@ import { spacing } from '@/theme';
 
 // Someone's profile followed by their posts. `embedded` means it sits in the
 // pane beside the Friends list, so it leaves the screen title alone.
-export function UserView({ id: userId, embedded = false }: { id: number; embedded?: boolean }) {
+export function UserView({ id: userId, embedded = false }: { id: string; embedded?: boolean }) {
   const { colors } = useTheme();
   const { user: me } = useAuth();
   const { call } = useCall();
@@ -26,7 +26,7 @@ export function UserView({ id: userId, embedded = false }: { id: number; embedde
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchPage = useCallback((before?: number) => api.userPosts(userId, before), [userId]);
+  const fetchPage = useCallback((before?: string) => api.userPosts(userId, before), [userId]);
   const accept = useCallback((p: Post) => p.author.id === userId && p.group_id === null, [userId]);
   const { posts, loading, refreshing, refresh, loadMore, update, remove } = usePosts(fetchPage, accept);
 

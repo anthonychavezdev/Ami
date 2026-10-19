@@ -20,7 +20,7 @@ import { spacing } from '@/theme';
 type Tab = 'friends' | 'requests' | 'find';
 
 // How a list opens a person: their profile screen, or, on wide windows, the pane beside the list.
-type Opening = { selectedId: number | null; onOpen?: (user: User) => void };
+type Opening = { selectedId: string | null; onOpen?: (user: User) => void };
 
 // Friends, requests and people to find. On a wide window the open profile
 // sits beside the lists, named by ?user= so a reload or a link (/user/...
@@ -29,9 +29,9 @@ export default function FriendsScreen() {
   const router = useRouter();
   const wide = useWide();
   const { user: userParam } = useLocalSearchParams<{ user?: string }>();
-  const openId = wide && Number(userParam) > 0 ? Number(userParam) : null;
+  const openId = wide && userParam ? userParam : null;
   const [tab, setTab] = useState<Tab>('friends');
-  const opening: Opening = { selectedId: openId, onOpen: wide ? (u) => router.setParams({ user: String(u.id) }) : undefined };
+  const opening: Opening = { selectedId: openId, onOpen: wide ? (u) => router.setParams({ user: u.id }) : undefined };
 
   const lists = (
     <View style={{ flex: 1 }}>
@@ -169,7 +169,7 @@ function useUserSearch(query: string) {
     };
   }, [q]);
   const setStatus = useCallback(
-    (id: number, friend_status: FriendStatus) =>
+    (id: string, friend_status: FriendStatus) =>
       setFound((f) => ({ ...f, list: f.list.map((u) => (u.id === id ? { ...u, friend_status } : u)) })),
     [],
   );

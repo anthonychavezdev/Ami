@@ -81,7 +81,7 @@ func (s *server) userForToken(token string) (sessionUser, error) {
 	return sessionUser{User: &u, mustChangePassword: mustChange}, nil
 }
 
-func (s *server) createSession(userID int64) (string, error) {
+func (s *server) createSession(userID string) (string, error) {
 	token := hex.EncodeToString(randomBytes(32))
 	_, err := s.db.Exec(`INSERT INTO sessions(token, user_id, expires_at) VALUES (?, ?, ?)`,
 		tokenHash(token), userID, now().Add(sessionTTL).Format(time.RFC3339Nano))
@@ -168,22 +168,21 @@ func (s *server) register(w http.ResponseWriter, r *http.Request) error {
 	if err != nil {
 		return err
 	}
-	salt := randomBytes(16)
-	res, err := s.db.Exec(`INSERT INTO users(username, display_name, password_hash, salt, password_iterations, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		c.Username, c.DisplayName, hashPassword(c.Password, salt, pbkdf2Iterations), salt, pbkdf2Iterations, nowString())
+	salt, id := randomBytes(16), newID()
+	_, err = s.db.Exec(`INSERT INTO users(id, username, display_name, password_hash, salt, password_iterations, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		id, c.Username, c.DisplayName, hashPassword(c.Password, salt, pbkdf2Iterations), salt, pbkdf2Iterations, nowString())
 	if isUniqueViolation(err) {
 		return conflict("username already taken")
 	}
 	if err != nil {
 		return err
 	}
-	id, _ := res.LastInsertId()
 	return s.issueSession(w, id)
 }
 
 // storedPassword is what the users table keeps for a login check.
 type storedPassword struct {
-	id         int64
+	id         string
 	hash, salt []byte
 	iterations int
 }
@@ -221,7 +220,7 @@ func (s *server) login(w http.ResponseWriter, r *http.Request) error {
 }
 
 // storePassword hashes a password with a fresh salt and the current rounds.
-func storePassword(db dbtx, userID int64, password string) error {
+func storePassword(db dbtx, userID string, password string) error {
 	salt := randomBytes(16)
 	_, err := db.Exec(`UPDATE users SET password_hash = ?, salt = ?, password_iterations = ? WHERE id = ?`,
 		hashPassword(password, salt, pbkdf2Iterations), salt, pbkdf2Iterations, userID)
@@ -272,7 +271,7 @@ func (s *server) changePassword(w http.ResponseWriter, r *http.Request, me *User
 // password to pass on to its owner in person, and signs out every device.
 // Logging in with it allows nothing but setting a new password.
 func resetPassword(db *sql.DB, username string) (string, error) {
-	var id int64
+	var id string
 	err := db.QueryRow(`SELECT id FROM users WHERE username = ?`, strings.TrimSpace(username)).Scan(&id)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", fmt.Errorf("no user named %q", username)
@@ -329,7 +328,7 @@ type session struct {
 	User  Me     `json:"user"`
 }
 
-func (s *server) issueSession(w http.ResponseWriter, userID int64) error {
+func (s *server) issueSession(w http.ResponseWriter, userID string) error {
 	token, err := s.createSession(userID)
 	if err != nil {
 		return err

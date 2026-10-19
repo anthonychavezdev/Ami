@@ -1,5 +1,5 @@
 export interface User {
-  id: number;
+  id: string;
   username: string;
   display_name: string;
   created_at: string;
@@ -44,9 +44,9 @@ export interface Attachment {
 }
 
 export interface Post {
-  id: number;
+  id: string;
   author: User;
-  group_id: number | null;
+  group_id: string | null;
   group_name?: string;
   body: string;
   attachments: Attachment[];
@@ -58,9 +58,9 @@ export interface Post {
 }
 
 export interface Comment {
-  id: number;
-  post_id: number;
-  parent_id: number | null;
+  id: string;
+  post_id: string;
+  parent_id: string | null;
   edited_at: string | null;
   deleted: boolean; // body and author read [deleted]
   author: User;
@@ -69,10 +69,10 @@ export interface Comment {
 }
 
 export interface Group {
-  id: number;
+  id: string;
   name: string;
   description: string;
-  owner_id: number;
+  owner_id: string;
   private: boolean; // invite only: hidden from Discover, the admin adds members
   created_at: string;
   member_count: number;
@@ -82,12 +82,12 @@ export interface Group {
 export interface GroupDetail {
   group: Group;
   members: GroupMember[];
-  call: number[]; // ids of the members in the group call right now
+  call: string[]; // ids of the members in the group call right now
 }
 
 // What a call knows about its group.
 export interface CallGroup {
-  id: number;
+  id: string;
   name: string;
 }
 
@@ -96,13 +96,13 @@ export interface GroupMember extends User {
 }
 
 // Where a chat lives: with one friend, or in a group.
-export type ChatTarget = { kind: 'user' | 'group'; id: number };
+export type ChatTarget = { kind: 'user' | 'group'; id: string };
 
 export interface Message {
-  id: number;
-  sender_id: number;
-  recipient_id: number | null; // direct message: the other person
-  group_id: number | null; // group chat
+  id: string;
+  sender_id: string;
+  recipient_id: string | null; // direct message: the other person
+  group_id: string | null; // group chat
   sender?: User; // group chats name their author
   body: string;
   attachments: Attachment[];

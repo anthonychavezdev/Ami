@@ -14,12 +14,14 @@ that explains it in full. The route table itself is `routes()` in
   While an account has a temporary password, every session route except
   `GET /api/me`, `PUT /api/me/password` and `POST /api/logout` answers
   `403 {"error":"set a new password first"}` ([passwords.md](passwords.md#the-forced-change)).
+- **Ids** in paths, bodies and events are UUIDs, 36-character strings like
+  `019a0c2e-7b3a-7c21-9f4e-6a0d3b1c2e55`. A malformed one in a path is a 400.
 - **Bodies** are JSON both ways, except the upload (`multipart/form-data`) and
   `/media/` (the file itself). Request bodies are capped at 1 MB; uploads at 64 MB.
 - **Errors** are `{"error": "<message>"}` with the status in the table below.
   Internal errors are always `500 {"error":"internal error"}`.
-- **Pagination**: `?before=<id>&limit=<n>` on lists marked *paged*: items with an
-  id below `before`, newest first, at most `limit` (default 30, max 100; chats
+- **Pagination**: `?before=<id>&limit=<n>` on lists marked *paged*: items older
+  than the one whose id is `before` (ids sort by creation time), newest first, at most `limit` (default 30, max 100; chats
   default 50). Comments use `?after=<id>`, oldest first, up to 500.
 - **Rate limits**: 10 register/login attempts per minute per IP; 600 requests per
   minute per IP on `/api/` (`-api-rate`); 30 uploads per minute per user. Over

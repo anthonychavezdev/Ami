@@ -11,7 +11,7 @@ Code: [`server/posts.go`](../server/posts.go) on the server; in the app
 
 ```json
 {
-  "id": 14, "author": { "...User" }, "group_id": null, "group_name": "Fútbol los domingos",
+  "id": "019a0c2e-7b3a-7c21-9f4e-6a0d3b1c2e55", "author": { "...User" }, "group_id": null, "group_name": "Fútbol los domingos",
   "body": "Markdown text", "attachments": [{ "type": "image", "url": "/media/ab12.png", "width": 1200, "height": 900 }],
   "created_at": "2026-10-18T...", "edited_at": null,
   "comment_count": 3, "reactions": { "👍": 2, "❤️": 1 }, "my_reaction": "👍"

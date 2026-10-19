@@ -98,7 +98,33 @@ func TestMigrateFirstRelease(t *testing.T) {
 	if !columnExists(db, "users", "must_change_password") {
 		t.Error("migration 2 did not run after migration 1")
 	}
-	if _, err := db.Exec(`INSERT INTO messages(sender_id, group_id, body, created_at) VALUES (1, NULL, 'x', '2024-01-03T00:00:00Z')`); err != nil {
+	if columnType(db, "users", "id") != "TEXT" {
+		t.Errorf("migration 3 did not turn ids into text: users.id is %s", columnType(db, "users", "id"))
+	}
+	var ana string
+	if err := db.QueryRow(`SELECT id FROM users WHERE username = 'ana'`).Scan(&ana); err != nil || !isID(ana) {
+		t.Errorf("ana's id after migrating: %q, %v", ana, err)
+	}
+	var author string
+	_ = db.QueryRow(`SELECT u.username FROM posts p JOIN users u ON u.id = p.author_id`).Scan(&author)
+	if author != "ana" {
+		t.Errorf("the post lost its author in the id conversion: %q", author)
+	}
+	var linked, befriended, marked int
+	_ = db.QueryRow(`SELECT COUNT(*) FROM messages m JOIN users s ON s.id = m.sender_id JOIN users r ON r.id = m.recipient_id`).Scan(&linked)
+	_ = db.QueryRow(`SELECT COUNT(*) FROM friendships f JOIN users a ON a.id = f.from_id JOIN users b ON b.id = f.to_id`).Scan(&befriended)
+	_ = db.QueryRow(`SELECT COUNT(*) FROM conversation_reads r JOIN messages m ON m.id = r.last_read_id`).Scan(&marked)
+	if linked != 2 || befriended != 1 || marked != 2 {
+		t.Errorf("references after the id conversion: %d of 2 messages, %d of 1 friendship, %d of 2 read markers", linked, befriended, marked)
+	}
+	bodies, _ := queryAll(db, func(sc scanner) (string, error) {
+		var b string
+		return b, sc.Scan(&b)
+	}, `SELECT body FROM messages ORDER BY id`)
+	if !equal(bodies, []string{"hola", "hola ana"}) {
+		t.Errorf("messages lost their order in the id conversion: %v", bodies)
+	}
+	if _, err := db.Exec(`INSERT INTO messages(id, sender_id, body, created_at) VALUES (?, ?, 'x', '2024-01-03T00:00:00Z')`, newID(), ana); err != nil {
 		t.Errorf("insert after migration: %v", err)
 	}
 	// Opening again is a no-op.
@@ -117,6 +143,9 @@ func TestNewDatabaseIsCurrent(t *testing.T) {
 	if v != len(migrations) {
 		t.Errorf("new database at version %d, want %d", v, len(migrations))
 	}
+	if columnType(db, "users", "id") != "TEXT" {
+		t.Errorf("a new database has %s ids, want TEXT", columnType(db, "users", "id"))
+	}
 	for _, c := range addedColumns {
 		if !columnExists(db, c.table, c.column) {
 			t.Errorf("schema lacks %s.%s, which addedColumns adds to old databases", c.table, c.column)
@@ -127,13 +156,19 @@ func TestNewDatabaseIsCurrent(t *testing.T) {
 	}
 }
 
-// Later migrations are checked by taking a current database back one version.
+// Later migrations are checked by taking a current database back to version
+// 1: migration 2 adds its column again and migration 3 finds text ids and
+// must leave them alone.
 func TestMigrateFromVersion1(t *testing.T) {
 	db, err := openDB(filepath.Join(t.TempDir(), "v1.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer db.Close()
+	id := newID()
+	if _, err := db.Exec(`INSERT INTO users(id, username, display_name, password_hash, salt, created_at) VALUES (?, 'ana', 'Ana', x'00', x'00', '2024-01-01T00:00:00Z')`, id); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := db.Exec(`ALTER TABLE users DROP COLUMN must_change_password`); err != nil {
 		t.Fatal(err)
 	}
@@ -146,5 +181,10 @@ func TestMigrateFromVersion1(t *testing.T) {
 	v, _ := userVersion(db)
 	if v != len(migrations) || !columnExists(db, "users", "must_change_password") {
 		t.Errorf("version %d, must_change_password present: %v", v, columnExists(db, "users", "must_change_password"))
+	}
+	var kept string
+	_ = db.QueryRow(`SELECT id FROM users WHERE username = 'ana'`).Scan(&kept)
+	if kept != id {
+		t.Errorf("text ids were not left alone: %q became %q", id, kept)
 	}
 }

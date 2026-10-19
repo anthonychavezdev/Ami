@@ -17,10 +17,10 @@ export default function NewGroupChatScreen() {
   const styles = useStyles(makeStyles);
   const router = useRouter();
   const { group } = useLocalSearchParams<{ group?: string }>();
-  const groupId = group ? Number(group) : null;
+  const groupId = group || null;
   const { friends, error } = useFriendsNotIn(groupId);
   const [name, setName] = useState('');
-  const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
+  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [busy, setBusy] = useState(false);
 
   const submit = async () => {
@@ -87,7 +87,7 @@ export default function NewGroupChatScreen() {
 }
 
 // The caller's friends, minus the members of a group when one is given.
-function useFriendsNotIn(groupId: number | null) {
+function useFriendsNotIn(groupId: string | null) {
   const [friends, setFriends] = useState<User[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {

@@ -11,10 +11,10 @@ import (
 // Message is a direct message (RecipientID set) or a group chat message
 // (GroupID set), never both.
 type Message struct {
-	ID          int64        `json:"id"`
-	SenderID    int64        `json:"sender_id"`
-	RecipientID *int64       `json:"recipient_id"`
-	GroupID     *int64       `json:"group_id"`
+	ID          string       `json:"id"`
+	SenderID    string       `json:"sender_id"`
+	RecipientID *string      `json:"recipient_id"`
+	GroupID     *string      `json:"group_id"`
 	Sender      *User        `json:"sender,omitempty"` // group chats: several people write, so each message names its author
 	Body        string       `json:"body"`
 	Attachments []Attachment `json:"attachments"`
@@ -34,14 +34,14 @@ type Conversation struct {
 
 // chat is where a message lives: a direct chat with user peer, or group group.
 type chat struct {
-	peer  int64
-	group int64
+	peer  string
+	group string
 }
 
-func (c chat) isGroup() bool { return c.group != 0 }
+func (c chat) isGroup() bool { return c.group != "" }
 
 // filter selects the chat's messages (alias m); ?1 is the viewer, ?2 the chat.
-func (c chat) filter() (string, int64) {
+func (c chat) filter() (string, string) {
 	if c.isGroup() {
 		return "m.group_id = ?2", c.group
 	}
@@ -125,7 +125,7 @@ func scanMessage(sc scanner) (Message, error) {
 	return m, nil
 }
 
-func (s *server) loadMessage(id int64) (Message, error) {
+func (s *server) loadMessage(id string) (Message, error) {
 	return scanMessage(s.db.QueryRow(`SELECT `+messageCols+`, `+userCols+` FROM messages m JOIN users u ON u.id = m.sender_id WHERE m.id = ?`, id))
 }
 
@@ -163,14 +163,14 @@ func (s *server) chatMessage(r *http.Request, c chat) (Message, error) {
 
 // chatAudience is everyone who sees a message: the group's members, or both
 // parties of a direct chat.
-func (s *server) chatAudience(m Message) []int64 {
+func (s *server) chatAudience(m Message) []string {
 	switch {
 	case m.GroupID != nil:
 		return s.groupMemberIDs(*m.GroupID)
 	case m.RecipientID != nil:
-		return []int64{m.SenderID, *m.RecipientID}
+		return []string{m.SenderID, *m.RecipientID}
 	default:
-		return []int64{m.SenderID}
+		return []string{m.SenderID}
 	}
 }
 
@@ -197,9 +197,9 @@ func (s *server) cleanMessage(body string, atts []Attachment) (string, []Attachm
 	return body, clean, nil
 }
 
-// nullID stores 0 as NULL.
-func nullID(id int64) any {
-	if id == 0 {
+// nullID stores an empty id as NULL.
+func nullID(id string) any {
+	if id == "" {
 		return nil
 	}
 	return id
@@ -222,12 +222,11 @@ func (s *server) sendChat(w http.ResponseWriter, r *http.Request, me *User, c ch
 			return forbidden("you can only message friends")
 		}
 	}
-	res, err := s.db.Exec(`INSERT INTO messages(sender_id, recipient_id, group_id, body, attachments, created_at) VALUES (?, ?, ?, ?, ?, ?)`,
-		me.ID, nullID(c.peer), nullID(c.group), body, jsonString(atts), nowString())
-	if err != nil {
+	id := newID()
+	if _, err := s.db.Exec(`INSERT INTO messages(id, sender_id, recipient_id, group_id, body, attachments, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+		id, me.ID, nullID(c.peer), nullID(c.group), body, jsonString(atts), nowString()); err != nil {
 		return err
 	}
-	id, _ := res.LastInsertId()
 	m, err := s.loadMessage(id)
 	if err != nil {
 		return err
@@ -303,9 +302,6 @@ func (s *server) deleteChat(w http.ResponseWriter, r *http.Request, me *User, c 
 	if _, err := s.db.Exec(`DELETE FROM messages WHERE id = ?`, m.ID); err != nil {
 		return err
 	}
-	if err := s.pullBackReadMarkers(m, c); err != nil {
-		return err
-	}
 	for _, uid := range s.chatAudience(m) {
 		unread, _ := s.unreadMessages(uid)
 		s.hub.sendTo(uid, messageDeletedEvent{Type: "message.deleted", ID: m.ID, SenderID: m.SenderID, RecipientID: m.RecipientID, GroupID: m.GroupID, Unread: unread})
@@ -313,7 +309,7 @@ func (s *server) deleteChat(w http.ResponseWriter, r *http.Request, me *User, c 
 	return noContent(w)
 }
 
-func (s *server) mayDeleteMessage(userID int64, m Message, c chat) bool {
+func (s *server) mayDeleteMessage(userID string, m Message, c chat) bool {
 	if m.SenderID == userID {
 		return true
 	}
@@ -324,40 +320,28 @@ func (s *server) mayDeleteMessage(userID int64, m Message, c chat) bool {
 	return role == "admin"
 }
 
-// pullBackReadMarkers: SQLite hands the highest id out again after a delete,
-// so a read marker sitting at or past the deleted message is pulled back to
-// what remains; a new message reusing the id then still counts as unread.
-func (s *server) pullBackReadMarkers(m Message, c chat) error {
-	if c.isGroup() {
-		_, err := s.db.Exec(`UPDATE group_reads SET last_read_id = (SELECT COALESCE(MAX(id), 0) FROM messages WHERE group_id = ?1)
-			WHERE group_id = ?1 AND last_read_id >= ?2`, c.group, m.ID)
-		return err
-	}
-	_, err := s.db.Exec(`UPDATE conversation_reads SET last_read_id = (SELECT COALESCE(MAX(id), 0) FROM messages WHERE group_id IS NULL AND sender_id = ?1 AND recipient_id = ?2)
-		WHERE user_id = ?2 AND peer_id = ?1 AND last_read_id >= ?3`, m.SenderID, *m.RecipientID, m.ID)
-	return err
-}
-
 // ---- unread counts
 
 // unreadMessages counts messages to a user past each chat's read marker:
 // direct messages from each friend, and group messages from other people.
-func (s *server) unreadMessages(userID int64) (int, error) {
+// A marker is the id of the last message read; ids only ever grow, so a
+// marker left at a deleted message stays right.
+func (s *server) unreadMessages(userID string) (int, error) {
 	var n int
 	err := s.db.QueryRow(`SELECT
 		(SELECT COUNT(*) FROM messages x WHERE x.group_id IS NULL AND x.recipient_id = ?1
-			AND x.id > COALESCE((SELECT last_read_id FROM conversation_reads r WHERE r.user_id = ?1 AND r.peer_id = x.sender_id), 0))
+			AND x.id > COALESCE((SELECT last_read_id FROM conversation_reads r WHERE r.user_id = ?1 AND r.peer_id = x.sender_id), ''))
 		+ (SELECT COUNT(*) FROM messages x JOIN group_members gm ON gm.group_id = x.group_id AND gm.user_id = ?1
 			WHERE x.sender_id != ?1
-			AND x.id > COALESCE((SELECT last_read_id FROM group_reads r WHERE r.user_id = ?1 AND r.group_id = x.group_id), 0))`, userID).Scan(&n)
+			AND x.id > COALESCE((SELECT last_read_id FROM group_reads r WHERE r.user_id = ?1 AND r.group_id = x.group_id), ''))`, userID).Scan(&n)
 	return n, err
 }
 
 // groupUnread counts a group's messages from others past the user's read marker.
-func (s *server) groupUnread(userID, groupID int64) int {
+func (s *server) groupUnread(userID, groupID string) int {
 	var n int
 	_ = s.db.QueryRow(`SELECT COUNT(*) FROM messages x WHERE x.group_id = ?2 AND x.sender_id != ?1
-		AND x.id > COALESCE((SELECT last_read_id FROM group_reads r WHERE r.user_id = ?1 AND r.group_id = ?2), 0)`, userID, groupID).Scan(&n)
+		AND x.id > COALESCE((SELECT last_read_id FROM group_reads r WHERE r.user_id = ?1 AND r.group_id = ?2), '')`, userID, groupID).Scan(&n)
 	return n
 }
 
@@ -375,15 +359,15 @@ func (s *server) readChat(w http.ResponseWriter, r *http.Request, me *User, c ch
 	return ok(w, unreadCount{unread})
 }
 
-func (s *server) moveReadMarker(userID int64, c chat) error {
+func (s *server) moveReadMarker(userID string, c chat) error {
 	if c.isGroup() {
 		_, err := s.db.Exec(`INSERT INTO group_reads(user_id, group_id, last_read_id)
-			VALUES (?1, ?2, COALESCE((SELECT MAX(id) FROM messages WHERE group_id = ?2), 0))
+			VALUES (?1, ?2, COALESCE((SELECT MAX(id) FROM messages WHERE group_id = ?2), ''))
 			ON CONFLICT(user_id, group_id) DO UPDATE SET last_read_id = excluded.last_read_id`, userID, c.group)
 		return err
 	}
 	_, err := s.db.Exec(`INSERT INTO conversation_reads(user_id, peer_id, last_read_id)
-		VALUES (?1, ?2, COALESCE((SELECT MAX(id) FROM messages WHERE group_id IS NULL AND sender_id = ?2 AND recipient_id = ?1), 0))
+		VALUES (?1, ?2, COALESCE((SELECT MAX(id) FROM messages WHERE group_id IS NULL AND sender_id = ?2 AND recipient_id = ?1), ''))
 		ON CONFLICT(user_id, peer_id) DO UPDATE SET last_read_id = excluded.last_read_id`, userID, c.peer)
 	return err
 }
@@ -405,7 +389,7 @@ func (s *server) listConversations(w http.ResponseWriter, r *http.Request, me *U
 }
 
 // directConversations: the newest message with each friend, with the unread count.
-func (s *server) directConversations(userID int64) ([]Conversation, error) {
+func (s *server) directConversations(userID string) ([]Conversation, error) {
 	scan := func(sc scanner) (Conversation, error) {
 		var c Conversation
 		var m Message
@@ -419,7 +403,7 @@ func (s *server) directConversations(userID int64) ([]Conversation, error) {
 	return queryAll(s.db, scan, `
 		SELECT `+messageCols+`, `+userCols+`,
 			(SELECT COUNT(*) FROM messages x WHERE x.group_id IS NULL AND x.sender_id = u.id AND x.recipient_id = ?1
-				AND x.id > COALESCE((SELECT last_read_id FROM conversation_reads r WHERE r.user_id = ?1 AND r.peer_id = u.id), 0))
+				AND x.id > COALESCE((SELECT last_read_id FROM conversation_reads r WHERE r.user_id = ?1 AND r.peer_id = u.id), ''))
 		FROM messages m
 		JOIN users u ON u.id = CASE WHEN m.sender_id = ?1 THEN m.recipient_id ELSE m.sender_id END
 		WHERE m.id IN (
@@ -428,7 +412,7 @@ func (s *server) directConversations(userID int64) ([]Conversation, error) {
 }
 
 // groupConversations: every group the user is in, with its newest message if any.
-func (s *server) groupConversations(userID int64) ([]Conversation, error) {
+func (s *server) groupConversations(userID string) ([]Conversation, error) {
 	groups, err := s.queryGroups(userID, `WHERE g.id IN (SELECT group_id FROM group_members WHERE user_id = ?1)`)
 	if err != nil {
 		return nil, err

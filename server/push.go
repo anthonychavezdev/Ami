@@ -71,7 +71,7 @@ func messageNotification(from *User, m Message, groupName string) notification {
 }
 
 // pushMessage notifies every registered device of user `to` about a new message.
-func (s *server) pushMessage(to int64, from *User, m Message, unread int) {
+func (s *server) pushMessage(to string, from *User, m Message, unread int) {
 	groupName := ""
 	if m.GroupID != nil {
 		groupName = s.groupSummary(*m.GroupID).Name
@@ -91,7 +91,7 @@ type pushMessage struct {
 
 // push sends one notification to every registered device of a user. Best
 // effort: failures are logged, dead tokens are forgotten.
-func (s *server) push(to int64, n notification, badge int) {
+func (s *server) push(to string, n notification, badge int) {
 	tokens := s.pushTokens(to)
 	if len(tokens) == 0 {
 		return
@@ -104,7 +104,7 @@ func (s *server) push(to int64, n notification, badge int) {
 	}
 }
 
-func (s *server) pushTokens(userID int64) []string {
+func (s *server) pushTokens(userID string) []string {
 	tokens, _ := queryAll(s.db, func(sc scanner) (string, error) {
 		var t string
 		return t, sc.Scan(&t)

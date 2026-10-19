@@ -63,7 +63,7 @@ func (s *server) updateMe(w http.ResponseWriter, r *http.Request, me *User) erro
 }
 
 // profilePatch validates every field that was sent and turns it into a column change.
-func (s *server) profilePatch(userID int64, in profileInput) (columnPatch, error) {
+func (s *server) profilePatch(userID string, in profileInput) (columnPatch, error) {
 	var p columnPatch
 	if in.Username != nil {
 		u, err := s.newUsername(*in.Username, userID)
@@ -97,7 +97,7 @@ func (s *server) profilePatch(userID int64, in profileInput) (columnPatch, error
 }
 
 // newUsername checks a username change: valid, not reserved, nobody else's.
-func (s *server) newUsername(raw string, userID int64) (string, error) {
+func (s *server) newUsername(raw string, userID string) (string, error) {
 	u := strings.TrimSpace(raw)
 	if !usernameRe.MatchString(u) {
 		return "", badRequest("username must be 3-24 letters, digits or underscores")
@@ -105,7 +105,7 @@ func (s *server) newUsername(raw string, userID int64) (string, error) {
 	if reservedUsernames[strings.ToLower(u)] {
 		return "", badRequest("that username is reserved")
 	}
-	var other int64
+	var other string
 	err := s.db.QueryRow(`SELECT id FROM users WHERE username = ? COLLATE NOCASE AND id != ?`, u, userID).Scan(&other)
 	switch {
 	case err == nil:
@@ -136,7 +136,7 @@ func shortText(raw string, max int, name string) (string, error) {
 
 // ---- appearing offline
 
-func (s *server) invisible(userID int64) bool {
+func (s *server) invisible(userID string) bool {
 	var v bool
 	_ = s.db.QueryRow(`SELECT invisible FROM users WHERE id = ?`, userID).Scan(&v)
 	return v

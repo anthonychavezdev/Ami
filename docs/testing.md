@@ -47,7 +47,7 @@ What each test covers ([`api_test.go`](../server/api_test.go) unless noted):
 | `TestGroupChats` | Private group chats among friends, membership gates, group messages and their events, read markers for new members, conversations, admin deletes, group calls with seats surviving reconnects, leaving and deleting. |
 | `TestPasswords` | Changing a password, other devices signed out, `-reset-password` end to end including the forced-change gate. |
 | `TestServeStopsWhenContextEnds` | Graceful shutdown returns cleanly. |
-| `TestMigrateFirstRelease`, `TestNewDatabaseIsCurrent`, `TestMigrateFromVersion1` ([`migrate_test.go`](../server/migrate_test.go)) | A first-release database upgrades through every migration without losing rows; a new database is already current; the newest migration works on its own. |
+| `TestMigrateFirstRelease`, `TestNewDatabaseIsCurrent`, `TestMigrateFromVersion1` ([`migrate_test.go`](../server/migrate_test.go)) | A first-release database upgrades through every migration, its integer ids becoming UUIDs with every reference, order and read marker kept; a new database is already current, with text ids; a database taken back to version 1 re-runs the later migrations, which leave its text ids alone. |
 | `TestPush` | Offline users are pushed with the badge count, dead tokens are forgotten, online users are not pushed. |
 | `TestVerboseLog`, `TestVerboseLogLongCredentials` ([`verbose_test.go`](../server/verbose_test.go)) | The verbose log redacts credentials and hands handlers the whole body. |
 

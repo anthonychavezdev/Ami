@@ -66,7 +66,7 @@ func (s *server) markStruct(rv reflect.Value) {
 	if rv.Type() == userType {
 		if rv.CanSet() {
 			u := rv.Addr().Interface().(*User)
-			u.Online = u.ID != 0 && s.hub.present(u.ID)
+			u.Online = u.ID != "" && s.hub.present(u.ID)
 		}
 		return
 	}

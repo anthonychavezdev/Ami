@@ -143,6 +143,9 @@ with a diagram, is in [database-schema.md](database-schema.md).
 
 ## Conventions worth knowing before reading code
 
+- **Ids are UUIDs.** Every row's id is a version 7 UUID made by the server: random,
+  so nothing can be guessed or counted, but ordered by creation time, so sorting
+  and paging by id still mean newest first.
 - **Handlers return errors.** No handler writes an error itself; it returns one and `respond` does the rest. See [server.md](server.md#handler-conventions).
 - **Scanning by column list.** A type that comes out of SQL has a `fields()` method listing scan targets in the same order as its column constant (`userCols`, `messageCols`); rows that span types are scanned by concatenating the lists with `fields(a, b)`.
 - **Timestamps are text.** Every `*_at` column is an RFC 3339 string with nanoseconds, in UTC, produced by `nowString()`. They sort correctly as strings.

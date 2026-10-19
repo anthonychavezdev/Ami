@@ -8,17 +8,17 @@ import { socket } from './ws';
 const withPost = (list: Post[], p: Post) => (list.some((x) => x.id === p.id) ? list : [p, ...list]);
 const withPage = (list: Post[], page: Post[]) => [...list, ...page.filter((p) => !list.some((x) => x.id === p.id))];
 const replacePost = (list: Post[], p: Post) => list.map((x) => (x.id === p.id ? p : x));
-const withoutPost = (list: Post[], id: number) => list.filter((x) => x.id !== id);
+const withoutPost = (list: Post[], id: string) => list.filter((x) => x.id !== id);
 
 // Cursor-paginated post list shared by the feed, profiles and groups. It stays
 // live: posts created, changed or deleted arrive over the WebSocket and are
 // filtered through `accept` (does this post belong in this list?).
-export function usePosts(fetchPage: (before?: number) => Promise<Post[]>, accept: (p: Post) => boolean = () => true) {
+export function usePosts(fetchPage: (before?: string) => Promise<Post[]>, accept: (p: Post) => boolean = () => true) {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loadedFor, setLoadedFor] = useState<unknown>(null); // the fetchPage whose first page is in
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const cursor = useRef<number | undefined>(undefined); // id of the oldest post loaded
+  const cursor = useRef<string | undefined>(undefined); // id of the oldest post loaded
   const done = useRef(false); // the last page was empty
   const busy = useRef(false);
 
@@ -72,7 +72,7 @@ export function usePosts(fetchPage: (before?: number) => Promise<Post[]>, accept
     },
     loadMore: () => void load(false),
     update: (p: Post) => setPosts((prev) => replacePost(prev, p)),
-    remove: (id: number) => setPosts((prev) => withoutPost(prev, id)),
+    remove: (id: string) => setPosts((prev) => withoutPost(prev, id)),
     prepend,
   };
 }

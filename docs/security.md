@@ -136,9 +136,10 @@ Things a reader should know are absent, so they are not assumed:
   per-IP rate limit, or audit log.
 - Reserved usernames (`deleted`, `admin`, `ami`, `me`, `system`) are refused when
   renaming, but not at registration.
-- Posts, groups and profiles are fetchable by id by any signed-in user; privacy
-  is at the level of listings and of group chats and calls, not of single
-  objects.
+- Posts, groups and profiles are fetchable by id by any signed-in user who knows
+  the id; privacy is at the level of listings and of group chats and calls, not
+  of single objects. Ids are random UUIDs, so they cannot be enumerated, but a
+  shared link reveals one.
 - Uploads that are never attached are kept forever; there is no quota per user
   beyond the rate limit.
 - Rate limits and the hub are per process; a reverse proxy in front should add

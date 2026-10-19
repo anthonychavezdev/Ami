@@ -8,10 +8,10 @@ import (
 )
 
 type Group struct {
-	ID          int64  `json:"id"`
+	ID          string `json:"id"`
 	Name        string `json:"name"`
 	Description string `json:"description"`
-	OwnerID     int64  `json:"owner_id"`
+	OwnerID     string `json:"owner_id"`
 	Private     bool   `json:"private"` // invite only: hidden from discovery, the admin adds members
 	CreatedAt   string `json:"created_at"`
 	MemberCount int    `json:"member_count"`
@@ -28,7 +28,7 @@ type GroupMember struct {
 type GroupDetail struct {
 	Group   Group         `json:"group"`
 	Members []GroupMember `json:"members"`
-	Call    []int64       `json:"call"`
+	Call    []string      `json:"call"`
 }
 
 // ---- reading groups
@@ -53,12 +53,12 @@ func scanGroupMember(sc scanner) (GroupMember, error) {
 	return m, err
 }
 
-func (s *server) queryGroups(viewer int64, tail string, args ...any) ([]Group, error) {
+func (s *server) queryGroups(viewer string, tail string, args ...any) ([]Group, error) {
 	return queryAll(s.db, scanGroup, groupSelect+tail, append([]any{viewer}, args...)...)
 }
 
 // groupRole returns "admin", "member" or "" for a user in a group.
-func (s *server) groupRole(groupID, userID int64) (string, error) {
+func (s *server) groupRole(groupID, userID string) (string, error) {
 	var role string
 	err := s.db.QueryRow(`SELECT role FROM group_members WHERE group_id = ? AND user_id = ?`, groupID, userID).Scan(&role)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -67,7 +67,7 @@ func (s *server) groupRole(groupID, userID int64) (string, error) {
 	return role, err
 }
 
-func (s *server) requireAdmin(groupID, userID int64) error {
+func (s *server) requireAdmin(groupID, userID string) error {
 	role, err := s.groupRole(groupID, userID)
 	if err != nil {
 		return err
@@ -78,18 +78,18 @@ func (s *server) requireAdmin(groupID, userID int64) error {
 	return nil
 }
 
-func (s *server) groupOwner(id int64) (int64, error) {
-	var owner int64
+func (s *server) groupOwner(id string) (string, error) {
+	var owner string
 	err := s.db.QueryRow(`SELECT owner_id FROM groups WHERE id = ?`, id).Scan(&owner)
 	return owner, orNotFound(err, "group not found")
 }
 
-func (s *server) groupMemberIDs(groupID int64) []int64 {
+func (s *server) groupMemberIDs(groupID string) []string {
 	return queryIDs(s.db, `SELECT user_id FROM group_members WHERE group_id = ?`, groupID)
 }
 
 // groupSummary is what call and message events say about a group.
-func (s *server) groupSummary(id int64) groupRef {
+func (s *server) groupSummary(id string) groupRef {
 	g := groupRef{ID: id}
 	_ = s.db.QueryRow(`SELECT name FROM groups WHERE id = ?`, id).Scan(&g.Name)
 	return g
@@ -105,7 +105,7 @@ func (s *server) listGroups(w http.ResponseWriter, r *http.Request, me *User) er
 	return s.respondGroups(w, me.ID, `WHERE g.private = 0 AND g.name LIKE ? ORDER BY g.name LIMIT 50`, like)
 }
 
-func (s *server) respondGroups(w http.ResponseWriter, viewer int64, tail string, args ...any) error {
+func (s *server) respondGroups(w http.ResponseWriter, viewer string, tail string, args ...any) error {
 	groups, err := s.queryGroups(viewer, tail, args...)
 	if err != nil {
 		return err
@@ -114,7 +114,7 @@ func (s *server) respondGroups(w http.ResponseWriter, viewer int64, tail string,
 }
 
 // respondGroup answers with the group, its members and who is in its call.
-func (s *server) respondGroup(w http.ResponseWriter, code int, viewer, id int64) error {
+func (s *server) respondGroup(w http.ResponseWriter, code int, viewer, id string) error {
 	g, err := scanGroup(s.db.QueryRow(groupSelect+`WHERE g.id = ?`, viewer, id))
 	if err != nil {
 		return orNotFound(err, "group not found")
@@ -154,10 +154,10 @@ func (s *server) groupPosts(w http.ResponseWriter, r *http.Request, me *User) er
 // groupInput is the body of POST /api/groups. {private: true} makes an
 // invite-only group chat; {member_ids} adds friends right away.
 type groupInput struct {
-	Name        string  `json:"name"`
-	Description string  `json:"description"`
-	Private     bool    `json:"private"`
-	MemberIDs   []int64 `json:"member_ids"`
+	Name        string   `json:"name"`
+	Description string   `json:"description"`
+	Private     bool     `json:"private"`
+	MemberIDs   []string `json:"member_ids"`
 }
 
 func cleanGroupInput(in groupInput) (groupInput, error) {
@@ -182,14 +182,12 @@ func (s *server) createGroup(w http.ResponseWriter, r *http.Request, me *User) e
 	if err != nil {
 		return err
 	}
-	var id int64
+	id := newID()
 	err = s.inTx(func(tx *sql.Tx) error {
 		ts := nowString()
-		res, err := tx.Exec(`INSERT INTO groups(name, description, owner_id, private, created_at) VALUES (?, ?, ?, ?, ?)`, in.Name, in.Description, me.ID, in.Private, ts)
-		if err != nil {
+		if _, err := tx.Exec(`INSERT INTO groups(id, name, description, owner_id, private, created_at) VALUES (?, ?, ?, ?, ?, ?)`, id, in.Name, in.Description, me.ID, in.Private, ts); err != nil {
 			return err
 		}
-		id, _ = res.LastInsertId()
 		if _, err := tx.Exec(`INSERT INTO group_members(group_id, user_id, role, joined_at) VALUES (?, ?, 'admin', ?)`, id, me.ID, ts); err != nil {
 			return err
 		}
@@ -224,12 +222,12 @@ func (s *server) deleteGroup(w http.ResponseWriter, r *http.Request, me *User) e
 
 // friendsToAdd checks a list of users the caller wants in a group: each must
 // be a friend (no adding strangers to chats). Duplicates and the caller are dropped.
-func (s *server) friendsToAdd(me int64, ids []int64) ([]int64, error) {
+func (s *server) friendsToAdd(me string, ids []string) ([]string, error) {
 	if len(ids) > 100 {
 		return nil, badRequest("too many members at once")
 	}
-	seen := map[int64]bool{me: true}
-	out := []int64{}
+	seen := map[string]bool{me: true}
+	out := []string{}
 	for _, id := range ids {
 		if seen[id] {
 			continue
@@ -245,16 +243,16 @@ func (s *server) friendsToAdd(me int64, ids []int64) ([]int64, error) {
 
 // addMember puts a user in a group as a member, with the chat read up to now
 // (what was said before they came in does not count as unread).
-func addMember(tx *sql.Tx, groupID, userID int64, ts string) error {
+func addMember(tx *sql.Tx, groupID, userID string, ts string) error {
 	if _, err := tx.Exec(`INSERT OR IGNORE INTO group_members(group_id, user_id, role, joined_at) VALUES (?, ?, 'member', ?)`, groupID, userID, ts); err != nil {
 		return err
 	}
 	_, err := tx.Exec(`INSERT OR REPLACE INTO group_reads(user_id, group_id, last_read_id)
-		VALUES (?1, ?2, COALESCE((SELECT MAX(id) FROM messages WHERE group_id = ?2), 0))`, userID, groupID)
+		VALUES (?1, ?2, COALESCE((SELECT MAX(id) FROM messages WHERE group_id = ?2), ''))`, userID, groupID)
 	return err
 }
 
-func addMembers(tx *sql.Tx, groupID int64, userIDs []int64, ts string) error {
+func addMembers(tx *sql.Tx, groupID string, userIDs []string, ts string) error {
 	for _, uid := range userIDs {
 		if err := addMember(tx, groupID, uid, ts); err != nil {
 			return err
@@ -288,7 +286,7 @@ func (s *server) addGroupMembers(w http.ResponseWriter, r *http.Request, me *Use
 		return err
 	}
 	var in struct {
-		UserIDs []int64 `json:"user_ids"`
+		UserIDs []string `json:"user_ids"`
 	}
 	if err := readJSON(w, r, &in); err != nil {
 		return err
@@ -349,7 +347,7 @@ func (s *server) removeGroupMember(w http.ResponseWriter, r *http.Request, me *U
 
 // dropMember takes a user out of a group: membership and read marker go, they
 // leave the group's call, and their badge is recomputed.
-func (s *server) dropMember(groupID, userID int64) error {
+func (s *server) dropMember(groupID, userID string) error {
 	if _, err := s.db.Exec(`DELETE FROM group_members WHERE group_id = ? AND user_id = ?`, groupID, userID); err != nil {
 		return err
 	}
@@ -361,7 +359,7 @@ func (s *server) dropMember(groupID, userID int64) error {
 
 // refreshBadge tells a user's devices their unread total after a group chat
 // stopped counting for them.
-func (s *server) refreshBadge(userID, groupID int64) {
+func (s *server) refreshBadge(userID, groupID string) {
 	unread, _ := s.unreadMessages(userID)
 	s.hub.sendTo(userID, chat{group: groupID}.readEvent(unread))
 }

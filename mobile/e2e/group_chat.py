@@ -5,7 +5,7 @@ message, and sees one ana sends from elsewhere arrive live.
 """
 import os, sys
 
-from ami import Dev, api, check, login, report, step
+from ami import Dev, api, check, group_id, login, report, step
 
 A = Dev(sys.argv[1] if len(sys.argv) > 1 else 'emulator-5554', 'A')
 A.restart()
@@ -25,7 +25,8 @@ def send():
 
 step('send a group message from Android', send)
 text = 'Hola desde otro dispositivo ' + os.urandom(2).hex()
-api('POST', '/api/groups/1/messages', {'body': text}, token=login('ana'))  # group 1 is Fútbol los domingos (server/demo.go)
+ana = login('ana')
+api('POST', f"/api/groups/{group_id(ana, 'Fútbol los domingos')}/messages", {'body': text}, token=ana)
 step('a message from another device arrives live with its sender', lambda: A.find(text, timeout=30) and A.find('Ana García', timeout=5))
 A.shot('gc-chat-after')
 report()

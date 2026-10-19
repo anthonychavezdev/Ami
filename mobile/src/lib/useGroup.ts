@@ -7,7 +7,7 @@ import { errorMessage } from './errors';
 
 // A group and its members, plus the membership actions that return the
 // updated group (join, leave, add, remove).
-export function useGroup(groupId: number) {
+export function useGroup(groupId: string) {
   const [group, setGroup] = useState<Group | null>(null);
   const [members, setMembers] = useState<GroupMember[]>([]);
   const [error, setError] = useState<string | null>(null);

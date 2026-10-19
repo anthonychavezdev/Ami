@@ -17,8 +17,8 @@ export function FriendPicker({
   empty,
 }: {
   friends: User[];
-  selected: ReadonlySet<number>;
-  onToggle: (id: number) => void;
+  selected: ReadonlySet<string>;
+  onToggle: (id: string) => void;
   header: React.ReactElement;
   empty: string;
 }) {
@@ -54,7 +54,7 @@ export function FriendPicker({
 }
 
 // The set with one id added or removed.
-export const toggled = (set: ReadonlySet<number>, id: number): ReadonlySet<number> => {
+export const toggled = (set: ReadonlySet<string>, id: string): ReadonlySet<string> => {
   const next = new Set(set);
   if (next.has(id)) next.delete(id);
   else next.add(id);

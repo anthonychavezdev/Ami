@@ -16,7 +16,8 @@ twin, and the screen [`app/call.tsx`](../mobile/src/app/call.tsx).
 
 A call is a **room** keyed by a string:
 
-- `u:<lowId>:<highId>` for a one-to-one call between two friends;
+- `u:<lowerId>:<higherId>` for a one-to-one call between two friends, the two ids
+  in string order so both sides name the same room;
 - `g:<groupId>` for a group's call, which any member may join.
 
 The server keeps rooms in memory only (`callRooms`); they exist while someone
@@ -31,7 +32,7 @@ Client messages (over the WebSocket, see `clientMessage` in `events.go`):
 | --- | --- |
 | `{"type":"call.join","user_id":U,"video":bool}` | Call friend U, or pick up their call. |
 | `{"type":"call.join","group_id":G,"video":bool}` | Start or join group G's call. |
-| `{"type":"call.join","room":"g:3"}` | Same, by the room key a `call.ring` carried (also how a reconnecting app re-asserts its seat). |
+| `{"type":"call.join","room":"g:<groupId>"}` | Same, by the room key a `call.ring` carried (also how a reconnecting app re-asserts its seat). |
 | `{"type":"call.leave","room":key}` | Leave. |
 | `{"type":"call.decline","room":key,"reason":"busy"}` | Decline a ring (`reason` optional). |
 | `{"type":"call.offer"\|"call.answer"\|"call.ice"\|"call.streams","room":key,"to":U,...}` | Signaling for one participant. |
@@ -48,7 +49,7 @@ sequenceDiagram
     participant S as Server
     participant L as Luis
     A->>S: call.join {user_id: luis, video}
-    S-->>A: call.joined {room u:1:2, participants: []}
+    S-->>A: call.joined {room u:…, participants: []}
     S-->>L: call.ring {room, from_user: Ana}
     Note over A: "Calling…" (45 s ring timeout)
     L->>S: call.join {room}
@@ -140,7 +141,7 @@ status: idle → outgoing → connecting → active      (you called)
 
 One `RTCPeerConnection` per other participant, using the "perfect negotiation"
 pattern so both sides can add tracks at any time: the **polite** side (the one
-with the higher user id) yields when offers collide. `onnegotiationneeded`
+whose id sorts higher) yields when offers collide. `onnegotiationneeded`
 makes an offer; `acceptOffer` sets the remote description, optionally adds our
 tracks first (so the answer carries them), flushes ICE candidates that arrived
 early, and answers. Candidates that arrive before the remote description, or

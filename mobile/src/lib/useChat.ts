@@ -11,13 +11,13 @@ import { socket } from './ws';
 // Everything a chat screen needs: who the chat is with, its messages (newest
 // first, kept live over the WebSocket), the read marker, and for groups who is
 // in the group call right now.
-export function useChat(kind: ChatTarget['kind'], id: number) {
+export function useChat(kind: ChatTarget['kind'], id: string) {
   const chat = useMemo<ChatTarget>(() => ({ kind, id }), [kind, id]);
   const isGroup = kind === 'group';
   const [other, setOther] = useState<User | null>(null);
   const [group, setGroup] = useState<Group | null>(null);
-  const [members, setMembers] = useState<ReadonlyMap<number, GroupMember>>(new Map());
-  const [inCall, setInCall] = useState<number[]>([]); // members in the group call
+  const [members, setMembers] = useState<ReadonlyMap<string, GroupMember>>(new Map());
+  const [inCall, setInCall] = useState<string[]>([]); // members in the group call
   const [messages, setMessages] = useState<Message[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 

@@ -22,7 +22,7 @@ func TestVerboseLog(t *testing.T) {
 	h := logTraffic(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		got = string(b)
-		noteUser(r, 7)
+		noteUser(r, "u7")
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"token":"s3cret-session","user":{"id":7}}`))
@@ -37,7 +37,7 @@ func TestVerboseLog(t *testing.T) {
 	}
 	logged := out.String()
 	for _, want := range []string{"→ POST /api/login?token=redacted", `"username":"ana"`, `"password":"[redacted]"`, "Bearer [redacted]",
-		"← 200 in", "user 7", `"token":"[redacted]"`, `"user":{"id":7}`} {
+		"← 200 in", "user u7", `"token":"[redacted]"`, `"user":{"id":7}`} {
 		if !strings.Contains(logged, want) {
 			t.Errorf("log lacks %q:\n%s", want, logged)
 		}

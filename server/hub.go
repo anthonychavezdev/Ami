@@ -19,10 +19,10 @@ var presenceGrace = 5 * time.Second
 // hub tracks every live WebSocket connection per user and fans events out.
 type hub struct {
 	mu       sync.RWMutex
-	users    map[int64]map[*client]struct{}
-	leaving  map[int64]*time.Timer // users inside the presence grace period
-	hidden   map[int64]bool        // users who chose to appear offline
-	decorate func(v any) any       // fills presence into outgoing events (set by the server)
+	users    map[string]map[*client]struct{}
+	leaving  map[string]*time.Timer // users inside the presence grace period
+	hidden   map[string]bool        // users who chose to appear offline
+	decorate func(v any) any        // fills presence into outgoing events (set by the server)
 }
 
 type client struct {
@@ -33,7 +33,7 @@ type client struct {
 }
 
 func newHub() *hub {
-	return &hub{users: map[int64]map[*client]struct{}{}, leaving: map[int64]*time.Timer{}, hidden: map[int64]bool{}}
+	return &hub{users: map[string]map[*client]struct{}{}, leaving: map[string]*time.Timer{}, hidden: map[string]bool{}}
 }
 
 func (h *hub) add(c *client) {
@@ -94,7 +94,7 @@ func (h *hub) closeAll() {
 }
 
 // online is whether events can be delivered right now.
-func (h *hub) online(userID int64) bool {
+func (h *hub) online(userID string) bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return len(h.users[userID]) > 0
@@ -102,7 +102,7 @@ func (h *hub) online(userID int64) bool {
 
 // present is what others see: connected (or gone for less than the grace
 // period) and not appearing offline on purpose.
-func (h *hub) present(userID int64) bool {
+func (h *hub) present(userID string) bool {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return !h.hidden[userID] && (len(h.users[userID]) > 0 || h.leaving[userID] != nil)
@@ -110,7 +110,7 @@ func (h *hub) present(userID int64) bool {
 
 // setHidden records whether a user appears offline; if they are connected the
 // change is announced like a disconnect or a reconnect.
-func (h *hub) setHidden(userID int64, hidden bool) {
+func (h *hub) setHidden(userID string, hidden bool) {
 	h.mu.Lock()
 	was := h.hidden[userID]
 	if hidden {
@@ -126,10 +126,10 @@ func (h *hub) setHidden(userID int64, hidden bool) {
 }
 
 // onlineIDs lists every user currently shown as online.
-func (h *hub) onlineIDs() []int64 {
+func (h *hub) onlineIDs() []string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
-	ids := make([]int64, 0, len(h.users)+len(h.leaving))
+	ids := make([]string, 0, len(h.users)+len(h.leaving))
 	for id := range h.users {
 		if !h.hidden[id] {
 			ids = append(ids, id)
@@ -153,7 +153,7 @@ func (h *hub) marshal(v any) ([]byte, error) {
 // sendAll pushes an event to every connection.
 func (h *hub) sendAll(v any) {
 	h.mu.RLock()
-	ids := make([]int64, 0, len(h.users))
+	ids := make([]string, 0, len(h.users))
 	for id := range h.users {
 		ids = append(ids, id)
 	}
@@ -162,16 +162,16 @@ func (h *hub) sendAll(v any) {
 }
 
 // sendTo pushes an event to every connection of a user. Returns true if anyone was online.
-func (h *hub) sendTo(userID int64, v any) bool { return h.deliver([]int64{userID}, v) > 0 }
+func (h *hub) sendTo(userID string, v any) bool { return h.deliver([]string{userID}, v) > 0 }
 
 // sendToMany fans an event out to several users.
-func (h *hub) sendToMany(userIDs []int64, v any) { h.deliver(userIDs, v) }
+func (h *hub) sendToMany(userIDs []string, v any) { h.deliver(userIDs, v) }
 
 // sendToClient pushes an event to one connection only (the device that acted).
 func (h *hub) sendToClient(c *client, v any) {
 	if data, err := h.marshal(v); err == nil {
 		if verbose {
-			log.Printf("ws → user %d (one device): %s", c.user.ID, cut(data))
+			log.Printf("ws → user %s (one device): %s", c.user.ID, cut(data))
 		}
 		c.queue(data)
 	}
@@ -179,7 +179,7 @@ func (h *hub) sendToClient(c *client, v any) {
 
 // deliver queues an event on every connection of the users and reports how
 // many connections got it. Slow clients are skipped rather than blocking.
-func (h *hub) deliver(userIDs []int64, v any) int {
+func (h *hub) deliver(userIDs []string, v any) int {
 	data, err := h.marshal(v)
 	if err != nil {
 		return 0
@@ -276,7 +276,7 @@ func (s *server) handleWS(w http.ResponseWriter, r *http.Request) {
 // handleWSMessage dispatches one client message (see clientMessage in events.go).
 func (s *server) handleWSMessage(c *client, data []byte) {
 	if verbose {
-		log.Printf("ws ← user %d: %s", c.user.ID, cut(data))
+		log.Printf("ws ← user %s: %s", c.user.ID, cut(data))
 	}
 	var msg clientMessage
 	if err := json.Unmarshal(data, &msg); err != nil {
@@ -288,6 +288,6 @@ func (s *server) handleWSMessage(c *client, data []byte) {
 	case strings.HasPrefix(msg.Type, "call."):
 		s.handleCallMessage(c, msg)
 	default:
-		log.Printf("ws: unknown message type %q from user %d", msg.Type, c.user.ID)
+		log.Printf("ws: unknown message type %q from user %s", msg.Type, c.user.ID)
 	}
 }

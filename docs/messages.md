@@ -13,7 +13,7 @@ store [`unread.ts`](../mobile/src/lib/unread.ts).
 ## The shapes
 
 ```json
-Message:      { "id": 42, "sender_id": 1, "recipient_id": 2, "group_id": null, "sender": {"...User"},
+Message:      { "id": "019a0c3a-…", "sender_id": "019a0b10-…", "recipient_id": "019a0b11-…", "group_id": null, "sender": {"...User"},
                 "body": "...", "attachments": [], "created_at": "...", "edited_at": null }
 Conversation: { "user": {"...User"}, "group": Group, "last_message": Message, "unread": 2 }
 ```
@@ -78,8 +78,7 @@ everyone in the chat gets `message.updated` with the message.
 ## Deleting
 
 `DELETE .../{mid}`: your own message, or, in a group, any message as the admin
-(`mayDeleteMessage`). The row is deleted, `pullBackReadMarkers` runs (see
-below), and each member of the chat gets `message.deleted {id, sender_id,
+(`mayDeleteMessage`). The row is deleted and each member of the chat gets `message.deleted {id, sender_id,
 recipient_id, group_id, unread}` with their own recomputed total. 204.
 
 ## Unread counts
@@ -93,11 +92,9 @@ sums both kinds in one query; `groupUnread` counts one group. The markers:
 | `conversation_reads` | `(user_id, peer_id)` | reading a direct chat; migration 1 marks chats older than unread tracking as read |
 | `group_reads` | `(user_id, group_id)` | reading the group chat; joining or being added (read up to now); removed on leaving |
 
-Because SQLite can hand out the highest id again after the newest row is
-deleted, deleting the newest message would otherwise leave markers pointing
-past a message that does not exist yet. `pullBackReadMarkers` moves any marker
-at or past the deleted id back to the chat's new highest id, so a message that
-later reuses the id still counts as unread.
+Ids are time-ordered UUIDs that are never reused, so a marker left at a
+deleted message stays right: anything said later has a greater id. An empty
+marker means nothing was read.
 
 Leaving a group, being removed, or the group being deleted sends the affected
 users a `messages.read` for that group with their new total (`refreshBadge`).
