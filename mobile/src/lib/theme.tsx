@@ -1,6 +1,6 @@
 import * as SystemUI from 'expo-system-ui';
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { StyleSheet, useColorScheme } from 'react-native';
+import { Appearance, StyleSheet, useColorScheme } from 'react-native';
 
 import { darkColors, lightColors, type ThemeColors } from '@/theme';
 import { storage } from './storage';
@@ -48,6 +48,13 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     SystemUI.setBackgroundColorAsync(colors.bg).catch(() => {});
   }, [colors.bg]);
+
+  // The OS draws part of the screen itself: the status bar, the native
+  // header's buttons, keyboards, alerts. Those follow the system appearance,
+  // so a chosen theme is also declared to the OS; "system" hands it back.
+  useEffect(() => {
+    Appearance.setColorScheme?.(preference === 'system' ? 'unspecified' : preference);
+  }, [preference]);
 
   const value = useMemo<ThemeValue>(() => ({ preference, setPreference, scheme, colors }), [preference, setPreference, scheme, colors]);
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
