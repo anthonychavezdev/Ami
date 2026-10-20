@@ -94,15 +94,19 @@ cannot: the screens themselves, WebRTC media, and Android's permission dialogs.
   emulators start and join a group voice call, `diego` joins over the
   WebSocket, the counts update, screen sharing shows on the other device as a
   stage with real pixels, the camera comes on, and everyone leaves cleanly.
+- [`direct_call.py`](../mobile/e2e/direct_call.py): `luis` calls `ana` from her
+  profile, she is rung and accepts, he shares his screen (seen as a stage on
+  her device), stops, and hangs up; both land back where they were.
 
 Run them from the dev shell with the server (`server -dev`), Metro and the
 emulators up:
 
 ```sh
 android                               # once: builds and installs the app on `ami`
-emulator -avd ami2 &                  # the call script needs a second emulator
+emulator -avd ami2 &                  # the call scripts need a second emulator
 python3 mobile/e2e/group_chat.py
 python3 mobile/e2e/group_call.py
+python3 mobile/e2e/direct_call.py
 ```
 
 `BASE` points the scripts at another server, `E2E_OUT` is where screenshots go.
