@@ -879,3 +879,34 @@ func TestCommentReactions(t *testing.T) {
 	ts.check("and takes none", ts.put("/api/comments/"+comment+"/reaction", J{"emoji": "👍"}, ana.token).status == 404 && ts.get("/api/comments/"+comment+"/reactions", ana.token).status == 404)
 	ts.check("the reply still can", ts.put("/api/comments/"+reply+"/reaction", J{"emoji": "🎉"}, bea.token).status == 200)
 }
+
+// Reactions on chat messages: within the chat, with counts and my_reaction on
+// every message, a list of who reacted, live message.updated events with each
+// viewer's own reaction; nothing for people outside the chat.
+func TestMessageReactions(t *testing.T) {
+	ts := newTestServer(t, false)
+	ana, bea, cai := ts.register("ana"), ts.register("bea"), ts.register("cai")
+	ts.befriend(ana, bea)
+	m := ts.post("/api/messages/"+bea.id, J{"body": "hola"}, ana.token).obj().id("id")
+	ws := ts.connect(bea)
+	path := "/api/messages/" + ana.id + "/" + m // bea's side of the chat
+
+	r := ts.put(path+"/reaction", J{"emoji": "❤️"}, bea.token)
+	ts.check("react answers the message with my reaction", r.status == 200 && r.obj().str("my_reaction") == "❤️" && r.obj().obj("reactions").num("❤️") == 1, r)
+	ev := ws.expect("message.updated")
+	ts.check("the event carries the count and bea's own reaction", ev.obj("message").obj("reactions").num("❤️") == 1 && ev.obj("message").str("my_reaction") == "❤️", ev)
+	list := ts.get("/api/messages/"+bea.id, ana.token).list()
+	ts.check("ana sees the count and none of her own", len(list) == 1 && list[0].obj("reactions").num("❤️") == 1 && list[0].str("my_reaction") == "", list)
+	who := ts.get(path+"/reactions", bea.token).list()
+	ts.check("who reacted", len(who) == 1 && len(who[0].list("users")) == 1 && who[0].list("users")[0].str("username") == "bea", who)
+	ts.check("someone outside the chat gets 404s", ts.get("/api/messages/"+ana.id+"/"+m+"/reactions", cai.token).status == 404 && ts.put("/api/messages/"+ana.id+"/"+m+"/reaction", J{"emoji": "👍"}, cai.token).status == 404)
+	r = ts.del(path+"/reaction", bea.token)
+	ts.check("unreact", r.status == 200 && r.obj().str("my_reaction") == "" && len(r.obj().obj("reactions")) == 0, r)
+
+	g := ts.post("/api/groups", J{"name": "g", "member_ids": []string{bea.id}}, ana.token).obj().obj("group").id("id")
+	gm := ts.post("/api/groups/"+g+"/messages", J{"body": "hey"}, bea.token).obj().id("id")
+	r = ts.put("/api/groups/"+g+"/messages/"+gm+"/reaction", J{"emoji": "🎉"}, ana.token)
+	ts.check("a member reacts in the group chat", r.status == 200 && r.obj().obj("reactions").num("🎉") == 1, r)
+	ts.check("a non-member cannot", ts.put("/api/groups/"+g+"/messages/"+gm+"/reaction", J{"emoji": "🎉"}, cai.token).status == 403)
+	ts.check("the group listing carries it", ts.get("/api/groups/"+g+"/messages", bea.token).list()[0].obj("reactions").num("🎉") == 1)
+}

@@ -148,11 +148,17 @@ Direct chats live under `/api/messages/{userId}`, group chats under
 | `POST /api/messages/{userId}/read` | session | | `{unread}` | Marks the chat read; returns your new unread total. | [messages.md](messages.md#reading) |
 | `PUT /api/messages/{userId}/{mid}` | session | `{body}` | `Message` | Edits your own message. | [messages.md](messages.md#editing) |
 | `DELETE /api/messages/{userId}/{mid}` | session | | 204 | Deletes your own message for everyone. | [messages.md](messages.md#deleting) |
+| `GET /api/messages/{userId}/{mid}/reactions` | session (a party) | | `[{emoji, users}]` | Who reacted to the message with what. | [messages.md](messages.md#reactions) |
+| `PUT /api/messages/{userId}/{mid}/reaction` | session (a party) | `{emoji}` | `Message` | Sets your one reaction to the message. | [messages.md](messages.md#reactions) |
+| `DELETE /api/messages/{userId}/{mid}/reaction` | session (a party) | | `Message` | Removes it. | [messages.md](messages.md#reactions) |
 | `GET /api/groups/{id}/messages` | session (member), paged | | `Message[]` | The group chat, each message with its sender. | [messages.md](messages.md#listing-messages) |
 | `POST /api/groups/{id}/messages` | session (member) | `{body, attachments?}` | 201 `Message` | Writes in the group chat. | [messages.md](messages.md#sending) |
 | `POST /api/groups/{id}/messages/read` | session (member) | | `{unread}` | Marks the group chat read. | [messages.md](messages.md#reading) |
 | `PUT /api/groups/{id}/messages/{mid}` | session (member) | `{body}` | `Message` | Edits your own message. | [messages.md](messages.md#editing) |
 | `DELETE /api/groups/{id}/messages/{mid}` | session (member) | | 204 | Deletes your own message, or any message as the admin. | [messages.md](messages.md#deleting) |
+| `GET /api/groups/{id}/messages/{mid}/reactions` | session (member) | | `[{emoji, users}]` | Who reacted to the message with what. | [messages.md](messages.md#reactions) |
+| `PUT /api/groups/{id}/messages/{mid}/reaction` | session (member) | `{emoji}` | `Message` | Sets your one reaction to the message. | [messages.md](messages.md#reactions) |
+| `DELETE /api/groups/{id}/messages/{mid}/reaction` | session (member) | | `Message` | Removes it. | [messages.md](messages.md#reactions) |
 
 ## Push tokens
 

@@ -14,7 +14,7 @@ store [`unread.ts`](../mobile/src/lib/unread.ts).
 
 ```json
 Message:      { "id": "019a0c3a-…", "sender_id": "019a0b10-…", "recipient_id": "019a0b11-…", "group_id": null, "sender": {"...User"},
-                "body": "...", "attachments": [], "created_at": "...", "edited_at": null }
+                "body": "...", "attachments": [], "created_at": "...", "edited_at": null, "reactions": { "❤️": 1 }, "my_reaction": "" }
 Conversation: { "user": {"...User"}, "group": Group, "last_message": Message, "unread": 2 }
 ```
 
@@ -22,7 +22,11 @@ A message is **direct** when `recipient_id` is set and a **group** message when
 `group_id` is set, never both. `sender` is included on group messages only
 (several people write there); a direct chat already knows who the other person
 is. A `Conversation` has either `user` or `group`, and `last_message` is `null`
-for a group nobody has written in.
+for a group nobody has written in. `reactions` and `my_reaction` work as a
+post's do ([posts.md](posts.md#reactions)): a chat listing fills the counts and
+the viewer's own reaction for the whole page in two queries
+(`fillMessageReactions`); a conversation's `last_message` preview carries
+neither.
 
 ## Addressing a chat
 
@@ -81,6 +85,18 @@ everyone in the chat gets `message.updated` with the message.
 (`mayDeleteMessage`). The row is deleted and each member of the chat gets `message.deleted {id, sender_id,
 recipient_id, group_id, unread}` with their own recomputed total. 204.
 
+## Reactions
+
+`PUT .../{mid}/reaction` with `{"emoji": "🔥"}` upserts your single reaction on
+a message of the chat (table `message_reactions`, primary key
+`(message_id, user_id)`), `DELETE .../{mid}/reaction` removes it, and
+`GET .../{mid}/reactions` lists who reacted with what, grouped by emoji with
+the most used first. The message must belong to the chat named in the path,
+and a direct chat is its two people's: anyone else gets 404, a non-member of
+a group 403 like every group route. The first two answer with the updated
+message, and everyone in the chat gets `message.updated` with their own
+`my_reaction` (`broadcastMessage`, also used for edits now).
+
 ## Unread counts
 
 A message is unread for a user when its id is above that user's read marker for
@@ -129,8 +145,9 @@ Everything a chat screen needs:
   newest page again and folds it in with `mergeLatest`, since anything said
   meanwhile was missed.
 - For a group, follows `call.*` events for its room to show who is in the call.
-- `send`, `edit` and `remove` apply the server's reply at once; the socket echo
-  of the same change is a no-op. `loadOlder` pages back from the oldest message.
+- `send`, `edit`, `remove` and `react` apply the server's reply at once; the
+  socket echo of the same change is a no-op. `loadOlder` pages back from the
+  oldest message.
 
 ### `ChatView`
 
@@ -141,8 +158,11 @@ appears above a group chat when a call is in progress (*Join*) or you are in it
 (*Return*). The list is inverted (newest at the bottom), `useInvertedWheel` fixes
 mouse-wheel direction on the web, and reaching the top loads older messages.
 `MessageBubble` puts your messages on the right, names the sender in group
-chats, shows attachments and the *edited* mark; hold a bubble (devices) or hover
-for ⋯ / right-click (web) to edit or delete. Editing swaps the compact
+chats, shows attachments and the *edited* mark; hold a bubble (devices) for a
+row with React, Edit and Delete, or hover it (web) for React and the ⋯ menu
+(right-click works too). Reactions sit under the bubble as the same pills a
+post has, with who gave them on hover or hold
+([posts.md](posts.md#reactions)). Editing swaps the compact
 `Composer` into edit mode with an `EditBar` above it; the composer otherwise
 sends text and picked pictures or videos.
 

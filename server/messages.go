@@ -9,15 +9,17 @@ import (
 // Message is a direct message (RecipientID set) or a group chat message
 // (GroupID set), never both.
 type Message struct {
-	ID          string       `json:"id"`
-	SenderID    string       `json:"sender_id"`
-	RecipientID *string      `json:"recipient_id"`
-	GroupID     *string      `json:"group_id"`
-	Sender      *User        `json:"sender,omitempty"` // group chats: several people write, so each message names its author
-	Body        string       `json:"body"`
-	Attachments []Attachment `json:"attachments"`
-	CreatedAt   string       `json:"created_at"`
-	EditedAt    *string      `json:"edited_at"` // null until the sender edits it
+	ID          string         `json:"id"`
+	SenderID    string         `json:"sender_id"`
+	RecipientID *string        `json:"recipient_id"`
+	GroupID     *string        `json:"group_id"`
+	Sender      *User          `json:"sender,omitempty"` // group chats: several people write, so each message names its author
+	Body        string         `json:"body"`
+	Attachments []Attachment   `json:"attachments"`
+	CreatedAt   string         `json:"created_at"`
+	EditedAt    *string        `json:"edited_at"`   // null until the sender edits it
+	Reactions   map[string]int `json:"reactions"`   // emoji -> count, like a post's
+	MyReaction  string         `json:"my_reaction"` // "" if none; filled for the viewer of a chat, empty in conversation previews
 }
 
 // Conversation is one row of the Messages tab: a direct chat or a group chat.
@@ -119,14 +121,78 @@ func scanMessage(sc scanner) (Message, error) {
 		return m, err
 	}
 	m.Attachments = decodeAttachments(atts)
+	m.Reactions = map[string]int{}
 	if m.GroupID != nil {
 		m.Sender = &u
 	}
 	return m, nil
 }
 
-func (s *server) loadMessage(id string) (Message, error) {
-	return scanMessage(s.db.QueryRow(`SELECT `+messageCols+`, `+userCols+` FROM messages m JOIN users u ON u.id = m.sender_id WHERE m.id = ?`, id))
+// fillMessageReactions puts each message's {emoji: count} and the viewer's
+// own reaction in place: two queries for a whole page.
+func (s *server) fillMessageReactions(viewer string, messages []Message) error {
+	if len(messages) == 0 {
+		return nil
+	}
+	byID := make(map[string]*Message, len(messages))
+	ids := make([]any, 0, len(messages))
+	for i := range messages {
+		byID[messages[i].ID] = &messages[i]
+		ids = append(ids, messages[i].ID)
+	}
+	in := placeholders(len(ids))
+	rows, err := s.db.Query(`SELECT message_id, emoji, COUNT(*) FROM message_reactions WHERE message_id IN (`+in+`) GROUP BY message_id, emoji`, ids...)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var id, emoji string
+		var n int
+		if err := rows.Scan(&id, &emoji, &n); err != nil {
+			rows.Close()
+			return err
+		}
+		if m := byID[id]; m != nil {
+			m.Reactions[emoji] = n
+		}
+	}
+	rows.Close()
+	if viewer == "" {
+		return nil
+	}
+	rows, err = s.db.Query(`SELECT message_id, emoji FROM message_reactions WHERE user_id = ? AND message_id IN (`+in+`)`, append([]any{viewer}, ids...)...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, emoji string
+		if err := rows.Scan(&id, &emoji); err != nil {
+			return err
+		}
+		if m := byID[id]; m != nil {
+			m.MyReaction = emoji
+		}
+	}
+	return rows.Err()
+}
+
+// loadMessage reads one message as viewer sees it ("" for nobody in particular).
+func (s *server) loadMessage(viewer, id string) (Message, error) {
+	m, err := scanMessage(s.db.QueryRow(`SELECT `+messageCols+`, `+userCols+` FROM messages m JOIN users u ON u.id = m.sender_id WHERE m.id = ?`, id))
+	if err != nil {
+		return m, err
+	}
+	messages := []Message{m}
+	return messages[0], s.fillMessageReactions(viewer, messages)
+}
+
+func (s *server) respondMessage(w http.ResponseWriter, viewer, id string) error {
+	m, err := s.loadMessage(viewer, id)
+	if err != nil {
+		return orNotFound(err, "message not found")
+	}
+	return ok(w, m)
 }
 
 // listChat returns the newest messages of a chat, oldest first within the page.
@@ -142,20 +208,24 @@ func (s *server) listChat(w http.ResponseWriter, r *http.Request, me *User, c ch
 	if err != nil {
 		return err
 	}
+	if err := s.fillMessageReactions(me.ID, messages); err != nil {
+		return err
+	}
 	return ok(w, messages)
 }
 
-// chatMessage loads message {mid} if it belongs to the chat.
-func (s *server) chatMessage(r *http.Request, c chat) (Message, error) {
+// chatMessage loads message {mid}, as viewer sees it, if it belongs to the chat.
+func (s *server) chatMessage(r *http.Request, c chat, viewer string) (Message, error) {
 	mid, err := pathID(r, "mid")
 	if err != nil {
 		return Message{}, err
 	}
-	m, err := s.loadMessage(mid)
+	m, err := s.loadMessage(viewer, mid)
 	if err = orNotFound(err, "message not found"); err != nil {
 		return m, err
 	}
-	if !c.contains(m) {
+	party := c.isGroup() || m.SenderID == viewer || (m.RecipientID != nil && *m.RecipientID == viewer) // a direct chat is its two people's
+	if !c.contains(m) || !party {
 		return m, notFound("message not found")
 	}
 	return m, nil
@@ -227,7 +297,7 @@ func (s *server) sendChat(w http.ResponseWriter, r *http.Request, me *User, c ch
 		id, me.ID, nullID(c.peer), nullID(c.group), body, jsonString(atts), nowString()); err != nil {
 		return err
 	}
-	m, err := s.loadMessage(id)
+	m, err := s.loadMessage(me.ID, id)
 	if err != nil {
 		return err
 	}
@@ -267,7 +337,7 @@ func (s *server) updateChat(w http.ResponseWriter, r *http.Request, me *User, c 
 	if err := readJSON(w, r, &in); err != nil {
 		return err
 	}
-	m, err := s.chatMessage(r, c)
+	m, err := s.chatMessage(r, c, me.ID)
 	if err != nil {
 		return err
 	}
@@ -281,18 +351,90 @@ func (s *server) updateChat(w http.ResponseWriter, r *http.Request, me *User, c 
 	if _, err := s.db.Exec(`UPDATE messages SET body = ?, edited_at = ? WHERE id = ?`, body, nowString(), m.ID); err != nil {
 		return err
 	}
-	if m, err = s.loadMessage(m.ID); err != nil {
+	s.broadcastMessage(m.ID)
+	return s.respondMessage(w, me.ID, m.ID)
+}
+
+// broadcastMessage sends a message's current state to everyone in its chat,
+// each with their own reaction filled in, as broadcastPost does.
+func (s *server) broadcastMessage(id string) {
+	base, err := s.loadMessage("", id)
+	if err != nil {
+		return
+	}
+	mine := map[string]string{}
+	rows, err := s.db.Query(`SELECT user_id, emoji FROM message_reactions WHERE message_id = ?`, id)
+	if err != nil {
+		return
+	}
+	for rows.Next() {
+		var uid, emoji string
+		if rows.Scan(&uid, &emoji) == nil {
+			mine[uid] = emoji
+		}
+	}
+	rows.Close()
+	for _, uid := range s.chatAudience(base) {
+		if !s.hub.online(uid) {
+			continue
+		}
+		m := base
+		m.MyReaction = mine[uid]
+		s.hub.sendTo(uid, messageUpdatedEvent{Type: "message.updated", Message: m})
+	}
+}
+
+// ---- reactions on messages: the same shape as a post's, within the chat
+
+func (s *server) reactToChat(w http.ResponseWriter, r *http.Request, me *User, c chat) error {
+	var in struct {
+		Emoji string `json:"emoji"`
+	}
+	if err := readJSON(w, r, &in); err != nil {
 		return err
 	}
-	s.hub.sendToMany(s.chatAudience(m), messageUpdatedEvent{Type: "message.updated", Message: m})
-	return ok(w, m)
+	emoji, err := validEmoji(in.Emoji)
+	if err != nil {
+		return err
+	}
+	m, err := s.chatMessage(r, c, me.ID)
+	if err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`INSERT INTO message_reactions(message_id, user_id, emoji) VALUES (?, ?, ?)
+		ON DUPLICATE KEY UPDATE emoji = VALUES(emoji)`, m.ID, me.ID, emoji); err != nil {
+		return err
+	}
+	s.broadcastMessage(m.ID)
+	return s.respondMessage(w, me.ID, m.ID)
+}
+
+func (s *server) unreactToChat(w http.ResponseWriter, r *http.Request, me *User, c chat) error {
+	m, err := s.chatMessage(r, c, me.ID)
+	if err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`DELETE FROM message_reactions WHERE message_id = ? AND user_id = ?`, m.ID, me.ID); err != nil {
+		return err
+	}
+	s.broadcastMessage(m.ID)
+	return s.respondMessage(w, me.ID, m.ID)
+}
+
+// listChatReactions answers who reacted to a message with what.
+func (s *server) listChatReactions(w http.ResponseWriter, r *http.Request, me *User, c chat) error {
+	m, err := s.chatMessage(r, c, me.ID)
+	if err != nil {
+		return err
+	}
+	return s.respondReactionGroups(w, `SELECT r.emoji, `+userCols+` FROM message_reactions r JOIN users u ON u.id = r.user_id WHERE r.message_id = ? ORDER BY r.emoji, u.display_name`, m.ID)
 }
 
 // deleteChat removes a message for everyone in the chat: the sender's own, or,
 // in a group, any message when the caller is the admin. Badges are refreshed
 // by the message.deleted event.
 func (s *server) deleteChat(w http.ResponseWriter, r *http.Request, me *User, c chat) error {
-	m, err := s.chatMessage(r, c)
+	m, err := s.chatMessage(r, c, me.ID)
 	if err != nil {
 		return err
 	}

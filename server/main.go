@@ -278,6 +278,9 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/groups/{id}/messages/read", s.auth(s.groupChat(s.readChat)))
 	mux.HandleFunc("PUT /api/groups/{id}/messages/{mid}", s.auth(s.groupChat(s.updateChat)))
 	mux.HandleFunc("DELETE /api/groups/{id}/messages/{mid}", s.auth(s.groupChat(s.deleteChat)))
+	mux.HandleFunc("GET /api/groups/{id}/messages/{mid}/reactions", s.auth(s.groupChat(s.listChatReactions)))
+	mux.HandleFunc("PUT /api/groups/{id}/messages/{mid}/reaction", s.auth(s.groupChat(s.reactToChat)))
+	mux.HandleFunc("DELETE /api/groups/{id}/messages/{mid}/reaction", s.auth(s.groupChat(s.unreactToChat)))
 
 	// direct messages and notifications
 	mux.HandleFunc("GET /api/conversations", s.auth(s.listConversations))
@@ -286,6 +289,9 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/messages/{id}/read", s.auth(s.directChat(s.readChat)))
 	mux.HandleFunc("PUT /api/messages/{id}/{mid}", s.auth(s.directChat(s.updateChat)))
 	mux.HandleFunc("DELETE /api/messages/{id}/{mid}", s.auth(s.directChat(s.deleteChat)))
+	mux.HandleFunc("GET /api/messages/{id}/{mid}/reactions", s.auth(s.directChat(s.listChatReactions)))
+	mux.HandleFunc("PUT /api/messages/{id}/{mid}/reaction", s.auth(s.directChat(s.reactToChat)))
+	mux.HandleFunc("DELETE /api/messages/{id}/{mid}/reaction", s.auth(s.directChat(s.unreactToChat)))
 	mux.HandleFunc("PUT /api/push-token", s.auth(s.setPushToken))
 	mux.HandleFunc("DELETE /api/push-token", s.auth(s.deletePushToken))
 
