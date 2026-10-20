@@ -7,23 +7,28 @@ import { AttachmentList } from './Attachments';
 import { contextMenuProps } from './ContextMenu';
 import { DotsButton } from './DotsButton';
 import { type MenuItem, deleteItem, editItem, menuItems } from './menu';
+import { ReactionButton } from './ReactionButton';
+import { ReactionSummary } from './ReactionSummary';
 import { Avatar } from './ui';
 import { clock } from '@/lib/time';
-import type { Message, User } from '@/lib/types';
+import type { Message, ReactionGroup, User } from '@/lib/types';
 import { useStyles, useTheme } from '@/lib/theme';
 import { useHovered } from '@/lib/useHovered';
 import { radius, spacing, type ThemeColors } from '@/theme';
 
-// What the viewer may do with a message.
-export type MessageActions = { edit?: () => void; remove?: () => void };
+// What the viewer may do with a message: react to any, edit their own, delete
+// their own or (as the admin) anyone's.
+export type MessageActions = { react: (emoji: string | null) => void; edit?: () => void; remove?: () => void };
 
 // One chat message. Mine sit on the right; in group chats the others' carry
-// the author. Hold (native) or hover/right-click (web) reveals the actions.
+// the author. Hold (native) or hover/right-click (web) reveals the actions;
+// reactions sit under the bubble, with who gave them on hover or hold.
 export function MessageBubble({
   message,
   mine,
   sender,
   actions,
+  loadReactions,
   selected,
   onToggleSelect,
   onOpenMenu,
@@ -32,16 +37,18 @@ export function MessageBubble({
   mine: boolean;
   sender?: User; // shown above the text (group chats, other people's messages)
   actions: MessageActions;
-  selected: boolean; // native: the Edit / Delete row is showing
+  loadReactions: (messageId: string) => Promise<ReactionGroup[]>;
+  selected: boolean; // native: the React / Edit / Delete row is showing
   onToggleSelect: () => void;
   onOpenMenu: (items: MenuItem[], x: number, y: number) => void;
 }) {
   const styles = useStyles(makeStyles);
   const { colors } = useTheme();
-  const [hovered, hoverProps] = useHovered(); // web: shows the ⋯ button
+  const [hovered, hoverProps] = useHovered(); // web: shows React and the ⋯ button
   const items = menuItems(editItem(actions.edit), deleteItem(actions.remove));
-  const manageable = items.length > 0;
+  const editable = items.length > 0;
   const hasAttachments = message.attachments?.length > 0;
+  const hasReactions = Object.keys(message.reactions ?? {}).length > 0;
   const showSender = sender !== undefined;
   const onSurface = mine ? { color: 'rgba(255,255,255,0.75)' } : undefined;
 
@@ -50,18 +57,17 @@ export function MessageBubble({
       <View style={[styles.line, mine && { justifyContent: 'flex-end' }]}>
         {showSender && <View style={styles.senderAvatar}>{sender ? <Avatar user={sender} size={28} status={false} /> : null}</View>}
         <Pressable
-          {...(manageable ? contextMenuProps((x, y) => onOpenMenu(items, x, y)) : {})}
-          {...(manageable ? hoverProps : {})}
-          onLongPress={manageable ? onToggleSelect : undefined}
+          {...(editable ? contextMenuProps((x, y) => onOpenMenu(items, x, y)) : {})}
+          {...hoverProps}
+          onLongPress={onToggleSelect}
           delayLongPress={400}
           style={[styles.bubble, mine ? styles.mine : styles.theirs, hasAttachments && styles.wide]}
         >
-          {manageable && Platform.OS === 'web' && hovered && (
-            <DotsButton
-              label="Message options"
-              style={[styles.dots, mine ? { left: -30 } : { right: -30 }]}
-              onOpen={(x, y) => onOpenMenu(items, x, y)}
-            />
+          {Platform.OS === 'web' && hovered && (
+            <View style={[styles.tools, mine ? styles.toolsLeft : styles.toolsRight]}>
+              <ReactionButton compact current={message.my_reaction} onReact={actions.react} />
+              {editable && <DotsButton label="Message options" onOpen={(x, y) => onOpenMenu(items, x, y)} />}
+            </View>
           )}
           {showSender && <Text style={styles.senderName}>{sender?.display_name ?? 'Former member'}</Text>}
           {message.edited_at ? (
@@ -75,8 +81,14 @@ export function MessageBubble({
           <Text style={[styles.time, mine && { color: 'rgba(255,255,255,0.7)' }]}>{clock(message.created_at)}</Text>
         </Pressable>
       </View>
+      {hasReactions && (
+        <View style={[styles.pills, mine && { alignItems: 'flex-end' }, showSender && { marginLeft: 36 }]}>
+          <ReactionSummary compact id={message.id} reactions={message.reactions} myReaction={message.my_reaction} load={loadReactions} />
+        </View>
+      )}
       {selected && (
         <View style={[styles.actions, showSender && { marginLeft: 36 }]}>
+          <ReactionButton compact current={message.my_reaction} onReact={actions.react} />
           {actions.edit && <ActionLink icon="edit-2" label="Edit message" text="Edit" onPress={actions.edit} />}
           {actions.remove && <ActionLink icon="trash-2" label="Delete message" text="Delete" onPress={actions.remove} />}
         </View>
@@ -95,7 +107,10 @@ const makeStyles = (colors: ThemeColors) =>
     wide: { width: '80%' },
     mine: { backgroundColor: colors.accent, borderBottomRightRadius: 4 },
     theirs: { backgroundColor: colors.card, borderBottomLeftRadius: 4, borderWidth: 1, borderColor: colors.border },
-    dots: { position: 'absolute', top: 0, bottom: 0, width: 26, alignItems: 'center', justifyContent: 'center' },
+    tools: { position: 'absolute', top: 0, bottom: 0, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 6 },
+    toolsLeft: { right: '100%' },
+    toolsRight: { left: '100%' },
+    pills: { alignItems: 'flex-start' },
     text: { fontSize: 16, color: colors.text },
     time: { fontSize: 11, color: colors.muted, marginTop: 2, alignSelf: 'flex-end' },
     edited: { flexDirection: 'row', alignItems: 'center', gap: 3, marginBottom: 2 },

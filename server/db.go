@@ -149,6 +149,15 @@ CREATE TABLE IF NOT EXISTS messages (
 	FOREIGN KEY (group_id) REFERENCES groups(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
+CREATE TABLE IF NOT EXISTS message_reactions (
+	message_id CHAR(36) NOT NULL,
+	user_id    CHAR(36) NOT NULL,
+	emoji      VARCHAR(32) NOT NULL,
+	PRIMARY KEY (message_id, user_id),
+	FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE CASCADE,
+	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
 CREATE TABLE IF NOT EXISTS group_reads (
 	user_id      CHAR(36) NOT NULL,
 	group_id     CHAR(36) NOT NULL,
@@ -192,6 +201,9 @@ var migrations = []migration{
 	}},
 	{"reactions on comments", func(tx *sql.Tx) error {
 		return execEach(tx, schema) // every statement is CREATE ... IF NOT EXISTS: only comment_reactions is new
+	}},
+	{"reactions on messages", func(tx *sql.Tx) error {
+		return execEach(tx, schema) // likewise: only message_reactions is new
 	}},
 }
 

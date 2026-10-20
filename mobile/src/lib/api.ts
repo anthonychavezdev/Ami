@@ -160,6 +160,9 @@ export const api = {
   updateMessage: (chat: ChatTarget, messageId: string, body: string) => put<Message>(`${chatApi(chat)}/${messageId}`, { body }),
   deleteMessage: (chat: ChatTarget, messageId: string) => del<void>(`${chatApi(chat)}/${messageId}`),
   markRead: (chat: ChatTarget) => post<{ unread: number }>(`${chatApi(chat)}/read`),
+  reactToMessage: (chat: ChatTarget, messageId: string, emoji: string) => put<Message>(`${chatApi(chat)}/${messageId}/reaction`, { emoji }),
+  unreactToMessage: (chat: ChatTarget, messageId: string) => del<Message>(`${chatApi(chat)}/${messageId}/reaction`),
+  messageReactions: (chat: ChatTarget, messageId: string) => get<ReactionGroup[]>(`${chatApi(chat)}/${messageId}/reactions`),
   setPushToken: (token: string) => put<void>('/api/push-token', { token }),
   deletePushToken: (token: string) => del<void>('/api/push-token', { token }),
 };

@@ -126,6 +126,8 @@ export interface Message {
   attachments: Attachment[];
   created_at: string;
   edited_at: string | null;
+  reactions: Record<string, number>; // emoji -> count, like a post's
+  my_reaction: string; // '' if none; empty in conversation previews
 }
 
 export interface Conversation {

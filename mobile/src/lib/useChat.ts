@@ -10,7 +10,8 @@ import { socket } from './ws';
 
 // Everything a chat screen needs: who the chat is with, its messages (newest
 // first, kept live over the WebSocket), the read marker, and for groups who is
-// in the group call right now.
+// in the group call right now. `react` sets or clears the viewer's reaction
+// on a message.
 export function useChat(kind: ChatTarget['kind'], id: string) {
   const chat = useMemo<ChatTarget>(() => ({ kind, id }), [kind, id]);
   const isGroup = kind === 'group';
@@ -102,6 +103,13 @@ export function useChat(kind: ChatTarget['kind'], id: string) {
     },
     [chat],
   );
+  const react = useCallback(
+    async (m: Message, emoji: string | null) => {
+      const updated = emoji ? await api.reactToMessage(chat, m.id, emoji) : await api.unreactToMessage(chat, m.id);
+      setMessages((list) => list && replaceMessage(list, updated));
+    },
+    [chat],
+  );
 
-  return { chat, isGroup, other, group, members, inCall, messages, error, loadOlder, send, edit, remove };
+  return { chat, isGroup, other, group, members, inCall, messages, error, loadOlder, send, edit, remove, react };
 }

@@ -25,6 +25,8 @@ erDiagram
     users ||--o{ reactions : "reacts"
     comments ||--o{ comment_reactions : "has"
     users ||--o{ comment_reactions : "reacts"
+    messages ||--o{ message_reactions : "has"
+    users ||--o{ message_reactions : "reacts"
     users ||--o{ friendships : "asked (from_id)"
     users ||--o{ friendships : "was asked (to_id)"
     users ||--o{ messages : "sends"
@@ -99,6 +101,11 @@ erDiagram
     }
     comment_reactions {
         uuid comment_id PK, FK
+        uuid user_id PK, FK
+        string emoji
+    }
+    message_reactions {
+        uuid message_id PK, FK
         uuid user_id PK, FK
         string emoji
     }
@@ -215,6 +222,12 @@ The same for comments: one row per user per comment, on the comment's id
 ([comments.md](comments.md#reactions)). Deleting a comment takes its reactions
 with it.
 
+### message_reactions
+
+And for chat messages, direct or group, on the message's id
+([messages.md](messages.md#reactions)); a deleted message takes its reactions
+with it.
+
 ### friendships
 
 One row per pair. `from_id` is whoever sent the request; `status` is `pending`
@@ -288,6 +301,7 @@ The list today:
 | --- | --- | --- |
 | 1 | index for the session purge | Adds `sessions_expires` on `sessions(expires_at)`, so the hourly purge is a range scan instead of a pass over every session. |
 | 2 | reactions on comments | Runs `schema` again, whose statements are all `CREATE ... IF NOT EXISTS`, which creates `comment_reactions` and leaves the rest alone. |
+| 3 | reactions on messages | The same, for `message_reactions`. |
 
 (The SQLite era's migrations, up to UUID ids, went with SQLite; there is no
 path from an old SQLite file to MariaDB other than starting over.)

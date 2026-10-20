@@ -9,6 +9,7 @@ import { useContextMenu } from './ContextMenu';
 import { EditBar } from './EditBar';
 import { MessageBubble, type MessageActions } from './MessageBubble';
 import { Empty, KeyboardScreen, Loading, PaneHeader } from './ui';
+import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useCall } from '@/lib/call';
 import { confirmAction } from '@/lib/confirm';
@@ -59,10 +60,11 @@ export function ChatView({ kind, id, embedded = false }: ChatTarget & { embedded
       }
     });
 
-  // What the viewer may do with a message: edit their own, delete their own or (as the admin) anyone's.
+  // What the viewer may do with a message: react to any, edit their own, delete their own or (as the admin) anyone's.
   const actionsFor = (m: Message): MessageActions => {
     const mine = m.sender_id === me?.id;
     return {
+      react: (emoji) => void chat.react(m, emoji).catch((e) => toast.error(errorMessage(e))),
       edit: mine ? () => (setSelected(null), setEditing(m)) : undefined,
       remove: mine || (chat.isGroup && isAdmin) ? () => remove(m) : undefined,
     };
@@ -93,6 +95,7 @@ export function ChatView({ kind, id, embedded = false }: ChatTarget & { embedded
                 mine={mine}
                 sender={chat.isGroup && !mine ? (item.sender ?? chat.members.get(item.sender_id)) : undefined}
                 actions={actionsFor(item)}
+                loadReactions={(mid) => api.messageReactions(chat.chat, mid)}
                 selected={selected === item.id}
                 onToggleSelect={() => setSelected((s) => (s === item.id ? null : item.id))}
                 onOpenMenu={openMenu}
