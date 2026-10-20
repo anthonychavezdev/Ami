@@ -23,6 +23,8 @@ erDiagram
     comments |o--o{ comments : "replies to"
     posts ||--o{ reactions : "has"
     users ||--o{ reactions : "reacts"
+    comments ||--o{ comment_reactions : "has"
+    users ||--o{ comment_reactions : "reacts"
     users ||--o{ friendships : "asked (from_id)"
     users ||--o{ friendships : "was asked (to_id)"
     users ||--o{ messages : "sends"
@@ -92,6 +94,11 @@ erDiagram
     }
     reactions {
         uuid post_id PK, FK
+        uuid user_id PK, FK
+        string emoji
+    }
+    comment_reactions {
+        uuid comment_id PK, FK
         uuid user_id PK, FK
         string emoji
     }
@@ -199,8 +206,14 @@ reply counts used when deleting ([comments.md](comments.md)).
 ### reactions
 
 One row per user per post, holding the emoji; changing a reaction is an upsert on
-the primary key, removing it is a delete. Post queries aggregate the table into
-`{emoji: count}` with `json_group_object` ([posts.md](posts.md#reactions)).
+the primary key, removing it is a delete. The counts a post carries come from
+one `GROUP BY` over the page's posts ([posts.md](posts.md#reactions)).
+
+### comment_reactions
+
+The same for comments: one row per user per comment, on the comment's id
+([comments.md](comments.md#reactions)). Deleting a comment takes its reactions
+with it.
 
 ### friendships
 
@@ -274,6 +287,7 @@ The list today:
 | Version | Name | What it does |
 | --- | --- | --- |
 | 1 | index for the session purge | Adds `sessions_expires` on `sessions(expires_at)`, so the hourly purge is a range scan instead of a pass over every session. |
+| 2 | reactions on comments | Runs `schema` again, whose statements are all `CREATE ... IF NOT EXISTS`, which creates `comment_reactions` and leaves the rest alone. |
 
 (The SQLite era's migrations, up to UUID ids, went with SQLite; there is no
 path from an old SQLite file to MariaDB other than starting over.)

@@ -2,32 +2,32 @@ import React, { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
-import { makePillStyles, reactorNames, sortedReactions, useReactors } from './reactors';
+import { type ReactionSummaryProps, makePillStyles, reactorNames, sortedReactions, useReactors } from './reactors';
 import { useStyles } from '@/lib/theme';
-import type { Post } from '@/lib/types';
 import { radius, spacing, type ThemeColors } from '@/theme';
 
-// Browser: the reaction pills under a post, with who reacted shown in a tip
-// over the pill the pointer rests on. The tip goes through a portal so cards
-// and lists never clip it. (ReactionSummary.tsx opens a sheet on hold.)
-export function ReactionSummary({ post }: { post: Post }) {
+// Browser: the reaction pills under a post or comment, with who reacted
+// shown in a tip over the pill the pointer rests on. The tip goes through a
+// portal so cards and lists never clip it. (ReactionSummary.tsx opens a
+// sheet on hold.)
+export function ReactionSummary(props: ReactionSummaryProps) {
   const pills = useStyles(makePillStyles);
   const [hover, setHover] = useState<{ emoji: string; x: number; y: number } | null>(null);
-  const reactions = sortedReactions(post);
+  const reactions = sortedReactions(props.reactions);
   if (reactions.length === 0) return null;
   return (
     <>
-      <View style={pills.reactions}>
+      <View style={[pills.reactions, props.compact && pills.compact]}>
         {reactions.map(([emoji, count]) => (
           <Pill
             key={emoji}
             label={`${emoji} ${count}`}
-            mine={emoji === post.my_reaction}
+            mine={emoji === props.myReaction}
             onHover={(at) => setHover(at ? { emoji, ...at } : null)}
           />
         ))}
       </View>
-      {hover && createPortal(<Tip post={post} emoji={hover.emoji} x={hover.x} y={hover.y} />, document.body)}
+      {hover && createPortal(<Tip {...props} emoji={hover.emoji} x={hover.x} y={hover.y} />, document.body)}
     </>
   );
 }
@@ -50,10 +50,10 @@ function Pill({ label, mine, onHover }: { label: string; mine: boolean; onHover:
 
 // "👍 Ana García, Luis Martínez and 3 others", centred above the pill once
 // its own size is known.
-function Tip({ post, emoji, x, y }: { post: Post; emoji: string; x: number; y: number }) {
+function Tip({ id, load, emoji, x, y }: ReactionSummaryProps & { emoji: string; x: number; y: number }) {
   const styles = useStyles(makeStyles);
   const [size, setSize] = useState<{ width: number; height: number } | null>(null);
-  const { groups, error } = useReactors(post.id, true);
+  const { groups, error } = useReactors(id, true, load);
   const users = groups?.find((g) => g.emoji === emoji)?.users;
   const text = error ?? (users ? reactorNames(users) : groups ? 'Nobody' : '…');
   const left = size ? Math.max(4, Math.min(x - size.width / 2, window.innerWidth - size.width - 4)) : x;

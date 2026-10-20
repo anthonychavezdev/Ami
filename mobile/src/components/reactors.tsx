@@ -3,32 +3,44 @@ import React, { useEffect, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Avatar } from './ui';
-import { api } from '@/lib/api';
 import { errorMessage } from '@/lib/errors';
 import { useStyles } from '@/lib/theme';
-import type { Post, ReactionGroup, User } from '@/lib/types';
+import type { ReactionGroup, User } from '@/lib/types';
 import { radius, spacing, type ThemeColors } from '@/theme';
 
 // What the two ReactionSummary twins share: the pills, and who is behind them.
+// A summary is given the reactions of a post or a comment and the API call
+// that lists the people.
+export type ReactionSummaryProps = {
+  id: string;
+  reactions: Record<string, number>;
+  myReaction: string;
+  load: (id: string) => Promise<ReactionGroup[]>;
+  compact?: boolean; // under a comment: tighter spacing
+};
 
 // Reactions sorted by count, biggest first.
-export const sortedReactions = (post: Post) => Object.entries(post.reactions).sort((a, b) => b[1] - a[1]);
+export const sortedReactions = (reactions: Record<string, number>) => Object.entries(reactions).sort((a, b) => b[1] - a[1]);
 
-// Who reacted to a post, loaded while `when` holds (the hover or the sheet).
-export function useReactors(postId: string, when: boolean): { groups: ReactionGroup[] | null; error: string | null } {
-  const [loaded, setLoaded] = useState<{ postId: string; groups?: ReactionGroup[]; error?: string } | null>(null);
+// Who reacted, loaded while `when` holds (the hover or the sheet).
+export function useReactors(
+  id: string,
+  when: boolean,
+  load: (id: string) => Promise<ReactionGroup[]>,
+): { groups: ReactionGroup[] | null; error: string | null } {
+  const [loaded, setLoaded] = useState<{ id: string; groups?: ReactionGroup[]; error?: string } | null>(null);
   useEffect(() => {
     if (!when) return;
     let live = true;
-    api.postReactions(postId).then(
-      (groups) => live && setLoaded({ postId, groups }),
-      (e) => live && setLoaded({ postId, error: errorMessage(e) }),
+    load(id).then(
+      (groups) => live && setLoaded({ id, groups }),
+      (e) => live && setLoaded({ id, error: errorMessage(e) }),
     );
     return () => {
       live = false;
     };
-  }, [postId, when]);
-  if (!when || loaded?.postId !== postId) return { groups: null, error: null };
+  }, [id, when, load]);
+  if (!when || loaded?.id !== id) return { groups: null, error: null };
   return { groups: loaded.groups ?? null, error: loaded.error ?? null };
 }
 
@@ -68,6 +80,7 @@ export function ReactorRow({ user, onOpen }: { user: User; onOpen?: () => void }
 export const makePillStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     reactions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: spacing.md },
+    compact: { marginTop: 6 },
     pill: {
       backgroundColor: colors.bg,
       borderRadius: radius.pill,

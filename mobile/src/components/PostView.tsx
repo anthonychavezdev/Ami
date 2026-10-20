@@ -25,7 +25,7 @@ type Mode = { kind: 'new' } | { kind: 'reply'; to: Comment } | { kind: 'edit'; c
 export function PostView({ id: postId, onGone }: { id: string; onGone: () => void }) {
   const styles = useStyles(makeStyles);
   const { user: me } = useAuth();
-  const { post, setPost, threaded, error, loading, add, edit, remove } = useComments(postId, onGone);
+  const { post, setPost, threaded, error, loading, add, edit, remove, react } = useComments(postId, onGone);
   const commentInput = useRef<TextInput>(null);
   const [mode, setMode] = useState<Mode>({ kind: 'new' });
   const { open: openMenu, menu } = useContextMenu();
@@ -44,6 +44,7 @@ export function PostView({ id: postId, onGone }: { id: string; onGone: () => voi
     if (c.deleted) return null;
     const mine = c.author.id === me?.id;
     return {
+      react: (emoji) => void react(c, emoji).catch((e) => toast.error(errorMessage(e))),
       reply: () => setMode({ kind: 'reply', to: c }),
       edit: mine ? () => setMode({ kind: 'edit', comment: c }) : undefined,
       remove: mine ? () => confirmRemove(c) : undefined,

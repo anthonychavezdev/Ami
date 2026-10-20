@@ -110,6 +110,15 @@ CREATE TABLE IF NOT EXISTS reactions (
 	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
+CREATE TABLE IF NOT EXISTS comment_reactions (
+	comment_id CHAR(36) NOT NULL,
+	user_id    CHAR(36) NOT NULL,
+	emoji      VARCHAR(32) NOT NULL,
+	PRIMARY KEY (comment_id, user_id),
+	FOREIGN KEY (comment_id) REFERENCES comments(id) ON DELETE CASCADE,
+	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
 -- One row per pair. from_id is whoever sent the request.
 CREATE TABLE IF NOT EXISTS friendships (
 	from_id    CHAR(36) NOT NULL,
@@ -180,6 +189,9 @@ CREATE TABLE IF NOT EXISTS push_tokens (
 var migrations = []migration{
 	{"index for the session purge", func(tx *sql.Tx) error {
 		return exec(tx, `CREATE INDEX IF NOT EXISTS sessions_expires ON sessions(expires_at)`)
+	}},
+	{"reactions on comments", func(tx *sql.Tx) error {
+		return execEach(tx, schema) // every statement is CREATE ... IF NOT EXISTS: only comment_reactions is new
 	}},
 }
 

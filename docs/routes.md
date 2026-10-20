@@ -99,6 +99,9 @@ that explains it in full. The route table itself is `routes()` in
 | `POST /api/posts/{id}/comments` | session | `{body, parent_id?}` | 201 `Comment` | A comment, or a reply under another comment of the same post. | [comments.md](comments.md#post-apipostsidcomments) |
 | `PUT /api/comments/{id}` | session | `{body}` | `Comment` | The author edits it. | [comments.md](comments.md#put-apicommentsid) |
 | `DELETE /api/comments/{id}` | session | | 204 | The author deletes it; one with replies becomes `[deleted]`. | [comments.md](comments.md#delete-apicommentsid) |
+| `GET /api/comments/{id}/reactions` | session | | `[{emoji, users}]` | Who reacted to the comment with what. | [comments.md](comments.md#reactions) |
+| `PUT /api/comments/{id}/reaction` | session | `{emoji}` | `Comment` | Sets your one reaction to the comment. | [comments.md](comments.md#reactions) |
+| `DELETE /api/comments/{id}/reaction` | session | | `Comment` | Removes it. | [comments.md](comments.md#reactions) |
 
 ## Media
 

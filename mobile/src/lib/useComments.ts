@@ -9,6 +9,7 @@ import { errorMessage } from './errors';
 
 // A post and its comments, kept live: comments come, change and go, the
 // post's counts and reactions update, and a deleted post calls onGone.
+// `react` sets or clears the viewer's reaction on a comment.
 export function useComments(postId: string, onGone: () => void) {
   const [post, setPost] = useState<Post | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -54,6 +55,10 @@ export function useComments(postId: string, onGone: () => void) {
     },
     [postId],
   );
+  const react = useCallback(async (c: Comment, emoji: string | null) => {
+    const updated = emoji ? await api.reactToComment(c.id, emoji) : await api.unreactToComment(c.id);
+    setComments((list) => replaceComment(list, updated));
+  }, []);
   const edit = useCallback(async (c: Comment, body: string) => {
     const updated = await api.updateComment(c.id, body);
     setComments((list) => replaceComment(list, updated));
@@ -66,5 +71,5 @@ export function useComments(postId: string, onGone: () => void) {
     [postId],
   );
 
-  return { post, setPost, threaded, error, loading, add, edit, remove };
+  return { post, setPost, threaded, error, loading, add, edit, remove, react };
 }

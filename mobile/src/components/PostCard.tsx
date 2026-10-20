@@ -108,7 +108,7 @@ export function PostCard({
         </>
       )}
 
-      <ReactionSummary post={post} />
+      <ReactionSummary id={post.id} reactions={post.reactions} myReaction={post.my_reaction} load={api.postReactions} />
 
       <View style={styles.footer}>
         <ReactionButton current={post.my_reaction} onReact={react} />

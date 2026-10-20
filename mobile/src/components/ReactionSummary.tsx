@@ -3,23 +3,22 @@ import React, { useState } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ReactorRow, makePillStyles, sortedReactions, useReactors } from './reactors';
+import { type ReactionSummaryProps, ReactorRow, makePillStyles, sortedReactions, useReactors } from './reactors';
 import { Loading } from './ui';
 import { useStyles, useTheme } from '@/lib/theme';
-import type { Post } from '@/lib/types';
 import { radius, spacing, type ThemeColors } from '@/theme';
 
-// The reaction pills under a post. Holding one opens a sheet that shows who
-// reacted, emoji by emoji, starting on the one held. (ReactionSummary.web.tsx
-// shows them on hover instead.)
-export function ReactionSummary({ post }: { post: Post }) {
+// The reaction pills under a post or comment. Holding one opens a sheet that
+// shows who reacted, emoji by emoji, starting on the one held.
+// (ReactionSummary.web.tsx shows them on hover instead.)
+export function ReactionSummary(props: ReactionSummaryProps) {
   const pills = useStyles(makePillStyles);
   const [held, setHeld] = useState<string | null>(null);
-  const reactions = sortedReactions(post);
+  const reactions = sortedReactions(props.reactions);
   if (reactions.length === 0) return null;
   return (
     <>
-      <View style={pills.reactions}>
+      <View style={[pills.reactions, props.compact && pills.compact]}>
         {reactions.map(([emoji, count]) => (
           <Pressable
             key={emoji}
@@ -27,7 +26,7 @@ export function ReactionSummary({ post }: { post: Post }) {
             delayLongPress={300}
             accessibilityLabel={`${emoji} ${count}`}
             accessibilityHint="Hold to see who reacted"
-            style={[pills.pill, emoji === post.my_reaction && pills.mine]}
+            style={[pills.pill, emoji === props.myReaction && pills.mine]}
           >
             <Text style={pills.pillText}>
               {emoji} {count}
@@ -35,18 +34,18 @@ export function ReactionSummary({ post }: { post: Post }) {
           </Pressable>
         ))}
       </View>
-      <ReactorsSheet post={post} emoji={held} onClose={() => setHeld(null)} />
+      <ReactorsSheet {...props} emoji={held} onClose={() => setHeld(null)} />
     </>
   );
 }
 
 // A bottom sheet: one tab per emoji, the people behind the selected one.
-function ReactorsSheet({ post, emoji, onClose }: { post: Post; emoji: string | null; onClose: () => void }) {
+function ReactorsSheet({ id, load, emoji, onClose }: ReactionSummaryProps & { emoji: string | null; onClose: () => void }) {
   const styles = useStyles(makeStyles);
   const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const [picked, setPicked] = useState<string | null>(null);
-  const { groups, error } = useReactors(post.id, emoji !== null);
+  const { groups, error } = useReactors(id, emoji !== null, load);
   const current = picked ?? emoji;
   const group = groups?.find((g) => g.emoji === current) ?? groups?.[0];
   const close = () => {
