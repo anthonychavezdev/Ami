@@ -118,6 +118,9 @@ export const api = {
   createPost: (body: string, group_id?: string, attachments: Attachment[] = []) =>
     post<Post>('/api/posts', { body, group_id, attachments }),
   uploadMedia: (file: { uri: string; type: string }, options?: UploadOptions) => upload<Attachment>('/api/media', file, options),
+  mediaReactions: (name: string) => get<ReactionGroup[]>(`/api/media/${name}/reactions`),
+  reactToMedia: (name: string, emoji: string) => put<ReactionGroup[]>(`/api/media/${name}/reaction`, { emoji }),
+  unreactToMedia: (name: string) => del<ReactionGroup[]>(`/api/media/${name}/reaction`),
   post: (id: string) => get<Post>(`/api/posts/${id}`),
   deletePost: (id: string) => del<void>(`/api/posts/${id}`),
   updatePost: (id: string, body: string, attachments: Attachment[]) => put<Post>(`/api/posts/${id}`, { body, attachments }),

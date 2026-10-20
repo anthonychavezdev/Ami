@@ -165,7 +165,7 @@ project id the app simply never registers a push token.
 | Area | Notes |
 |---|---|
 | Posts | Markdown text, pictures, videos and links, together or on their own; tap a picture or video to view it fullscreen (arrows, thumbnails, Save to your library). Authors can edit their posts (a pencil marks edited ones). Comments thread like Reddit: reply under a comment, edit or delete your own; a deleted comment with replies stays as [deleted]. In the browser, your posts, comments and messages get a ⋯ button on hover and a right-click menu. Feed = your posts + friends' posts + posts in your groups. Profile posts are public. |
-| Reactions | Tap **React** to 👍; press-and-hold opens the emoji menu. One reaction per user per post, comment or chat message, any emoji. Rest the pointer on a reaction to see who gave it; on a phone, hold it. |
+| Reactions | Tap **React** to 👍; press-and-hold opens the emoji menu. One reaction per user per post, comment, chat message, or picture and video in the fullscreen viewer, any emoji. Rest the pointer on a reaction to see who gave it; on a phone, hold it. |
 | Comments | On the post screen. |
 | Server stats | A Server tab with the disk the uploads sit on and your share of them, the processor's load and the memory, so everyone can see what they are taking up. |
 | Profile | A picture and a wide cover (GIFs animate), each with its own crop; display name, pronouns, a Markdown bio, interests as tags that Find people searches, links to your other places; a username change that must be valid and free, and a password change (other devices are signed out). |
@@ -208,6 +208,7 @@ GET|POST /api/posts/{id}/comments {body, parent_id?}   PUT|DELETE /api/comments/
 PUT|DELETE /api/comments/{id}/reaction {emoji}   GET /api/comments/{id}/reactions
 PUT|DELETE /api/posts/{id}/reaction {emoji}   GET /api/posts/{id}/reactions (who reacted with what)
 POST   /api/media (the file as the body) -> {type, url, width, height}   GET /media/{name}
+PUT|DELETE /api/media/{name}/reaction {emoji}   GET /api/media/{name}/reactions   (the upload itself, in the viewer)
 GET    /api/friends   /api/friends/requests
 POST   /api/friends/{id}/request   /api/friends/{id}/accept    DELETE /api/friends/{id}
 GET    /api/groups?mine=1|q=       POST /api/groups {name, description, private?, member_ids?}

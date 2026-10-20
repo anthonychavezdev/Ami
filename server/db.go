@@ -176,6 +176,16 @@ CREATE TABLE IF NOT EXISTS conversation_reads (
 	FOREIGN KEY (peer_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 
+-- Reactions to an upload itself, a picture or video in the fullscreen viewer,
+-- keyed by its file name: uploads are files, not rows.
+CREATE TABLE IF NOT EXISTS media_reactions (
+	media   VARCHAR(64) NOT NULL,
+	user_id CHAR(36) NOT NULL,
+	emoji   VARCHAR(32) NOT NULL,
+	PRIMARY KEY (media, user_id),
+	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
 CREATE TABLE IF NOT EXISTS push_tokens (
 	token      VARCHAR(255) NOT NULL PRIMARY KEY,
 	user_id    CHAR(36) NOT NULL,
@@ -204,6 +214,9 @@ var migrations = []migration{
 	}},
 	{"reactions on messages", func(tx *sql.Tx) error {
 		return execEach(tx, schema) // likewise: only message_reactions is new
+	}},
+	{"reactions on uploads", func(tx *sql.Tx) error {
+		return execEach(tx, schema) // likewise: only media_reactions is new
 	}},
 }
 

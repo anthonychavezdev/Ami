@@ -65,6 +65,21 @@ served by `http.ServeFile` (so `Range` requests work, which is how video players
 seek) through a `pacedWriter` that extends the write deadline while bytes flow:
 a 20 GB video outlasts the server's 60 s `WriteTimeout` many times over.
 
+## Reactions on uploads
+
+A picture or video can be reacted to in itself, whichever post or chat it
+appears in: the fullscreen viewer shows a React button and the reaction pills
+for the upload on screen, with who reacted on hover or hold
+([posts.md](posts.md#reactions)). They live in `media_reactions`, keyed by the
+upload's file name and the user; the name is random and unguessable, so only
+people who were shown the picture can reach them. The routes are
+`PUT /api/media/{name}/reaction` with `{"emoji": "📸"}`,
+`DELETE /api/media/{name}/reaction` and `GET /api/media/{name}/reactions`,
+and all three answer the groups, `[{emoji, users}]`, the most used first; the
+viewer takes its counts and your own reaction from that list. A name that is
+no upload is 404, a malformed one 400. There are no live events for these:
+the viewer loads them when a picture comes on screen.
+
 ## Attachments on posts and messages
 
 `cleanAttachments` runs on every post and message write:

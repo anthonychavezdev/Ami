@@ -72,7 +72,8 @@ function Tip({ id, load, emoji, x, y }: ReactionSummaryProps & { emoji: string; 
   );
 }
 
-const layer = { position: 'fixed', left: 0, top: 0, right: 0, bottom: 0, zIndex: 1000, pointerEvents: 'none' } as const;
+// Above everything, the fullscreen viewer's modal included.
+const layer = { position: 'fixed', left: 0, top: 0, right: 0, bottom: 0, zIndex: 10000, pointerEvents: 'none' } as const;
 
 const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"io"
 	"net/http"
 	"os"
@@ -946,4 +947,23 @@ func TestProfilePostReactions(t *testing.T) {
 	ts.check("the reactor sees their own", len(theirs) == 1 && theirs[0].str("my_reaction") == "💯", theirs)
 	who := ts.get("/api/posts/"+post+"/reactions", ana.token).list()
 	ts.check("and who reacted names them", len(who) == 1 && who[0].list("users")[0].str("username") == "bea", who)
+}
+
+// Reactions on an upload itself, keyed by its file name: who reacted comes
+// back from every call, nothing for names that are not uploads.
+func TestMediaReactions(t *testing.T) {
+	ts := newTestServer(t, false)
+	ana, bea := ts.register("ana"), ts.register("bea")
+	name := strings.TrimPrefix(ts.upload(ana.token, tinyPNG(), "image/png").obj().str("url"), "/media/")
+	ts.check("nothing yet", string(ts.get("/api/media/"+name+"/reactions", bea.token).body) == "[]\n")
+	r := ts.put("/api/media/"+name+"/reaction", J{"emoji": "📸"}, bea.token)
+	ts.check("react answers the groups", r.status == 200 && len(r.list()) == 1 && r.list()[0].list("users")[0].str("username") == "bea", r)
+	ts.put("/api/media/"+name+"/reaction", J{"emoji": "📸"}, ana.token)
+	who := ts.get("/api/media/"+name+"/reactions", ana.token).list()
+	ts.check("both, by name", len(who) == 1 && len(who[0].list("users")) == 2 && who[0].list("users")[0].str("username") == "ana", who)
+	r = ts.del("/api/media/"+name+"/reaction", ana.token)
+	ts.check("unreact", r.status == 200 && len(r.list()) == 1 && len(r.list()[0].list("users")) == 1, r)
+	ts.check("a name that is not an upload -> 404", ts.put("/api/media/"+hex.EncodeToString(randomBytes(16))+".png/reaction", J{"emoji": "📸"}, ana.token).status == 404)
+	ts.check("a dotfile name -> 400", ts.get("/api/media/.hidden.png/reactions", ana.token).status == 400)
+	ts.check("needs a session", ts.get("/api/media/"+name+"/reactions", "").status == 401)
 }

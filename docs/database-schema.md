@@ -36,6 +36,7 @@ erDiagram
     users ||--o{ group_reads : "read marker"
     groups ||--o{ group_reads : "for"
     users ||--o{ push_tokens : "devices"
+    users ||--o{ media_reactions : "reacts"
 
     users {
         uuid id PK "UUID, version 7"
@@ -139,6 +140,11 @@ erDiagram
         string token PK "Expo push token"
         uuid user_id FK
         string updated_at
+    }
+    media_reactions {
+        string media PK "the upload's file name"
+        uuid user_id PK, FK
+        string emoji
     }
 ```
 
@@ -259,6 +265,11 @@ Expo push tokens, one row per device. Re-registering a token moves it to the
 current user; tokens Expo reports as unregistered are deleted
 ([notifications.md](notifications.md)).
 
+### media_reactions
+
+One row per user per upload, keyed by the file's name under the media
+directory, since uploads are files rather than rows; a reaction stays as long
+as the file does ([media.md](media.md#reactions-on-uploads)).
 ## How the database is opened
 
 `openDB` parses the connection string with the driver, forces `utf8mb4` on
@@ -302,6 +313,7 @@ The list today:
 | 1 | index for the session purge | Adds `sessions_expires` on `sessions(expires_at)`, so the hourly purge is a range scan instead of a pass over every session. |
 | 2 | reactions on comments | Runs `schema` again, whose statements are all `CREATE ... IF NOT EXISTS`, which creates `comment_reactions` and leaves the rest alone. |
 | 3 | reactions on messages | The same, for `message_reactions`. |
+| 4 | reactions on uploads | The same, for `media_reactions`. |
 
 (The SQLite era's migrations, up to UUID ids, went with SQLite; there is no
 path from an old SQLite file to MariaDB other than starting over.)
