@@ -1,7 +1,7 @@
 import { MediaStream, type MediaStreamTrack, RTCIceCandidate, RTCPeerConnection, RTCSessionDescription } from './webrtc';
 
-import { ICE_SERVERS } from './config';
 import type { SDP } from './events';
+import type { IceServer } from './types';
 
 // What a connection reports back to the call manager.
 export interface PeerEvents {
@@ -24,10 +24,11 @@ export class Peer {
   constructor(
     private readonly polite: boolean,
     private readonly events: PeerEvents,
-    earlyCandidates: unknown[] = [],
+    earlyCandidates: unknown[],
+    iceServers: IceServer[],
   ) {
     this.pending = earlyCandidates;
-    this.pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    this.pc = new RTCPeerConnection({ iceServers });
     this.pc.onnegotiationneeded = () => void this.offer();
     this.pc.onicecandidate = (ev: any) => ev.candidate && events.onCandidate(ev.candidate.toJSON());
     this.pc.ontrack = (ev: any) => ev.streams?.[0] && events.onStream(ev.streams[0]);

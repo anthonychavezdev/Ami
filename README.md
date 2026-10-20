@@ -17,7 +17,7 @@ groups, direct messages, and peer-to-peer voice/video calls with screen sharing.
 ```sh
 devenv shell          # Go, Node, npm, MariaDB, watchman, Android SDK + emulator, JDK 17 (macOS: CocoaPods too)
 setup                 # go mod tidy + npm install (first time)
-devenv up             # MariaDB (data in .devenv/state/mysql) + the API on :8080 in dev mode
+devenv up             # MariaDB (data in .devenv/state/mysql) + coturn (TURN for calls) + the API on :8080 in dev mode
 server                # the API alone, against that MariaDB (`devenv up mysql` runs just the database)
 android               # build the app, install it on the emulator (created on first run), start Metro
 ios                   # same, in the iOS Simulator (macOS with Xcode from the App Store; Linux gets everything but iOS)
@@ -81,6 +81,7 @@ at the repo root (`NAME=value` per line, loaded when you enter the shell), in
 | --------------------- | ------- | ---------------------------------------------------------------------------------------------- |
 | `AMI_PORT`            | `8080`  | Port of the Go API (`server`, `devenv up`) and where the app looks for it.                      |
 | `AMI_DB`              | devenv's MariaDB | The server's database, `user:password@tcp(host:3306)/db` or `@unix(/path/mysql.sock)/db`. |
+| `AMI_TURN_SECRET`     | `ami-dev-turn` | Shared by the coturn `devenv up` runs and the server, which mints call credentials for it (`AMI_TURN_PORT`: `3478`). |
 | `AMI_METRO_PORT`      | `8081`  | Metro, which also serves the web app. Native dev builds bake it in: rebuild after changing it.  |
 | `AMI_HOST`            | LAN IP  | Address phones use to reach this machine, if Expo picks the wrong interface (VPNs, two networks). |
 | `EXPO_PUBLIC_API_URL` | empty   | Full URL of the API when it runs on another machine. Release builds require it (`https://`).   |
@@ -100,6 +101,8 @@ running here, another device just opens `http://<this machine's IP>:8081`.
   `-tls-cert`/`-tls-key`, or behind a TLS-terminating reverse proxy plus
   `-trust-proxy`. Never pass `-dev`.
   Other flags: `-addr`, `-allowed-origins` (CORS is off by default), `-web-dir`.
+  For calls between strict NATs run coturn next to it with the same
+  `AMI_TURN_SECRET` ([docs/deployment.md](docs/deployment.md#turn)).
 - `dist/web`: the browser build (minified, hashed bundles). Serve it from the
   same binary with `-web-dir dist/web`: the page then talks to the origin it
   was loaded from, so no CORS setup is needed. If `EXPO_PUBLIC_API_URL` is set

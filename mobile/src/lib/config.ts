@@ -26,4 +26,6 @@ function defaultApiUrl(): string {
 export const API_URL = (process.env.EXPO_PUBLIC_API_URL || defaultApiUrl()).replace(/\/$/, '');
 export const WS_URL = API_URL.replace(/^http/, 'ws') + '/ws';
 
-export const ICE_SERVERS = [{ urls: 'stun:stun.l.google.com:19302' }];
+// What a call uses until the server's /api/ice has answered, and when it
+// cannot: a public STUN server. TURN comes from the server (docs/calls.md).
+export const ICE_SERVERS = [{ urls: ['stun:stun.l.google.com:19302'] }];

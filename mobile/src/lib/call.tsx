@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useSyncExternalStore } fro
 import { NativeModules, Platform } from 'react-native';
 import { type MediaStream, type MediaStreamTrack, mediaDevices, switchCamera } from './webrtc';
 
+import { api } from './api';
 import { Peer } from './callPeer';
 import {
   IDLE,
@@ -16,10 +17,11 @@ import {
   withStream,
   withoutParticipant,
 } from './callState';
+import { ICE_SERVERS } from './config';
 import { errorMessage } from './errors';
 import type { CallJoin, CallSignal, EventOf, SDP } from './events';
 import { groupRoomKey } from './messages';
-import type { CallGroup, User } from './types';
+import type { CallGroup, IceServer, User } from './types';
 import { socket } from './ws';
 
 export type { CallState, CallStatus, Participant } from './callState';
@@ -36,6 +38,7 @@ const RECONNECT_GRACE = 6_000; // the server frees our seat a few seconds after 
 class CallManager {
   private peers = new Map<string, Peer>();
   private early = new Map<string, unknown[]>(); // ICE candidates from people we have no connection with yet
+  private iceServers: IceServer[] = ICE_SERVERS; // the server's answer from the last join; the built-in STUN until then
   private state: CallState = IDLE;
   private listeners = new Set<() => void>();
   private myId = '';
@@ -168,17 +171,29 @@ class CallManager {
   /** Gets the microphone (and camera) and sends the join; a hang-up meanwhile is honoured. */
   private async joinWith(video: boolean, expected: CallStatus, join: CallJoin): Promise<boolean> {
     try {
+      const ice = this.refreshIce(); // while the microphone prompt is up
       const stream = await mediaDevices.getUserMedia({ audio: true, video: video ? { facingMode: this.facing } : false });
       if (this.status() !== expected) {
         stopAll(stream);
         return false;
       }
+      await ice;
       this.set({ localStream: stream, cameraOn: video });
       if (!socket.send({ type: 'call.join', ...join })) throw new Error('Not connected');
       return true;
     } catch (e) {
       this.end(errorMessage(e), true);
       return false;
+    }
+  }
+
+  /** Asks the server which STUN and TURN servers to use; keeps the last answer when it cannot. */
+  private async refreshIce() {
+    try {
+      const { ice_servers } = await api.ice();
+      if (ice_servers.length > 0) this.iceServers = ice_servers;
+    } catch {
+      /* the call still works wherever STUN alone does */
     }
   }
 
@@ -227,7 +242,7 @@ class CallManager {
 
   /** Opens a connection to a participant. With `offer`, our tracks go in now, which starts negotiation. */
   private createPeer(user: User, offer: boolean): Peer {
-    const peer = new Peer(this.myId > user.id, this.peerEvents(user), this.early.get(user.id));
+    const peer = new Peer(this.myId > user.id, this.peerEvents(user), this.early.get(user.id) ?? [], this.iceServers);
     this.early.delete(user.id);
     this.peers.set(user.id, peer);
     if (offer) this.sendLocalStreams(peer);
