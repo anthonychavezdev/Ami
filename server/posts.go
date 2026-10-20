@@ -566,7 +566,7 @@ func (s *server) createComment(w http.ResponseWriter, r *http.Request, me *User)
 	if err := s.validReplyTarget(id, in.ParentID); err != nil {
 		return err
 	}
-	c := Comment{ID: newID(), PostID: id, ParentID: in.ParentID, Author: *me, Body: body, CreatedAt: nowString()}
+	c := Comment{ID: newID(), PostID: id, ParentID: in.ParentID, Author: *me, Body: body, CreatedAt: nowString(), Reactions: map[string]int{}}
 	if _, err := s.db.Exec(`INSERT INTO comments(id, post_id, parent_id, author_id, body, created_at) VALUES (?, ?, ?, ?, ?, ?)`, c.ID, id, c.ParentID, me.ID, c.Body, c.CreatedAt); err != nil {
 		return err
 	}

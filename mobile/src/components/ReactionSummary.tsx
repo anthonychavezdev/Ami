@@ -14,7 +14,7 @@ import { radius, spacing, type ThemeColors } from '@/theme';
 export function ReactionSummary(props: ReactionSummaryProps) {
   const pills = useStyles(makePillStyles);
   const [held, setHeld] = useState<string | null>(null);
-  const reactions = sortedReactions(props.reactions);
+  const reactions = sortedReactions(props.reactions ?? {}); // a freshly made item may not carry counts yet
   if (reactions.length === 0) return null;
   return (
     <>
