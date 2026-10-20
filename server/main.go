@@ -40,11 +40,14 @@ type server struct {
 	trustProxy    bool
 	calls         *callRooms // who is in which call
 	cpu           cpuMeter   // this process's recent CPU use, for /api/stats
+	ice           iceConfig  // the STUN and TURN servers handed to the apps for calls (ice.go)
 }
 
 // config is everything the command-line flags decide.
 type config struct {
 	addr, dsn, mediaDir, origins, tlsCert, tlsKey, webDir string
+	stunURLs, turnURLs, turnSecret                        string // ICE servers for calls (ice.go)
+	turnPort                                              int
 	dev, trustProxy, verbose                              bool
 	apiRate                                               int
 	resetPassword                                         string // a username: print a temporary password for it and exit
@@ -62,6 +65,10 @@ func parseFlags() config {
 	flag.StringVar(&c.tlsCert, "tls-cert", "", "serve HTTPS with this certificate file (needs -tls-key)")
 	flag.StringVar(&c.tlsKey, "tls-key", "", "private key for -tls-cert")
 	flag.StringVar(&c.webDir, "web-dir", "", "serve the browser build from this directory (see `build web`)")
+	flag.StringVar(&c.stunURLs, "stun-urls", envOr("AMI_STUN_URLS", "stun:stun.l.google.com:19302"), "comma-separated STUN servers the apps use for calls")
+	flag.StringVar(&c.turnSecret, "turn-secret", envOr("AMI_TURN_SECRET", ""), "the static-auth-secret of a coturn server; the apps then get TURN credentials for it from /api/ice")
+	flag.StringVar(&c.turnURLs, "turn-urls", envOr("AMI_TURN_URLS", ""), "comma-separated TURN servers (turn:host:3478?transport=udp, turns:host:5349); empty means coturn on this host at -turn-port")
+	flag.IntVar(&c.turnPort, "turn-port", envInt("AMI_TURN_PORT", 3478), "port of the coturn on this host, when -turn-urls is empty")
 	flag.IntVar(&c.apiRate, "api-rate", 600, "requests per minute allowed per client IP on /api (0 disables)")
 	flag.BoolVar(&c.verbose, "verbose", false, "log every request and response with headers and body, and every WebSocket message (passwords and tokens redacted, bodies cut at 4 KB)")
 	flag.StringVar(&c.resetPassword, "reset-password", "", "give this user a temporary password (printed) that must be changed at their next login, sign out their devices, and exit")
@@ -108,6 +115,10 @@ func newServer(ctx context.Context, cfg config) (*server, error) {
 		limiter:       newLimiter(10, time.Minute),
 		uploadLimiter: newLimiter(30, time.Minute),
 		origins:       allowedOrigins(cfg.origins, cfg.dev),
+		ice:           newICEConfig(cfg),
+	}
+	if s.ice.secret != "" {
+		log.Printf("calls: handing out TURN credentials for %s", s.ice.describe())
 	}
 	if cfg.apiRate > 0 {
 		s.apiLimiter = newLimiter(cfg.apiRate, time.Minute)
@@ -231,6 +242,7 @@ func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/me/password", s.auth(s.changePassword))
 	mux.HandleFunc("PUT /api/me/presence", s.auth(s.setPresence))
 	mux.HandleFunc("GET /api/stats", s.auth(s.stats))
+	mux.HandleFunc("GET /api/ice", s.auth(s.iceServers))
 
 	// users
 	mux.HandleFunc("GET /api/users", s.auth(s.searchUsers))

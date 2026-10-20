@@ -54,6 +54,42 @@ AMI_DB='ami:a long password@unix(/run/mysqld/mysqld.sock)/ami' ./ami-server -med
   production logs: it writes every body (credentials redacted) and is slow.
 - SIGTERM or Ctrl-C shuts down gracefully within 10 s.
 
+### TURN
+
+Calls flow directly between the two phones once STUN has told each its public
+address, which is enough on most home networks. Between two strict NATs (mobile
+carriers, office firewalls) the media must be relayed through a TURN server,
+and relaying costs bandwidth, so Ami hands out credentials for your own
+[coturn](https://github.com/coturn/coturn) rather than a public one
+([calls.md](calls.md#get-apiice)). Run it next to the server and give both the
+same secret:
+
+```nix
+services.coturn = {
+  enable = true;
+  realm = "ami";
+  use-auth-secret = true;
+  static-auth-secret-file = "/run/secrets/turn";   # the same value as AMI_TURN_SECRET
+  min-port = 49152;
+  max-port = 49999;
+};
+networking.firewall = {
+  allowedTCPPorts = [ 3478 ];
+  allowedUDPPorts = [ 3478 ];
+  allowedUDPPortRanges = [ { from = 49152; to = 49999; } ];
+};
+```
+
+With `AMI_TURN_SECRET` set (next to `AMI_DB` in the unit's environment) the
+server tells the apps to use `turn:<host>:3478`, where `<host>` is the name
+they reached the API by, so nothing else needs configuring. A long random
+secret (`openssl rand -hex 32`); the credentials the apps get expire after a
+day. Optional: `cert`/`pkey` in coturn and `-turn-urls turns:host:5349` to
+also offer TURN over TLS on networks that block UDP, and `-stun-urls
+stun:host:3478` to keep STUN on your box instead of Google's. The relay uses
+no disk and little memory; a relayed voice call is a few KB/s, a video call a
+few hundred.
+
 A minimal systemd unit:
 
 ```ini
