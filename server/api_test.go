@@ -910,3 +910,21 @@ func TestMessageReactions(t *testing.T) {
 	ts.check("a non-member cannot", ts.put("/api/groups/"+g+"/messages/"+gm+"/reaction", J{"emoji": "🎉"}, cai.token).status == 403)
 	ts.check("the group listing carries it", ts.get("/api/groups/"+g+"/messages", bea.token).list()[0].obj("reactions").num("🎉") == 1)
 }
+
+// Posts in a group take reactions like any post: counts and my_reaction in
+// the group's listing and in the feed, and the same who-reacted list.
+func TestGroupPostReactions(t *testing.T) {
+	ts := newTestServer(t, false)
+	ana, bea := ts.register("ana"), ts.register("bea")
+	ts.befriend(ana, bea)
+	g := ts.post("/api/groups", J{"name": "g", "member_ids": []string{bea.id}}, ana.token).obj().obj("group").id("id")
+	post := ts.post("/api/posts", J{"body": "en el grupo", "group_id": g}, ana.token).obj().id("id")
+	ts.put("/api/posts/"+post+"/reaction", J{"emoji": "🔥"}, bea.token)
+	ts.put("/api/posts/"+post+"/reaction", J{"emoji": "🔥"}, ana.token)
+	listed := ts.get("/api/groups/"+g+"/posts", bea.token).list()
+	ts.check("the group listing carries the counts and my reaction", len(listed) == 1 && listed[0].obj("reactions").num("🔥") == 2 && listed[0].str("my_reaction") == "🔥", listed)
+	feed := ts.get("/api/feed", ana.token).list()
+	ts.check("so does the feed", len(feed) == 1 && feed[0].obj("reactions").num("🔥") == 2 && feed[0].str("my_reaction") == "🔥", feed)
+	who := ts.get("/api/posts/"+post+"/reactions", ana.token).list()
+	ts.check("who reacted names both, by name", len(who) == 1 && len(who[0].list("users")) == 2 && who[0].list("users")[0].str("username") == "ana" && who[0].list("users")[1].str("username") == "bea", who)
+}
