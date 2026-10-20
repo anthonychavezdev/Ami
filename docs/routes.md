@@ -108,6 +108,9 @@ that explains it in full. The route table itself is `routes()` in
 | Route | Auth | Request | Response | Summary | Details |
 | --- | --- | --- | --- | --- | --- |
 | `POST /api/media` | session | the file, with its `Content-Type` | 201 `Attachment` | Uploads one picture or video (JPEG, PNG, GIF, WebP, MP4, MOV, WebM, 20 GB max). | [media.md](media.md#post-apimedia) |
+| `GET /api/media/{name}/reactions` | session | | `[{emoji, users}]` | Who reacted to the upload itself with what. | [media.md](media.md#reactions-on-uploads) |
+| `PUT /api/media/{name}/reaction` | session | `{emoji}` | `[{emoji, users}]` | Sets your one reaction to the upload. | [media.md](media.md#reactions-on-uploads) |
+| `DELETE /api/media/{name}/reaction` | session | | `[{emoji, users}]` | Removes it. | [media.md](media.md#reactions-on-uploads) |
 | `GET /media/{name}` | none | | the file | Serves an upload; names are random, so no session is needed. | [media.md](media.md#get-medianame) |
 
 ## Friends

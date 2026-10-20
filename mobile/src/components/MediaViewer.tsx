@@ -5,18 +5,23 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, FlatList, Image, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { mediaUrl } from '@/lib/api';
+import { ReactionButton } from './ReactionButton';
+import { ReactionSummary } from './ReactionSummary';
+import { api, mediaUrl } from '@/lib/api';
+import { useAuth } from '@/lib/auth';
 import { saveMedia } from '@/lib/save';
-import type { Attachment } from '@/lib/types';
+import type { Attachment, ReactionGroup } from '@/lib/types';
 import { radius, spacing } from '@/theme';
 import { errorMessage } from '@/lib/errors';
 
 type Size = { width: number; height: number };
 const THUMB = 56;
 const STRIP = THUMB + spacing.md * 2;
+const REACTIONS = 48; // the height the reactions bar takes above the strip
 
 // Fullscreen pager for pictures and videos: swipe, side arrows, a thumbnail
-// strip (when there are several), arrow keys on the web, and Save.
+// strip (when there are several), arrow keys on the web, Save, and reactions
+// to the picture or video itself.
 // `index` is the item to show, null hides the viewer. The accent colour comes
 // in as a prop on purpose: on react-native-web, subscribing to the theme
 // context from here kept the attachment grid next to it from ever measuring
@@ -102,9 +107,13 @@ export function MediaViewer({
         {many && current < items.length - 1 && <Arrow side="right" top={listHeight / 2 - 22} onPress={() => goTo(current + 1)} />}
 
         {notice && (
-          <View style={[styles.notice, { bottom: (many ? STRIP : 0) + insets.bottom + spacing.lg }]}>
+          <View style={[styles.notice, { bottom: (many ? STRIP : 0) + insets.bottom + spacing.lg + REACTIONS }]}>
             <Text style={styles.noticeText}>{notice}</Text>
           </View>
+        )}
+
+        {visible && items[current] && (
+          <MediaReactions att={items[current]} bottom={(many ? STRIP : 0) + insets.bottom + spacing.md} report={showNotice} />
         )}
 
         {many && size && (
@@ -112,6 +121,42 @@ export function MediaViewer({
         )}
       </View>
     </Modal>
+  );
+}
+
+// Reactions to the upload on screen, whichever post or chat it came from:
+// the React button and the pills, with who reacted on hover or hold. The
+// server answers every call with who reacted; the counts and the viewer's
+// own reaction are read off that list.
+function MediaReactions({ att, bottom, report }: { att: Attachment; bottom: number; report: (text: string) => void }) {
+  const { user: me } = useAuth();
+  const name = att.url.split('/').pop() ?? '';
+  const [loaded, setLoaded] = useState<{ name: string; groups: ReactionGroup[] } | null>(null);
+  useEffect(() => {
+    let live = true;
+    api.mediaReactions(name).then(
+      (groups) => live && setLoaded({ name, groups }),
+      () => {},
+    );
+    return () => {
+      live = false;
+    };
+  }, [name]);
+  const groups = loaded?.name === name ? loaded.groups : [];
+  const reactions = Object.fromEntries(groups.map((g) => [g.emoji, g.users.length]));
+  const mine = groups.find((g) => g.users.some((u) => u.id === me?.id))?.emoji ?? '';
+  const react = async (emoji: string | null) => {
+    try {
+      setLoaded({ name, groups: emoji ? await api.reactToMedia(name, emoji) : await api.unreactToMedia(name) });
+    } catch (e) {
+      report(errorMessage(e));
+    }
+  };
+  return (
+    <View style={[styles.reactions, { bottom }]}>
+      <ReactionButton current={mine} onReact={(emoji) => void react(emoji)} />
+      <ReactionSummary compact id={name} reactions={reactions} myReaction={mine} load={api.mediaReactions} />
+    </View>
   );
 }
 
@@ -292,6 +337,20 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
   },
   noticeText: { color: '#fff', fontSize: 14, fontWeight: '600' },
+  reactions: {
+    position: 'absolute',
+    left: spacing.lg,
+    right: spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    alignSelf: 'flex-start',
+  },
   strip: { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', paddingTop: spacing.md },
   stripContent: { paddingHorizontal: spacing.lg, gap: spacing.sm, alignItems: 'center' },
   thumb: {

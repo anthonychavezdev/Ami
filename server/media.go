@@ -273,3 +273,64 @@ func (s *server) cleanAttachment(a Attachment) (Attachment, error) {
 		return a, errors.New("attachment type must be image, video or link")
 	}
 }
+
+// ---- reactions on uploads: a picture or video in the fullscreen viewer
+
+// mediaName is the upload named in the path, if it exists.
+func (s *server) mediaName(r *http.Request) (string, error) {
+	name := r.PathValue("name")
+	if name == "" || len(name) > 64 || strings.ContainsAny(name, `/\`) || strings.HasPrefix(name, ".") {
+		return "", badRequest("invalid media name")
+	}
+	if !s.uploadExists(name) {
+		return "", notFound("media not found")
+	}
+	return name, nil
+}
+
+// respondMediaReactions answers who reacted to an upload with what; the
+// viewer takes its counts and the viewer's own reaction from the list.
+func (s *server) respondMediaReactions(w http.ResponseWriter, name string) error {
+	return s.respondReactionGroups(w, `SELECT r.emoji, `+userCols+` FROM media_reactions r JOIN users u ON u.id = r.user_id WHERE r.media = ? ORDER BY r.emoji, u.display_name`, name)
+}
+
+func (s *server) listMediaReactions(w http.ResponseWriter, r *http.Request, me *User) error {
+	name, err := s.mediaName(r)
+	if err != nil {
+		return err
+	}
+	return s.respondMediaReactions(w, name)
+}
+
+func (s *server) reactToMedia(w http.ResponseWriter, r *http.Request, me *User) error {
+	var in struct {
+		Emoji string `json:"emoji"`
+	}
+	if err := readJSON(w, r, &in); err != nil {
+		return err
+	}
+	emoji, err := validEmoji(in.Emoji)
+	if err != nil {
+		return err
+	}
+	name, err := s.mediaName(r)
+	if err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`INSERT INTO media_reactions(media, user_id, emoji) VALUES (?, ?, ?)
+		ON DUPLICATE KEY UPDATE emoji = VALUES(emoji)`, name, me.ID, emoji); err != nil {
+		return err
+	}
+	return s.respondMediaReactions(w, name)
+}
+
+func (s *server) unreactToMedia(w http.ResponseWriter, r *http.Request, me *User) error {
+	name, err := s.mediaName(r)
+	if err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`DELETE FROM media_reactions WHERE media = ? AND user_id = ?`, name, me.ID); err != nil {
+		return err
+	}
+	return s.respondMediaReactions(w, name)
+}
