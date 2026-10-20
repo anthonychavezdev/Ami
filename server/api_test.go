@@ -855,7 +855,9 @@ func TestCommentReactions(t *testing.T) {
 	ts := newTestServer(t, false)
 	ana, bea := ts.register("ana"), ts.register("bea")
 	post := ts.post("/api/posts", J{"body": "hola"}, ana.token).obj().id("id")
-	comment := ts.post("/api/posts/"+post+"/comments", J{"body": "¡hola!"}, bea.token).obj().id("id")
+	made := ts.post("/api/posts/"+post+"/comments", J{"body": "¡hola!"}, bea.token).obj()
+	ts.check("a new comment carries empty reactions, never null", !made.isNull("reactions") && made.str("my_reaction") == "", made)
+	comment := made.id("id")
 	ws := ts.connect(ana)
 
 	r := ts.put("/api/comments/"+comment+"/reaction", J{"emoji": "👍"}, ana.token)
