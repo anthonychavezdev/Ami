@@ -90,7 +90,7 @@ export const makePillStyles = (colors: ThemeColors) =>
       borderColor: colors.border,
     },
     mine: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
-    pillText: { fontSize: 14 },
+    pillText: { fontSize: 14, color: colors.text },
   });
 
 const makeStyles = (colors: ThemeColors) =>
