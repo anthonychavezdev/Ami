@@ -1,0 +1,19 @@
+# Only server/ and mobile/ sources reach the image build (Dockerfile).
+.git
+.devenv*
+.direnv
+.go
+.npm
+.gradle
+.cocoapods
+.android
+dist
+docs
+server/media
+server/ami
+mobile/node_modules
+mobile/.expo
+mobile/android
+mobile/ios
+mobile/dist
+mobile/e2e
