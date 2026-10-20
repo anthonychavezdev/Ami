@@ -80,6 +80,10 @@ profile and with `Me`. The app's `cropStyle` (`ui.tsx`) positions a picture so
 its window fills a box: the `Avatar` circle or the `Cover` band. `w === 0` means
 "whole picture, filling the box", which is what a picture without a crop gets.
 
+On a profile, tapping the cover or the picture opens it in the fullscreen
+viewer (`ProfileHeader` hands `MediaViewer` the two uploads), with Save and
+the reactions to the picture itself ([media.md](media.md#reactions-on-uploads)).
+
 ### Interests and links
 
 Interests are plain tags. They show as chips on the profile, and
