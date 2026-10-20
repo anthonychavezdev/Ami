@@ -846,3 +846,36 @@ func TestWhoReacted(t *testing.T) {
 	ts.check("unknown post -> 404", ts.get("/api/posts/"+newID()+"/reactions", ana.token).status == 404)
 	ts.check("needs a session", ts.get("/api/posts/"+post+"/reactions", "").status == 401)
 }
+
+// Reactions on comments work like a post's: counts and my_reaction on every
+// comment, a list of who reacted, live comment.updated events with each
+// viewer's own reaction, nothing on [deleted] placeholders.
+func TestCommentReactions(t *testing.T) {
+	ts := newTestServer(t, false)
+	ana, bea := ts.register("ana"), ts.register("bea")
+	post := ts.post("/api/posts", J{"body": "hola"}, ana.token).obj().id("id")
+	comment := ts.post("/api/posts/"+post+"/comments", J{"body": "¡hola!"}, bea.token).obj().id("id")
+	ws := ts.connect(ana)
+
+	r := ts.put("/api/comments/"+comment+"/reaction", J{"emoji": "👍"}, ana.token)
+	ts.check("react answers the comment with my reaction", r.status == 200 && r.obj().str("my_reaction") == "👍" && r.obj().obj("reactions").num("👍") == 1, r)
+	ev := ws.expect("comment.updated") // her own reaction reaches her other devices too
+	ts.check("ana's own reaction is broadcast with her reaction set", ev.obj("comment").str("my_reaction") == "👍" && ev.obj("comment").obj("reactions").num("👍") == 1, ev)
+	ts.put("/api/comments/"+comment+"/reaction", J{"emoji": "👍"}, bea.token)
+	ev = ws.expect("comment.updated")
+	ts.check("bea's reaction reaches ana with ana's own reaction and both counts", ev.obj("comment").str("my_reaction") == "👍" && ev.obj("comment").obj("reactions").num("👍") == 2, ev)
+	list := ts.get("/api/posts/"+post+"/comments", bea.token).list()
+	ts.check("the comment list carries the counts", len(list) == 1 && list[0].obj("reactions").num("👍") == 2 && list[0].str("my_reaction") == "👍", list)
+	who := ts.get("/api/comments/"+comment+"/reactions", ana.token).list()
+	ts.check("who reacted: both, by name", len(who) == 1 && len(who[0].list("users")) == 2 && who[0].list("users")[0].str("username") == "ana", who)
+
+	r = ts.del("/api/comments/"+comment+"/reaction", ana.token)
+	ts.check("unreact", r.status == 200 && r.obj().str("my_reaction") == "" && r.obj().obj("reactions").num("👍") == 1, r)
+	ts.check("a reaction on a missing comment -> 404", ts.put("/api/comments/"+newID()+"/reaction", J{"emoji": "👍"}, ana.token).status == 404)
+
+	reply := ts.post("/api/posts/"+post+"/comments", J{"body": "reply", "parent_id": comment}, ana.token).obj().id("id")
+	ts.del("/api/comments/"+comment, bea.token) // keeps a [deleted] placeholder, since it has a reply
+	ts.check("the placeholder shows no reactions", ts.get("/api/posts/"+post+"/comments", bea.token).list()[0].isTrue("deleted") && len(ts.get("/api/posts/"+post+"/comments", bea.token).list()[0].obj("reactions")) == 0)
+	ts.check("and takes none", ts.put("/api/comments/"+comment+"/reaction", J{"emoji": "👍"}, ana.token).status == 404 && ts.get("/api/comments/"+comment+"/reactions", ana.token).status == 404)
+	ts.check("the reply still can", ts.put("/api/comments/"+reply+"/reaction", J{"emoji": "🎉"}, bea.token).status == 200)
+}

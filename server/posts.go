@@ -23,14 +23,16 @@ type Post struct {
 }
 
 type Comment struct {
-	ID        string  `json:"id"`
-	PostID    string  `json:"post_id"`
-	ParentID  *string `json:"parent_id"` // reply to another comment of the same post
-	Author    User    `json:"author"`
-	Body      string  `json:"body"`
-	CreatedAt string  `json:"created_at"`
-	EditedAt  *string `json:"edited_at"`
-	Deleted   bool    `json:"deleted"` // body and author read [deleted]; the row stays so replies keep their place
+	ID         string         `json:"id"`
+	PostID     string         `json:"post_id"`
+	ParentID   *string        `json:"parent_id"` // reply to another comment of the same post
+	Author     User           `json:"author"`
+	Body       string         `json:"body"`
+	CreatedAt  string         `json:"created_at"`
+	EditedAt   *string        `json:"edited_at"`
+	Deleted    bool           `json:"deleted"`     // body and author read [deleted]; the row stays so replies keep their place
+	Reactions  map[string]int `json:"reactions"`   // emoji -> count, like a post's
+	MyReaction string         `json:"my_reaction"` // "" if none
 }
 
 // ---- reading posts
@@ -345,15 +347,15 @@ func (s *server) setReaction(w http.ResponseWriter, r *http.Request, me *User) e
 	return s.respondPost(w, http.StatusOK, me.ID, id)
 }
 
-// ReactionGroup is everyone who reacted to a post with one emoji.
+// ReactionGroup is everyone who reacted to a post or comment with one emoji.
 type ReactionGroup struct {
 	Emoji string `json:"emoji"`
 	Users []User `json:"users"`
 }
 
-// listReactions answers who reacted with what: one group per emoji, the most
-// used first, people by display name. Posts are visible to any signed-in
-// user, so their reactions are too.
+// listReactions answers who reacted to a post with what: one group per
+// emoji, the most used first, people by display name. Posts are visible to
+// any signed-in user, so their reactions are too.
 func (s *server) listReactions(w http.ResponseWriter, r *http.Request, me *User) error {
 	id, err := pathID(r, "id")
 	if err != nil {
@@ -362,6 +364,12 @@ func (s *server) listReactions(w http.ResponseWriter, r *http.Request, me *User)
 	if _, err := s.postOwner(id); err != nil {
 		return err
 	}
+	return s.respondReactionGroups(w, `SELECT r.emoji, `+userCols+` FROM reactions r JOIN users u ON u.id = r.user_id WHERE r.post_id = ? ORDER BY r.emoji, u.display_name`, id)
+}
+
+// respondReactionGroups groups the (emoji, user) rows of a query into
+// ReactionGroups, the most used emoji first.
+func (s *server) respondReactionGroups(w http.ResponseWriter, query string, id string) error {
 	type reaction struct {
 		emoji string
 		user  User
@@ -369,7 +377,7 @@ func (s *server) listReactions(w http.ResponseWriter, r *http.Request, me *User)
 	rows, err := queryAll(s.db, func(sc scanner) (reaction, error) {
 		var x reaction
 		return x, sc.Scan(fields([]any{&x.emoji}, x.user.fields())...)
-	}, `SELECT r.emoji, `+userCols+` FROM reactions r JOIN users u ON u.id = r.user_id WHERE r.post_id = ? ORDER BY r.emoji, u.display_name`, id)
+	}, query, id)
 	if err != nil {
 		return err
 	}
@@ -405,25 +413,80 @@ func (s *server) deleteReaction(w http.ResponseWriter, r *http.Request, me *User
 // deletedUser stands in for the author of a deleted comment.
 var deletedUser = User{Username: "deleted", DisplayName: "[deleted]"}
 
-const commentCols = `c.id, c.post_id, c.parent_id, c.body, c.created_at, c.edited_at, c.deleted_at, ` + userCols
+// commentSelect expects the viewer's user id as its first bound parameter,
+// for my_reaction; the reaction counts come separately (fillCommentReactions),
+// as a post's do.
+const commentSelect = `SELECT c.id, c.post_id, c.parent_id, c.body, c.created_at, c.edited_at, c.deleted_at, ` + userCols + `,
+	COALESCE((SELECT emoji FROM comment_reactions r WHERE r.comment_id = c.id AND r.user_id = ?), '')
+	FROM comments c JOIN users u ON u.id = c.author_id `
 
 func scanComment(sc scanner) (Comment, error) {
 	var c Comment
 	var deleted *string
-	err := sc.Scan(fields([]any{&c.ID, &c.PostID, &c.ParentID, &c.Body, &c.CreatedAt, &c.EditedAt, &deleted}, c.Author.fields())...)
+	err := sc.Scan(fields([]any{&c.ID, &c.PostID, &c.ParentID, &c.Body, &c.CreatedAt, &c.EditedAt, &deleted}, c.Author.fields(), []any{&c.MyReaction})...)
+	c.Reactions = map[string]int{}
 	if deleted != nil {
-		c.Deleted, c.Body, c.EditedAt, c.Author = true, "[deleted]", nil, deletedUser
+		c.Deleted, c.Body, c.EditedAt, c.Author, c.MyReaction = true, "[deleted]", nil, deletedUser, ""
 	}
 	return c, err
 }
 
-func (s *server) loadComment(id string) (Comment, error) {
-	return scanComment(s.db.QueryRow(`SELECT `+commentCols+` FROM comments c JOIN users u ON u.id = c.author_id WHERE c.id = ?`, id))
+// fillCommentReactions puts each live comment's {emoji: count} in place, in one query.
+func (s *server) fillCommentReactions(comments []Comment) error {
+	byID := map[string]*Comment{}
+	ids := []any{}
+	for i := range comments {
+		if !comments[i].Deleted {
+			byID[comments[i].ID] = &comments[i]
+			ids = append(ids, comments[i].ID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	rows, err := s.db.Query(`SELECT comment_id, emoji, COUNT(*) FROM comment_reactions WHERE comment_id IN (`+placeholders(len(ids))+`) GROUP BY comment_id, emoji`, ids...)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id, emoji string
+		var n int
+		if err := rows.Scan(&id, &emoji, &n); err != nil {
+			return err
+		}
+		if c := byID[id]; c != nil {
+			c.Reactions[emoji] = n
+		}
+	}
+	return rows.Err()
+}
+
+// loadComment reads one comment as viewer sees it ("" for nobody in particular).
+func (s *server) loadComment(viewer, id string) (Comment, error) {
+	c, err := scanComment(s.db.QueryRow(commentSelect+`WHERE c.id = ?`, viewer, id))
+	if err != nil {
+		return c, err
+	}
+	comments := []Comment{c}
+	return comments[0], s.fillCommentReactions(comments)
+}
+
+// liveComment loads a comment that is not a [deleted] placeholder, or 404.
+func (s *server) liveComment(viewer, id string) (Comment, error) {
+	c, err := s.loadComment(viewer, id)
+	if err = orNotFound(err, "comment not found"); err != nil {
+		return c, err
+	}
+	if c.Deleted {
+		return c, notFound("comment not found")
+	}
+	return c, nil
 }
 
 // ownComment loads a live comment the caller wrote, for editing or deleting.
 func (s *server) ownComment(id, userID string, verb string) (Comment, error) {
-	c, err := s.loadComment(id)
+	c, err := s.loadComment(userID, id)
 	if err = orNotFound(err, "comment not found"); err != nil {
 		return c, err
 	}
@@ -458,10 +521,11 @@ func (s *server) listComments(w http.ResponseWriter, r *http.Request, me *User) 
 	if err != nil {
 		return err
 	}
-	comments, err := queryAll(s.db, scanComment, `SELECT `+commentCols+`
-		FROM comments c JOIN users u ON u.id = c.author_id
-		WHERE c.post_id = ? AND c.id > ? ORDER BY c.id ASC LIMIT 500`, id, queryID(r, "after", ""))
+	comments, err := queryAll(s.db, scanComment, commentSelect+`WHERE c.post_id = ? AND c.id > ? ORDER BY c.id ASC LIMIT 500`, me.ID, id, queryID(r, "after", ""))
 	if err != nil {
+		return err
+	}
+	if err := s.fillCommentReactions(comments); err != nil {
 		return err
 	}
 	return ok(w, comments)
@@ -472,7 +536,7 @@ func (s *server) validReplyTarget(postID string, parentID *string) error {
 	if parentID == nil {
 		return nil
 	}
-	parent, err := s.loadComment(*parentID)
+	parent, err := s.loadComment("", *parentID)
 	if err != nil || parent.PostID != postID || parent.Deleted {
 		return badRequest("cannot reply to that comment")
 	}
@@ -533,12 +597,100 @@ func (s *server) updateComment(w http.ResponseWriter, r *http.Request, me *User)
 	if _, err := s.db.Exec(`UPDATE comments SET body = ?, edited_at = ? WHERE id = ?`, body, nowString(), id); err != nil {
 		return err
 	}
-	c, err := s.loadComment(id)
+	s.broadcastComment(id)
+	return s.respondComment(w, me.ID, id)
+}
+
+func (s *server) respondComment(w http.ResponseWriter, viewer, id string) error {
+	c, err := s.loadComment(viewer, id)
+	if err != nil {
+		return orNotFound(err, "comment not found")
+	}
+	return ok(w, c)
+}
+
+// broadcastComment sends a comment's current state to everyone who sees its
+// post, each with their own reaction filled in, as broadcastPost does.
+func (s *server) broadcastComment(id string) {
+	base, err := s.loadComment("", id)
+	if err != nil {
+		return
+	}
+	mine := map[string]string{}
+	rows, err := s.db.Query(`SELECT user_id, emoji FROM comment_reactions WHERE comment_id = ?`, id)
+	if err != nil {
+		return
+	}
+	for rows.Next() {
+		var uid, emoji string
+		if rows.Scan(&uid, &emoji) == nil {
+			mine[uid] = emoji
+		}
+	}
+	rows.Close()
+	for _, uid := range s.commentAudience(base.PostID) {
+		if !s.hub.online(uid) {
+			continue
+		}
+		c := base
+		c.MyReaction = mine[uid]
+		s.hub.sendTo(uid, commentEvent{Type: "comment.updated", Comment: c})
+	}
+}
+
+// ---- reactions on comments: the same shape as a post's
+
+func (s *server) setCommentReaction(w http.ResponseWriter, r *http.Request, me *User) error {
+	id, err := pathID(r, "id")
 	if err != nil {
 		return err
 	}
-	s.hub.sendToMany(s.commentAudience(c.PostID), commentEvent{Type: "comment.updated", Comment: c})
-	return ok(w, c)
+	var in struct {
+		Emoji string `json:"emoji"`
+	}
+	if err := readJSON(w, r, &in); err != nil {
+		return err
+	}
+	emoji, err := validEmoji(in.Emoji)
+	if err != nil {
+		return err
+	}
+	if _, err := s.liveComment("", id); err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`INSERT INTO comment_reactions(comment_id, user_id, emoji) VALUES (?, ?, ?)
+		ON DUPLICATE KEY UPDATE emoji = VALUES(emoji)`, id, me.ID, emoji); err != nil {
+		return err
+	}
+	s.broadcastComment(id)
+	return s.respondComment(w, me.ID, id)
+}
+
+func (s *server) deleteCommentReaction(w http.ResponseWriter, r *http.Request, me *User) error {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return err
+	}
+	if _, err := s.liveComment("", id); err != nil {
+		return err
+	}
+	if _, err := s.db.Exec(`DELETE FROM comment_reactions WHERE comment_id = ? AND user_id = ?`, id, me.ID); err != nil {
+		return err
+	}
+	s.broadcastComment(id)
+	return s.respondComment(w, me.ID, id)
+}
+
+// listCommentReactions answers who reacted to a comment with what.
+func (s *server) listCommentReactions(w http.ResponseWriter, r *http.Request, me *User) error {
+	id, err := pathID(r, "id")
+	if err != nil {
+		return err
+	}
+	if _, err := s.liveComment("", id); err != nil {
+		return err
+	}
+	return s.respondReactionGroups(w, `SELECT r.emoji, `+userCols+` FROM comment_reactions r JOIN users u ON u.id = r.user_id WHERE r.comment_id = ? ORDER BY r.emoji, u.display_name`, id)
 }
 
 // deleteComment removes the author's comment. One that has replies is kept as

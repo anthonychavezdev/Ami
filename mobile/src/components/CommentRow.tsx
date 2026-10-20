@@ -6,15 +6,18 @@ import { ActionLink } from './ActionLink';
 import { contextMenuProps } from './ContextMenu';
 import { DotsButton } from './DotsButton';
 import { type MenuItem, deleteItem, editItem, menuItems, replyItem } from './menu';
+import { ReactionButton } from './ReactionButton';
+import { ReactionSummary } from './ReactionSummary';
 import { Avatar } from './ui';
+import { api } from '@/lib/api';
 import type { Threaded } from '@/lib/comments';
 import { timeAgo } from '@/lib/time';
 import { useStyles, useTheme } from '@/lib/theme';
 import { useHovered } from '@/lib/useHovered';
 import { spacing, type ThemeColors } from '@/theme';
 
-// What the viewer may do with a comment: reply to any live one, edit and delete their own.
-export type CommentActions = { reply: () => void; edit?: () => void; remove?: () => void };
+// What the viewer may do with a comment: react to and reply to any live one, edit and delete their own.
+export type CommentActions = { react: (emoji: string | null) => void; reply: () => void; edit?: () => void; remove?: () => void };
 
 // One comment in the thread, indented by its depth; deleted ones are placeholders.
 export function CommentRow({
@@ -55,11 +58,21 @@ export function CommentRow({
           ) : null}
         </Text>
         <Text style={[styles.body, comment.deleted && styles.deletedText]}>{comment.body}</Text>
+        {!comment.deleted && (
+          <ReactionSummary
+            compact
+            id={comment.id}
+            reactions={comment.reactions}
+            myReaction={comment.my_reaction}
+            load={api.commentReactions}
+          />
+        )}
         {Platform.OS === 'web' && actions && hovered && (
           <DotsButton label="Comment options" style={styles.dots} onOpen={(x, y) => onOpenMenu(items, x, y)} />
         )}
         {actions && (
           <View style={styles.actions}>
+            <ReactionButton compact current={comment.my_reaction} onReact={actions.react} />
             <ActionLink icon="corner-down-right" label="Reply" text="Reply" onPress={actions.reply} />
             {actions.edit && <ActionLink icon="edit-2" label="Edit comment" text="Edit" onPress={actions.edit} />}
             {actions.remove && <ActionLink icon="trash-2" label="Delete comment" text="Delete" onPress={actions.remove} />}

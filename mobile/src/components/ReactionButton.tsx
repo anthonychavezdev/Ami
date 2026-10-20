@@ -6,8 +6,17 @@ import { useStyles, useTheme } from '@/lib/theme';
 import { DEFAULT_REACTION, REACTION_EMOJIS, radius, spacing, type ThemeColors } from '@/theme';
 
 // Tap: toggle the default reaction. Press and hold: pick any emoji from a
-// popover anchored above the button.
-export function ReactionButton({ current, onReact }: { current: string; onReact: (emoji: string | null) => void }) {
+// popover anchored above the button. `compact` is the small text form that
+// sits with Reply, Edit and Delete under a comment.
+export function ReactionButton({
+  current,
+  onReact,
+  compact = false,
+}: {
+  current: string;
+  onReact: (emoji: string | null) => void;
+  compact?: boolean;
+}) {
   const styles = useStyles(makeStyles);
   const { colors } = useTheme();
   const ref = useRef<View>(null);
@@ -33,10 +42,20 @@ export function ReactionButton({ current, onReact }: { current: string; onReact:
         onPress={() => onReact(current ? null : DEFAULT_REACTION)}
         onLongPress={openPicker}
         delayLongPress={250}
-        style={({ pressed }) => [styles.btn, current ? styles.btnActive : null, pressed && { opacity: 0.7 }]}
+        style={({ pressed }) => [
+          compact ? styles.link : styles.btn,
+          !compact && current ? styles.btnActive : null,
+          pressed && { opacity: 0.7 },
+        ]}
+        accessibilityLabel={current ? 'Change reaction' : 'React'}
+        accessibilityHint="Hold to pick an emoji"
       >
-        {current ? <Text style={styles.btnText}>{current}</Text> : <Feather name="thumbs-up" size={18} color={colors.muted} />}
-        <Text style={[styles.label, current ? styles.labelActive : null]}>{current ? 'Reacted' : 'React'}</Text>
+        {current ? (
+          <Text style={compact ? styles.linkEmoji : styles.btnText}>{current}</Text>
+        ) : (
+          <Feather name="thumbs-up" size={compact ? 13 : 18} color={colors.muted} />
+        )}
+        <Text style={[compact ? styles.linkText : styles.label, current ? styles.labelActive : null]}>{current ? 'Reacted' : 'React'}</Text>
       </Pressable>
 
       <Modal visible={anchor !== null} transparent animationType="fade" onRequestClose={() => setAnchor(null)}>
@@ -58,6 +77,9 @@ const makeStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     btn: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 6, paddingHorizontal: 12, borderRadius: radius.pill },
     btnActive: { backgroundColor: colors.accentSoft },
+    link: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+    linkEmoji: { fontSize: 13 },
+    linkText: { color: colors.muted, fontSize: 13 },
     btnText: { fontSize: 18 },
     label: { color: colors.muted, fontWeight: '600' },
     labelActive: { color: colors.accent },

@@ -128,6 +128,9 @@ export const api = {
   deleteComment: (id: string) => del<void>(`/api/comments/${id}`),
   react: (postId: string, emoji: string) => put<Post>(`/api/posts/${postId}/reaction`, { emoji }),
   postReactions: (postId: string) => get<ReactionGroup[]>(`/api/posts/${postId}/reactions`),
+  reactToComment: (commentId: string, emoji: string) => put<Comment>(`/api/comments/${commentId}/reaction`, { emoji }),
+  unreactToComment: (commentId: string) => del<Comment>(`/api/comments/${commentId}/reaction`),
+  commentReactions: (commentId: string) => get<ReactionGroup[]>(`/api/comments/${commentId}/reactions`),
   unreact: (postId: string) => del<Post>(`/api/posts/${postId}/reaction`),
 
   // friends

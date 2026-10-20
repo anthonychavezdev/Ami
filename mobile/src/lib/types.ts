@@ -82,6 +82,8 @@ export interface Comment {
   author: User;
   body: string;
   created_at: string;
+  reactions: Record<string, number>; // emoji -> count, like a post's
+  my_reaction: string;
 }
 
 export interface Group {

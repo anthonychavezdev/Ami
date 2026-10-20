@@ -11,8 +11,13 @@ Threaded comments under a post. Code: the comments half of
 
 ```json
 { "id": "019a0c31-…", "post_id": "019a0c2e-…", "parent_id": "019a0c30-…", "author": { "...User" }, "body": "...",
-  "created_at": "...", "edited_at": null, "deleted": false }
+  "created_at": "...", "edited_at": null, "deleted": false, "reactions": { "👍": 2 }, "my_reaction": "👍" }
 ```
+
+`reactions` and `my_reaction` work exactly as a post's ([posts.md](posts.md#reactions)):
+`commentSelect` fills `my_reaction` for the viewer and `fillCommentReactions`
+adds the counts for a whole list in one query. A `[deleted]` placeholder shows
+no reactions and takes none.
 
 A deleted comment that still has replies is returned with `deleted: true`,
 `body: "[deleted]"`, no `edited_at`, and a stand-in author named `[deleted]`
@@ -59,6 +64,17 @@ Only the author. `removeComment` decides between two outcomes:
 Either way `comment.deleted {post_id, id}` and a `post.updated` (new count) go to
 the audience, and the response is 204.
 
+## Reactions
+
+`PUT /api/comments/{id}/reaction` with `{"emoji": "🔥"}` upserts your single
+reaction on a live comment (table `comment_reactions`, primary key
+`(comment_id, user_id)`), `DELETE /api/comments/{id}/reaction` removes it, and
+`GET /api/comments/{id}/reactions` lists who reacted with what, grouped by
+emoji with the most used first. All three answer 404 for a missing comment or
+a `[deleted]` placeholder; the first two answer with the updated comment. A
+change is broadcast as `comment.updated` to everyone who sees the post, each
+with their own `my_reaction` (`broadcastComment`), the way posts do it.
+
 ## In the app
 
 `useComments(postId, onGone)` loads the post and its comments together, keeps
@@ -71,6 +87,16 @@ them live, and exposes `add`, `edit` and `remove`:
   a phone, closing the pane on a wide window).
 - `add` applies the server's reply and then refetches the post for the count,
   rather than adding one locally, so the `post.updated` event cannot double it.
+
+- `react(comment, emoji | null)` sets or clears the viewer's reaction through
+  the API and replaces the comment in the list with the answer; the event
+  that follows carries the same thing.
+
+`CommentRow` shows the reaction pills under the body, the same
+`ReactionSummary` as posts (hover for the names in the browser, hold for the
+sheet on phones; [posts.md](posts.md#reactions)), and a compact React action
+next to Reply: tap for 👍, hold for the emoji picker (`ReactionButton` in its
+`compact` form).
 
 `thread()` in `comments.ts` nests the flat list: a map from parent id to
 children, then a depth-first walk that yields each comment with its `depth`.
