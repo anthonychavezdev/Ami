@@ -103,6 +103,8 @@ running here, another device just opens `http://<this machine's IP>:8081`.
   Other flags: `-addr`, `-allowed-origins` (CORS is off by default), `-web-dir`.
   For calls between strict NATs run coturn next to it with the same
   `AMI_TURN_SECRET` ([docs/deployment.md](docs/deployment.md#turn)).
+  Or run all of it in containers: `cp .env.example .env`, fill in the two
+  secrets, `docker compose up -d --build` ([docs/deployment.md](docs/deployment.md#docker)).
 - `dist/web`: the browser build (minified, hashed bundles). Serve it from the
   same binary with `-web-dir dist/web`: the page then talks to the origin it
   was loaded from, so no CORS setup is needed. If `EXPO_PUBLIC_API_URL` is set

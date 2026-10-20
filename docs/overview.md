@@ -138,6 +138,7 @@ with a diagram, is in [database-schema.md](database-schema.md).
 | [`mobile/src/theme.ts`](../mobile/src/theme.ts) | Colours, spacing, radii, the reaction emoji list. |
 | [`mobile/e2e/`](../mobile/e2e) | Python scripts that drive the Android build on emulators. |
 | [`mobile/plugins/`](../mobile/plugins) | Expo config plugins that patch the generated native projects. |
+| [`Dockerfile`](../Dockerfile), [`compose.yaml`](../compose.yaml) | The server with the web build in one image; MariaDB, coturn and the server as a compose stack ([deployment.md](deployment.md#docker)). |
 
 [mobile-app.md](mobile-app.md) walks through all of it.
 

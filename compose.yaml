@@ -1,0 +1,65 @@
+# Ami in containers: MariaDB, coturn (the TURN relay for calls) and the
+# server, which also serves the browser app. Copy .env.example to .env, set
+# the two secrets, then `docker compose up -d`. docs/deployment.md#docker
+# covers TLS, backups and upgrades. AMI_PORT and AMI_TURN_PORT (8080 and
+# 3478 unless .env says otherwise) are the ports published on this machine.
+services:
+  db:
+    image: mariadb:11.4
+    restart: unless-stopped
+    environment:
+      MARIADB_DATABASE: ami
+      MARIADB_USER: ami
+      MARIADB_PASSWORD: ${AMI_DB_PASSWORD:?set AMI_DB_PASSWORD in .env}
+      MARIADB_RANDOM_ROOT_PASSWORD: "1"
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - db:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  # coturn relays calls between networks that cannot reach each other
+  # directly. The server mints its credentials from the same secret
+  # (docs/calls.md#get-apiice). Behind Docker's NAT it must advertise the
+  # machine's public address: AMI_PUBLIC_IP, or the one it detects itself.
+  turn:
+    image: coturn/coturn:4.6
+    restart: unless-stopped
+    environment:
+      AMI_TURN_SECRET: ${AMI_TURN_SECRET:?set AMI_TURN_SECRET in .env}
+      AMI_PUBLIC_IP: ${AMI_PUBLIC_IP:-}
+    entrypoint: ["sh", "-c"]
+    command:
+      - >
+        exec turnserver -n --log-file=stdout --realm=ami --fingerprint --no-tls
+        --use-auth-secret --static-auth-secret="$$AMI_TURN_SECRET"
+        --listening-port=3478 --min-port=49160 --max-port=49200
+        --external-ip="$${AMI_PUBLIC_IP:-$$(detect-external-ip)}"
+    ports:
+      - "${AMI_TURN_PORT:-3478}:3478/udp"
+      - "${AMI_TURN_PORT:-3478}:3478/tcp"
+      - "49160-49200:49160-49200/udp"
+
+  server:
+    build: .
+    image: ami-server
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      AMI_DB: ami:${AMI_DB_PASSWORD}@tcp(db:3306)/ami
+      AMI_TURN_SECRET: ${AMI_TURN_SECRET}
+      AMI_TURN_PORT: ${AMI_TURN_PORT:-3478}
+    ports:
+      - "${AMI_PORT:-8080}:8080"
+    volumes:
+      - media:/data/media
+
+volumes:
+  db:
+  media:
