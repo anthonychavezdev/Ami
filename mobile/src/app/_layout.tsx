@@ -1,6 +1,6 @@
-import { Stack, useRouter } from 'expo-router';
+import { DarkTheme, DefaultTheme, Stack, ThemeProvider as NavigationTheme, useRouter } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useMemo } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { Loading, WideColumn } from '@/components/ui';
@@ -29,6 +29,23 @@ function RootNavigator() {
   const wide = useWide();
   const router = useRouter();
   const onIncoming = useCallback(() => router.push('/call'), [router]);
+  // The navigators' own theme: its `dark` flag decides how the native header
+  // draws its buttons (light or dark glass on iOS 26), and its colours are the
+  // defaults for whatever is not styled explicitly below.
+  const navigationTheme = useMemo(() => {
+    const base = scheme === 'dark' ? DarkTheme : DefaultTheme;
+    return {
+      ...base,
+      colors: {
+        ...base.colors,
+        primary: colors.accent,
+        background: colors.bg,
+        card: colors.card,
+        text: colors.text,
+        border: colors.border,
+      },
+    };
+  }, [scheme, colors]);
 
   // Tapping a message notification opens that chat.
   useEffect(() => {
@@ -42,50 +59,52 @@ function RootNavigator() {
   if (!ready) return <Loading />;
 
   return (
-    <CallProvider onIncoming={onIncoming}>
-      <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
-      <Stack
-        screenLayout={({ route, children }) => (
-          <>
-            {/* the tabs lay themselves out (sidebar + column) and a call fills the window */}
-            {route.name === '(tabs)' || route.name === 'call' ? children : <WideColumn>{children}</WideColumn>}
-            <ToastHost />
-          </>
-        )}
-        screenOptions={{
-          headerTintColor: colors.accent,
-          headerTitleStyle: { color: colors.text },
-          headerTitleAlign: wide ? 'center' : undefined, // over the column, not at the far left
-          headerStyle: { backgroundColor: colors.card },
-          headerBackButtonDisplayMode: 'minimal', // otherwise iOS shows the route group name, "(tabs)"
-          contentStyle: { backgroundColor: colors.bg },
-        }}
-      >
-        <Stack.Protected guard={!!user && !user.must_change_password}>
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          {/* singular: opening a post/profile/chat that is already in the stack goes to it instead of stacking a copy */}
-          <Stack.Screen name="post/[id]" options={{ title: 'Post' }} dangerouslySingular />
-          <Stack.Screen name="user/[id]" options={{ title: 'Profile' }} dangerouslySingular />
-          <Stack.Screen name="edit-profile" options={{ title: 'Edit profile' }} dangerouslySingular />
-          <Stack.Screen name="group/[id]" options={{ title: 'Group' }} dangerouslySingular />
-          <Stack.Screen name="chat/[id]" options={{ title: 'Chat' }} dangerouslySingular />
-          <Stack.Screen name="chat/group/[id]" options={{ title: 'Group chat' }} dangerouslySingular />
-          <Stack.Screen name="new-group-chat" options={{ title: 'New group chat' }} dangerouslySingular />
-          <Stack.Screen
-            name="call"
-            options={{ headerShown: false, presentation: 'fullScreenModal', gestureEnabled: false }}
-            dangerouslySingular
-          />
-        </Stack.Protected>
-        <Stack.Protected guard={!user}>
-          <Stack.Screen name="login" options={{ headerShown: false }} />
-          <Stack.Screen name="register" options={{ title: 'Create account' }} />
-        </Stack.Protected>
-        {/* Last on purpose: with a temporary password every screen above is gated, so this is where the app opens. */}
-        <Stack.Protected guard={!!user}>
-          <Stack.Screen name="change-password" options={{ title: 'Change password' }} />
-        </Stack.Protected>
-      </Stack>
-    </CallProvider>
+    <NavigationTheme value={navigationTheme}>
+      <CallProvider onIncoming={onIncoming}>
+        <StatusBar style={scheme === 'dark' ? 'light' : 'dark'} />
+        <Stack
+          screenLayout={({ route, children }) => (
+            <>
+              {/* the tabs lay themselves out (sidebar + column) and a call fills the window */}
+              {route.name === '(tabs)' || route.name === 'call' ? children : <WideColumn>{children}</WideColumn>}
+              <ToastHost />
+            </>
+          )}
+          screenOptions={{
+            headerTintColor: colors.accent,
+            headerTitleStyle: { color: colors.text },
+            headerTitleAlign: wide ? 'center' : undefined, // over the column, not at the far left
+            headerStyle: { backgroundColor: colors.card },
+            headerBackButtonDisplayMode: 'minimal', // otherwise iOS shows the route group name, "(tabs)"
+            contentStyle: { backgroundColor: colors.bg },
+          }}
+        >
+          <Stack.Protected guard={!!user && !user.must_change_password}>
+            <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+            {/* singular: opening a post/profile/chat that is already in the stack goes to it instead of stacking a copy */}
+            <Stack.Screen name="post/[id]" options={{ title: 'Post' }} dangerouslySingular />
+            <Stack.Screen name="user/[id]" options={{ title: 'Profile' }} dangerouslySingular />
+            <Stack.Screen name="edit-profile" options={{ title: 'Edit profile' }} dangerouslySingular />
+            <Stack.Screen name="group/[id]" options={{ title: 'Group' }} dangerouslySingular />
+            <Stack.Screen name="chat/[id]" options={{ title: 'Chat' }} dangerouslySingular />
+            <Stack.Screen name="chat/group/[id]" options={{ title: 'Group chat' }} dangerouslySingular />
+            <Stack.Screen name="new-group-chat" options={{ title: 'New group chat' }} dangerouslySingular />
+            <Stack.Screen
+              name="call"
+              options={{ headerShown: false, presentation: 'fullScreenModal', gestureEnabled: false }}
+              dangerouslySingular
+            />
+          </Stack.Protected>
+          <Stack.Protected guard={!user}>
+            <Stack.Screen name="login" options={{ headerShown: false }} />
+            <Stack.Screen name="register" options={{ title: 'Create account' }} />
+          </Stack.Protected>
+          {/* Last on purpose: with a temporary password every screen above is gated, so this is where the app opens. */}
+          <Stack.Protected guard={!!user}>
+            <Stack.Screen name="change-password" options={{ title: 'Change password' }} />
+          </Stack.Protected>
+        </Stack>
+      </CallProvider>
+    </NavigationTheme>
   );
 }
