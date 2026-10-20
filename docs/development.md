@@ -23,7 +23,7 @@ The Android SDK ships under Google's license, which `devenv.yaml` accepts with
 | Command | What it does |
 | --- | --- |
 | `setup` | `go mod tidy` in `server/` and `npm install` in `mobile/`. Run once, and after dependency changes. |
-| `devenv up` | MariaDB and the server in dev mode under process-compose. The database lives under `.devenv/state/mysql`, with an `ami` database and user created on the first start; the server reaches it over the socket in `$AMI_DB`. `devenv up mysql` runs the database alone. |
+| `devenv up` | MariaDB, coturn and the server in dev mode under process-compose. The database lives under `.devenv/state/mysql`, with an `ami` database and user created on the first start; the server reaches it over the socket in `$AMI_DB`. coturn (`turnserver` on `$AMI_TURN_PORT`, secret `$AMI_TURN_SECRET`) is the TURN relay the server hands out credentials for ([calls.md](calls.md#get-apiice)); emulators reach it through the same host as the API. `devenv up mysql` runs the database alone. |
 | `server [flags]` | The API with the production defaults on `:$AMI_PORT`, against the MariaDB that `devenv up` runs. `server -dev` seeds demo data and allows any browser origin; `server -dev -verbose` also logs every request, response and socket message. Flags go straight to the binary. |
 | `web` | Metro serving the app as a web page on `http://localhost:$AMI_METRO_PORT`. |
 | `mobile` | Metro alone, for an app already installed on a device or emulator. |
@@ -39,6 +39,8 @@ The Android SDK ships under Google's license, which `devenv.yaml` accepts with
 | `AMI_PORT` | `8080` | The API's port, and where the app looks for it. |
 | `AMI_METRO_PORT` | `8081` | Metro, which also serves the web page. Native dev builds bake it in: rebuild after changing it. |
 | `AMI_HOST` | LAN IP | The address phones use to reach this machine, when Expo's own detection picks the wrong interface (VPNs, several networks). |
+| `AMI_TURN_SECRET` | `ami-dev-turn` | Shared by the coturn that `devenv up` runs and the server, which mints TURN credentials for it. |
+| `AMI_TURN_PORT` | `3478` | Where that coturn listens. |
 | `EXPO_PUBLIC_API_URL` | empty | The full API URL when the server runs elsewhere; baked into native builds. |
 
 Override them in a gitignored `.env` at the repository root (`NAME=value` per

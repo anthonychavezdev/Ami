@@ -142,6 +142,11 @@ export interface Conversation {
 export type UploadProgress = { sent: number; total: number };
 export type UploadOptions = { onProgress?: (progress: UploadProgress) => void; signal?: AbortSignal };
 
+// GET /api/ice: what a call hands to RTCPeerConnection. The TURN entry carries
+// credentials for the viewer that expire after `ttl` seconds.
+export type IceServer = { urls: string[]; username?: string; credential?: string };
+export type IceConfig = { ice_servers: IceServer[]; ttl: number };
+
 // GET /api/stats: the resources behind the server. Host figures its platform
 // cannot provide are 0.
 export type ServerStats = {

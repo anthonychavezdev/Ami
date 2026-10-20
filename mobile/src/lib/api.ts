@@ -7,6 +7,7 @@ import type {
   Conversation,
   Group,
   GroupDetail,
+  IceConfig,
   Me,
   Message,
   Post,
@@ -97,6 +98,7 @@ export const api = {
   logout: () => post<void>('/api/logout'),
   me: () => get<Me>('/api/me'),
   stats: () => get<ServerStats>('/api/stats'),
+  ice: () => get<IceConfig>('/api/ice'),
   updateMe: (
     patch: Partial<
       Pick<

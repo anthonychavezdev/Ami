@@ -11,6 +11,10 @@ let
   emulatorAbi = if pkgs.stdenv.hostPlatform.isAarch64 then "arm64-v8a" else "x86_64";
   systemImage = "system-images;android-${androidApi};google_apis;${emulatorAbi}";
 
+  # coturn, the TURN relay for calls (docs/calls.md). nixpkgs has marked it
+  # broken on macOS since 2018, but it builds and runs fine there.
+  coturn = pkgs.coturn.overrideAttrs (o: { meta = o.meta // { broken = false; }; });
+
   # Xcode must not see the Nix toolchain (DEVELOPER_DIR, SDKROOT, CC/LD and the
   # NIX_* flags garble the link step), so iOS commands run with a minimal
   # environment: Apple's tools first, then node, npm and pod from this shell.
@@ -84,6 +88,7 @@ in
   packages = [
     pkgs.watchman # faster Metro file watching
     pkgs.python3  # the end-to-end scripts in mobile/e2e (standard library only)
+    coturn        # turnserver for `devenv up`, turnutils_* to poke at it
   ] ++ lib.optionals pkgs.stdenv.isDarwin [
     pkgs.cocoapods # iOS native builds (Xcode itself must come from the App Store); macOS only, like everything iOS below
   ];
@@ -101,6 +106,8 @@ in
     AMI_HOST = lib.mkOptionDefault ""; # address phones use to reach this machine, when Expo's LAN detection picks the wrong interface (VPNs, several networks)
     EXPO_PUBLIC_API_URL = lib.mkOptionDefault ""; # full URL of the API when it runs on another machine; release builds require it (https)
     AMI_DB = lib.mkOptionDefault "ami:ami@unix(${config.env.DEVENV_RUNTIME}/mysql.sock)/ami"; # the server's database: the devenv MariaDB over its socket (production: user:password@tcp(host:3306)/ami)
+    AMI_TURN_SECRET = lib.mkOptionDefault "ami-dev-turn"; # shared by the coturn `devenv up` runs and the server, which mints call credentials for it (production: a long random one)
+    AMI_TURN_PORT = lib.mkOptionDefault "3478"; # where that coturn listens; the server points the apps at it on the host they reached the API at
 
     # Go: module cache, build cache and `go install` binaries under ./.go
     # (devenv's Go module defaults GOPATH to .devenv/state/go; we keep it all in one place)
@@ -252,9 +259,16 @@ in
     ls -la "$DEVENV_ROOT/dist"
   '';
 
-  # `devenv up` runs MariaDB (services.mysql above) and then the Go API, with process-compose.
+  # `devenv up` runs MariaDB (services.mysql above), coturn and the Go API,
+  # with process-compose. The API takes the TURN secret and port from the
+  # environment above and hands out credentials on /api/ice; coturn checks
+  # them with the same secret, so nothing else links the two.
   processes.server = {
     exec = "cd $DEVENV_ROOT/server && go run . -dev -addr :$AMI_PORT";
     process-compose.depends_on.mysql.condition = "process_healthy";
   };
+  processes.turn.exec = ''
+    turnserver -n --log-file=stdout --pidfile="$DEVENV_STATE/turnserver.pid" --listening-port="$AMI_TURN_PORT" \
+      --realm=ami --fingerprint --use-auth-secret --static-auth-secret="$AMI_TURN_SECRET" --no-tls
+  '';
 }
