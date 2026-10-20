@@ -928,3 +928,18 @@ func TestGroupPostReactions(t *testing.T) {
 	who := ts.get("/api/posts/"+post+"/reactions", ana.token).list()
 	ts.check("who reacted names both, by name", len(who) == 1 && len(who[0].list("users")) == 2 && who[0].list("users")[0].str("username") == "ana" && who[0].list("users")[1].str("username") == "bea", who)
 }
+
+// Profile posts, the ones the Me tab and a profile page list, carry reactions
+// like any post.
+func TestProfilePostReactions(t *testing.T) {
+	ts := newTestServer(t, false)
+	ana, bea := ts.register("ana"), ts.register("bea")
+	post := ts.post("/api/posts", J{"body": "en mi perfil"}, ana.token).obj().id("id")
+	ts.put("/api/posts/"+post+"/reaction", J{"emoji": "💯"}, bea.token)
+	mine := ts.get("/api/users/"+ana.id+"/posts", ana.token).list()
+	ts.check("my profile shows the count and no reaction of my own", len(mine) == 1 && mine[0].obj("reactions").num("💯") == 1 && mine[0].str("my_reaction") == "", mine)
+	theirs := ts.get("/api/users/"+ana.id+"/posts", bea.token).list()
+	ts.check("the reactor sees their own", len(theirs) == 1 && theirs[0].str("my_reaction") == "💯", theirs)
+	who := ts.get("/api/posts/"+post+"/reactions", ana.token).list()
+	ts.check("and who reacted names them", len(who) == 1 && who[0].list("users")[0].str("username") == "bea", who)
+}
