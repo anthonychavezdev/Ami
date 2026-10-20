@@ -878,6 +878,10 @@ func TestCommentReactions(t *testing.T) {
 	ts.check("the placeholder shows no reactions", ts.get("/api/posts/"+post+"/comments", bea.token).list()[0].isTrue("deleted") && len(ts.get("/api/posts/"+post+"/comments", bea.token).list()[0].obj("reactions")) == 0)
 	ts.check("and takes none", ts.put("/api/comments/"+comment+"/reaction", J{"emoji": "👍"}, ana.token).status == 404 && ts.get("/api/comments/"+comment+"/reactions", ana.token).status == 404)
 	ts.check("the reply still can", ts.put("/api/comments/"+reply+"/reaction", J{"emoji": "🎉"}, bea.token).status == 200)
+	listed := ts.get("/api/posts/"+post+"/comments", bea.token).list()
+	ts.check("the reply carries its count and the reactor's own reaction in the thread", len(listed) == 2 && listed[1].id("parent_id") == comment && listed[1].obj("reactions").num("🎉") == 1 && listed[1].str("my_reaction") == "🎉", listed)
+	who = ts.get("/api/comments/"+reply+"/reactions", ana.token).list()
+	ts.check("and who reacted to the reply names bea", len(who) == 1 && who[0].list("users")[0].str("username") == "bea", who)
 }
 
 // Reactions on chat messages: within the chat, with counts and my_reaction on
