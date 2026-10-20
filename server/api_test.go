@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -968,4 +969,46 @@ func TestMediaReactions(t *testing.T) {
 	ts.check("a name that is not an upload -> 404", ts.put("/api/media/"+hex.EncodeToString(randomBytes(16))+".png/reaction", J{"emoji": "📸"}, ana.token).status == 404)
 	ts.check("a dotfile name -> 400", ts.get("/api/media/.hidden.png/reactions", ana.token).status == 400)
 	ts.check("needs a session", ts.get("/api/media/"+name+"/reactions", "").status == 401)
+}
+
+func TestIceServers(t *testing.T) {
+	ts := newTestServer(t, false)
+	ana := ts.register("ana")
+	ts.s.ice = iceConfig{stun: []string{"stun:stun.example.com:3478"}, turnPort: 3478}
+	ts.check("the ICE servers need a session", ts.get("/api/ice", "").status == 401)
+	strs := func(v any) (out []string) {
+		list, _ := v.([]any)
+		for _, x := range list {
+			if s, ok := x.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	got := ts.get("/api/ice", ana.token).obj()
+	servers := got.list("ice_servers")
+	ts.check("without a TURN secret only STUN is handed out, with no credentials",
+		len(servers) == 1 && strings.Join(strs(servers[0]["urls"]), " ") == "stun:stun.example.com:3478" && !servers[0].has("username"), got)
+
+	ts.s.ice.secret = "a shared secret"
+	before := time.Now()
+	got = ts.get("/api/ice", ana.token).obj()
+	servers = got.list("ice_servers")
+	ts.check("with a secret, TURN follows STUN and the credentials last a day", len(servers) == 2 && got.num("ttl") == 86400, got)
+	if len(servers) == 2 {
+		turn := servers[1]
+		ts.check("coturn is assumed next to the server, reached at the host the client used, over udp and tcp",
+			strings.Join(strs(turn["urls"]), " ") == "turn:127.0.0.1:3478?transport=udp turn:127.0.0.1:3478?transport=tcp", turn)
+		stamp, user, _ := strings.Cut(turn.str("username"), ":")
+		expiry, _ := strconv.ParseInt(stamp, 10, 64)
+		ts.check("the username is the expiry and the user",
+			user == ana.id && expiry >= before.Add(turnCredentialTTL).Unix() && expiry <= time.Now().Add(turnCredentialTTL).Unix(), turn)
+		_, want := turnCredentials("a shared secret", ana.id, time.Unix(expiry, 0))
+		ts.check("the credential is the HMAC of the username under the secret", turn.str("credential") == want, turn)
+	}
+
+	ts.s.ice.turn = []string{"turns:turn.example.com:5349", "turn:turn.example.com:3478?transport=udp"}
+	servers = ts.get("/api/ice", ana.token).obj().list("ice_servers")
+	ts.check("configured TURN urls are handed out as they are",
+		len(servers) == 2 && strings.Join(strs(servers[1]["urls"]), " ") == "turns:turn.example.com:5349 turn:turn.example.com:3478?transport=udp", servers)
 }

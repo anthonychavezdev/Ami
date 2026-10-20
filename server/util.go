@@ -247,6 +247,14 @@ func envOr(name, def string) string {
 	return def
 }
 
+// envInt is envOr for a number; a value that is not one keeps the default.
+func envInt(name string, def int) int {
+	if n, err := strconv.Atoi(os.Getenv(name)); err == nil {
+		return n
+	}
+	return def
+}
+
 // placeholders is "?, ?, ?" for an IN list of n values.
 func placeholders(n int) string {
 	return strings.TrimSuffix(strings.Repeat("?, ", n), ", ")

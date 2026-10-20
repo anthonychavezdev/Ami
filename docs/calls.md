@@ -146,8 +146,33 @@ makes an offer; `acceptOffer` sets the remote description, optionally adds our
 tracks first (so the answer carries them), flushes ICE candidates that arrived
 early, and answers. Candidates that arrive before the remote description, or
 before the `Peer` exists (`early` in the manager), are buffered. The ICE
-configuration is `ICE_SERVERS` in `config.ts`: Google's public STUN only, so
-calls across networks with strict NATs need a TURN server added there.
+servers come from the server: every join asks `GET /api/ice` (`refreshIce`,
+alongside the microphone request) and the answer is handed to each new
+`Peer`. `ICE_SERVERS` in `config.ts`, a public STUN server, is only what a
+call uses before the first answer or when the request fails.
+
+### `GET /api/ice`
+
+```json
+{ "ice_servers": [
+    { "urls": ["stun:stun.l.google.com:19302"] },
+    { "urls": ["turn:ami.example.com:3478?transport=udp", "turn:ami.example.com:3478?transport=tcp"],
+      "username": "1761062400:019a0c2e-…", "credential": "base64…" } ],
+  "ttl": 86400 }
+```
+
+STUN only tells a device its public address and is free; the servers come
+from `-stun-urls`. TURN relays the whole call when the two sides cannot reach
+each other (carrier-grade NAT, strict firewalls), which costs bandwidth, so it
+is the operator's own coturn ([deployment.md](deployment.md#turn)) and is
+handed out only when `-turn-secret` is set. The credentials are coturn's
+`use-auth-secret` scheme (`ice.go`): the username is `expiry:user id`, the
+expiry a day ahead, the credential the base64 HMAC-SHA1 of the username under
+the shared secret. coturn checks both itself, so the server keeps no state
+and a leaked pair stops working after a day. The URLs are `-turn-urls`, or,
+when that is empty, coturn next to the server at `-turn-port` on the host the
+client reached the API by, so an emulator, a phone on the LAN and the public
+hostname each get an address that works for them.
 
 ### Streams, camera and screen
 
