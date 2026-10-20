@@ -68,7 +68,7 @@ a 20 GB video outlasts the server's 60 s `WriteTimeout` many times over.
 ## Reactions on uploads
 
 A picture or video can be reacted to in itself, whichever post or chat it
-appears in: the fullscreen viewer shows a React button and the reaction pills
+appears in, and a profile picture or cover too: the fullscreen viewer shows a React button and the reaction pills
 for the upload on screen, with who reacted on hover or hold
 ([posts.md](posts.md#reactions)). They live in `media_reactions`, keyed by the
 upload's file name and the user; the name is random and unguessable, so only

@@ -1,19 +1,22 @@
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import React from 'react';
+import React, { useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Cover } from './Cover';
+import { MediaViewer } from './MediaViewer';
 import { Avatar, Button, ErrorBanner } from './ui';
 import { api } from '@/lib/api';
 import { confirmAction } from '@/lib/confirm';
 import { PostMarkdown } from '@/lib/markdown';
 import { useStyles, useTheme } from '@/lib/theme';
-import type { UserProfile } from '@/lib/types';
+import type { Attachment, UserProfile } from '@/lib/types';
 import { radius, spacing, type ThemeColors } from '@/theme';
 
 // The top of someone's profile: cover, picture, names, bio (Markdown),
 // interests, links, counts and what you can do with them (befriend, message, call).
+// Tapping the cover or the picture opens it in the fullscreen viewer, with
+// Save and the reactions to the picture itself.
 export function ProfileHeader({
   profile,
   isMe,
@@ -30,13 +33,26 @@ export function ProfileHeader({
   const styles = useStyles(makeStyles);
   const { colors } = useTheme();
   const router = useRouter();
+  const pictures: Attachment[] = [profile.cover_url, profile.avatar_url]
+    .filter((url): url is string => !!url)
+    .map((url) => ({ type: 'image', url }));
+  const [open, setOpen] = useState<number | null>(null); // which of them the viewer shows
   return (
     <View>
-      {!!profile.cover_url && <Cover url={profile.cover_url} crop={profile.cover_crop} />}
+      {!!profile.cover_url && (
+        <Pressable onPress={() => setOpen(0)} accessibilityLabel="Open the cover picture">
+          <Cover url={profile.cover_url} crop={profile.cover_crop} />
+        </Pressable>
+      )}
       <View style={styles.header}>
-        <View style={profile.cover_url ? styles.overCover : undefined}>
+        <Pressable
+          style={profile.cover_url ? styles.overCover : undefined}
+          onPress={profile.avatar_url ? () => setOpen(pictures.length - 1) : undefined}
+          accessibilityLabel={profile.avatar_url ? 'Open the profile picture' : undefined}
+        >
           <Avatar user={profile} size={72} />
-        </View>
+        </Pressable>
+        <MediaViewer items={pictures} index={open} accent={colors.accent} onClose={() => setOpen(null)} />
         <Text style={styles.name}>{profile.display_name}</Text>
         <Text style={styles.username}>
           @{profile.username}
