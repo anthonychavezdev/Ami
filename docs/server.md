@@ -41,10 +41,23 @@ pointed at. This page explains how it is put together; the pages linked from
 | `-turn-secret` | `$AMI_TURN_SECRET` | The `static-auth-secret` of your coturn. Set, `/api/ice` hands out TURN credentials for it ([calls.md](calls.md#get-apiice)). |
 | `-turn-urls` | `$AMI_TURN_URLS` | Comma-separated TURN servers (`turn:host:3478?transport=udp`, `turns:host:5349`). Empty means coturn on this host at `-turn-port`, named as the client reached the API. |
 | `-turn-port` | `$AMI_TURN_PORT`, else `3478` | The port of that coturn. |
-| `-invite` | `$AMI_INVITE` | Registration needs this invite code; empty leaves it open to anyone ([security.md](security.md#accounts)). |
+| `-invite` | `$AMI_INVITE` | A standing invite code: registration needs it, or a one-time code ([Invite codes](#invite-codes)). |
 | `-user-storage-gb` | `$AMI_USER_STORAGE_GB`, else `0` | The most one account may upload in total, in GB; `0` is no limit ([media.md](media.md#post-apimedia)). |
 | `-verbose` | off | Log every request and response with headers and bodies, and every WebSocket message. See [Logging](#logging). |
 | `-reset-password` | empty | A username: give it a temporary password, print it, sign out its devices, exit. |
+| `-new-invite` | off | Make a one-time invite code, print it, exit. Works against the database while the server runs. |
+
+### Invite codes
+
+`ami-server -new-invite` (with the same `AMI_DB` as the server; in Docker,
+`docker compose exec server ami-server -new-invite`) prints a code such as
+`Q7MD-3K2A-PX8F-HT4N` and records only its hash. The first code ever made
+closes open registration; each code registers one account, is spent in the
+transaction that creates it, and stays on record with who used it, so
+registration does not open again when the codes run out. Case and the
+dashes do not matter when typing one. A standing code from `-invite` keeps
+working alongside. To go back to open registration, empty the `invites`
+table and unset `-invite`.
 
 The `http.Server` is configured with `MaxHeaderBytes` 64 KB, `ReadHeaderTimeout`
 10 s, `ReadTimeout` 30 s, `WriteTimeout` 60 s, `IdleTimeout` 2 min and TLS 1.2 as

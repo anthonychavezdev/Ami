@@ -44,11 +44,12 @@ docker compose logs -f server
   add `-trust-proxy` to the server's command (`command:` under `server` in a
   `compose.override.yaml`, repeating the arguments from the Dockerfile's
   `CMD`). The browser only allows camera and microphone on HTTPS.
-- Who may join and how much they may upload: `AMI_INVITE` in `.env` makes
-  registration need that code (hand it to the people you invite), and
-  `AMI_USER_STORAGE_GB` caps what one account may upload in total. Both are
-  off by default, which is right for a first look and wrong for a public
-  address.
+- Who may join: `docker compose exec server ami-server -new-invite` prints a
+  one-time code to hand to someone, and the first one closes open
+  registration ([server.md](server.md#invite-codes)); `AMI_INVITE` in `.env`
+  is a standing code instead or as well. `AMI_USER_STORAGE_GB` caps what one
+  account may upload in total. Both are off by default, which is right for a
+  first look and wrong for a public address.
 - Demo data for a look around: the same override with `-dev` added, on an
   empty database only; never on a real one.
 - `docker compose down` keeps the volumes; `down -v` deletes everything.
@@ -229,6 +230,13 @@ apps are simply not pushed ([notifications.md](notifications.md)).
 The app and the server should be upgraded together when a release changes the
 API or an event; the event contract is checked by the compiler on the app side
 and by the test suite on the server side, but not at runtime between versions.
+
+## Inviting someone
+
+`ami-server -new-invite`, with the server's `AMI_DB`, prints a one-time code
+and leaves the server running; the code registers one account and
+registration needs a code from the first one on
+([server.md](server.md#invite-codes)).
 
 ## Recovering an account
 

@@ -1109,3 +1109,30 @@ func TestReservedUsernamesAtRegistration(t *testing.T) {
 		ts.check("cannot register as "+name, r.status == 400 && strings.Contains(string(r.body), "reserved"), r)
 	}
 }
+
+func TestOneTimeInvites(t *testing.T) {
+	ts := newTestServer(t, false)
+	tom := ts.register("tom")
+	ts.check("open to begin with", ts.get("/api/health", "").obj().str("registration") == "open")
+	code, err := newInvite(ts.s.db)
+	ts.check("a code is four groups of four", err == nil && len(code) == 19 && strings.Count(code, "-") == 3, code, err)
+	ts.check("from the first code on, registration needs one", ts.get("/api/health", "").obj().str("registration") == "invite")
+	body := J{"username": "zoe", "password": "a-long-password"}
+	ts.check("none given: 403", ts.post("/api/register", body, "").status == 403)
+	body["invite"] = "ZZZZ-ZZZZ-ZZZZ-ZZZZ"
+	ts.check("a made-up one: 403", ts.post("/api/register", body, "").status == 403)
+	body["invite"], body["username"] = strings.ToLower(strings.ReplaceAll(code, "-", "")), "tom"
+	ts.check("a taken username is 409 and the code stays unspent", ts.post("/api/register", body, "").status == 409)
+	body["username"] = "zoe"
+	r := ts.post("/api/register", body, "")
+	ts.check("the code registers once, however it is typed", r.status < 300 && r.obj().str("token") != "", r)
+	body["username"] = "zed"
+	ts.check("and never again", ts.post("/api/register", body, "").status == 403)
+	var usedBy string
+	_ = ts.s.db.QueryRow(`SELECT used_by FROM invites WHERE code_hash = ?`, inviteHash(code)).Scan(&usedBy)
+	ts.check("the spent code remembers who used it", usedBy == r.obj().obj("user").str("id"), usedBy)
+	ts.s.invite = "standing-code"
+	body["invite"] = "standing-code"
+	ts.check("the standing code works alongside the one-time ones", ts.post("/api/register", body, "").status < 300)
+	_ = tom
+}

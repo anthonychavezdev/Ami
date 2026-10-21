@@ -202,6 +202,14 @@ CREATE TABLE IF NOT EXISTS uploads (
 	KEY uploads_user (user_id),
 	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE IF NOT EXISTS invites (
+	code_hash  CHAR(64) NOT NULL PRIMARY KEY,
+	created_at VARCHAR(35) NOT NULL,
+	used_at    VARCHAR(35),
+	used_by    CHAR(36),
+	FOREIGN KEY (used_by) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 `
 
 // A database records its schema version in the schema_version table. A new
@@ -229,6 +237,9 @@ var migrations = []migration{
 	}},
 	{"uploads are recorded with their owner and size", func(tx *sql.Tx) error {
 		return execEach(tx, schema) // likewise: only uploads is new; the server fills it for older files at start (recordOldUploads)
+	}},
+	{"one-time invite codes", func(tx *sql.Tx) error {
+		return execEach(tx, schema) // likewise: only invites is new
 	}},
 }
 

@@ -167,20 +167,45 @@ func (s *server) register(w http.ResponseWriter, r *http.Request) error {
 	if err := readJSON(w, r, &in); err != nil {
 		return err
 	}
-	if s.invite != "" && subtle.ConstantTimeCompare([]byte(in.Invite), []byte(s.invite)) != 1 {
-		return forbidden("registration needs an invite code") // checked first, so nobody learns which usernames exist
-	}
-	c, err := validCredentials(in)
+	c, err := validCredentials(in) // the shape only; nothing here says which usernames exist
 	if err != nil {
 		return err
 	}
+	inviteOnly, err := s.inviteOnly()
+	if err != nil {
+		return err
+	}
+	standing := s.invite != "" && subtle.ConstantTimeCompare([]byte(in.Invite), []byte(s.invite)) == 1
+	oneTime := inviteOnly && !standing
+	tx, err := s.db.Begin()
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if oneTime { // checked before the username, so nobody learns which exist without a code
+		ok, err := inviteUnspent(tx, in.Invite)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return forbidden("registration needs an invite code")
+		}
+	}
 	salt, id := randomBytes(16), newID()
-	_, err = s.db.Exec(`INSERT INTO users(id, username, display_name, password_hash, salt, password_iterations, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+	_, err = tx.Exec(`INSERT INTO users(id, username, display_name, password_hash, salt, password_iterations, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)`,
 		id, c.Username, c.DisplayName, hashPassword(c.Password, salt, pbkdf2Iterations), salt, pbkdf2Iterations, nowString())
 	if isUniqueViolation(err) {
-		return conflict("username already taken")
+		return conflict("username already taken") // the rollback leaves a one-time code unspent
 	}
 	if err != nil {
+		return err
+	}
+	if oneTime {
+		if err := spendInvite(tx, in.Invite, id); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(); err != nil {
 		return err
 	}
 	return s.issueSession(w, id)

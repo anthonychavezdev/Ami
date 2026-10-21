@@ -17,12 +17,16 @@ defaults are production defaults; development extras are opt-in with `-dev`.
   setting a new password ([passwords.md](passwords.md)).
 - There is no email, so no verification and no self-service recovery; the
   operator resets passwords in person.
-- Registration is open unless the server runs with `-invite` (`AMI_INVITE`):
-  then `POST /api/register` needs that code, checked in constant time before
-  anything else, so an uninvited caller learns nothing about usernames. The
-  app asks `GET /api/health` whether to show the field. The code is shared
-  with the people you invite, not per person, and the register rate limit is
-  what stands against guessing it, so make it long.
+- Registration is open until the operator sets a standing invite code
+  (`-invite`, `AMI_INVITE`) or makes the first one-time code with
+  `ami-server -new-invite`, which works against the running server's database.
+  From then on `POST /api/register` needs the standing code or an unspent
+  one-time code, checked before the username, so an uninvited caller learns
+  nothing about usernames. One-time codes are 80 random bits, kept hashed,
+  spent by the account they create and remembered afterwards, so registration
+  never opens again by itself. The register rate limit is what stands against
+  guessing; a standing code is shared, so make it long. The app asks
+  `GET /api/health` whether to show the field.
 
 ## Authorization
 
