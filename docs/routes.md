@@ -87,7 +87,7 @@ that explains it in full. The route table itself is `routes()` in
 | --- | --- | --- | --- | --- | --- |
 | `GET /api/feed` | session, paged | | `Post[]` | Your posts, your friends' profile posts and the posts of your groups. | [posts.md](posts.md#get-apifeed) |
 | `POST /api/posts` | session | `{body, group_id?, attachments?}` | 201 `Post` | A new post; in a group only for members. | [posts.md](posts.md#post-apiposts) |
-| `GET /api/posts/{id}` | session | | `Post` | One post as you see it. | [posts.md](posts.md#get-apipostsid) |
+| `GET /api/posts/{id}` | session | | `Post` | One post as you see it; a private group's post is 404 to a non-member. | [posts.md](posts.md#get-apipostsid) |
 | `PUT /api/posts/{id}` | session | `{body, attachments}` | `Post` | The author edits text and attachments. | [posts.md](posts.md#put-apipostsid) |
 | `DELETE /api/posts/{id}` | session | | 204 | The author, or the admin of its group, deletes it. | [posts.md](posts.md#delete-apipostsid) |
 | `GET /api/posts/{id}/reactions` | session | | `[{emoji, users}]` | Who reacted with what, the most used emoji first. | [posts.md](posts.md#reactions) |
@@ -133,11 +133,11 @@ that explains it in full. The route table itself is `routes()` in
 | `GET /api/groups?mine=1` | session | | `Group[]` | The groups you belong to. | [groups.md](groups.md#get-apigroups) |
 | `GET /api/groups?q=` | session | | `Group[]` | Public groups to discover, filtered by name (50 max). | [groups.md](groups.md#get-apigroups) |
 | `POST /api/groups` | session | `{name, description?, private?, member_ids?}` | 201 `GroupDetail` | A new group with you as owner and admin, optionally with friends added. | [groups.md](groups.md#post-apigroups) |
-| `GET /api/groups/{id}` | session | | `GroupDetail` | The group, its members and who is in its call. | [groups.md](groups.md#get-apigroupsid) |
+| `GET /api/groups/{id}` | session | | `GroupDetail` | The group, its members and who is in its call; a private group is 404 to a non-member. | [groups.md](groups.md#get-apigroupsid) |
 | `DELETE /api/groups/{id}` | session | | 204 | The owner deletes it, with its posts, chat and call. | [groups.md](groups.md#delete-apigroupsid) |
 | `POST /api/groups/{id}/join` | session | | `GroupDetail` | Join a public group. | [groups.md](groups.md#post-apigroupsidjoin) |
 | `POST /api/groups/{id}/leave` | session | | `GroupDetail` | Leave (the owner cannot). | [groups.md](groups.md#post-apigroupsidleave) |
-| `GET /api/groups/{id}/posts` | session, paged | | `Post[]` | The group's posts. | [groups.md](groups.md#get-apigroupsidposts) |
+| `GET /api/groups/{id}/posts` | session, paged | | `Post[]` | The group's posts; a private group's are members only. | [groups.md](groups.md#get-apigroupsidposts) |
 | `POST /api/groups/{id}/members` | session | `{user_ids}` | `GroupDetail` | The admin adds friends. | [groups.md](groups.md#post-apigroupsidmembers) |
 | `DELETE /api/groups/{id}/members/{uid}` | session | | `GroupDetail` | The admin removes a member. | [groups.md](groups.md#delete-apigroupsidmembersuid) |
 

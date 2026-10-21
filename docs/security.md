@@ -34,7 +34,8 @@ Every rule is enforced by the server, in the handler that performs the action:
 
 | Resource | Who may |
 | --- | --- |
-| A profile, profile posts, a post by id, a group's detail and posts | any signed-in user |
+| A profile, profile posts, a post by id, a public group's detail and posts | any signed-in user |
+| A private group's detail, members and posts, with their comments and reactions | members (anyone else gets a 404) |
 | Edit a post or comment | its author |
 | Delete a post | its author, or the admin of its group |
 | Delete a comment | its author |
@@ -49,8 +50,11 @@ Every rule is enforced by the server, in the handler that performs the action:
 | The server's disk, load and memory, and your own share of the uploads (`/api/stats`) | any signed-in user |
 
 The listings scope what people discover (the feed, group discovery), but
-fetching a post, a group or a profile by id is open to any signed-in user; see
-[Not done](#not-done).
+fetching a profile post, a public group or a profile by id is open to any
+signed-in user; see [Not done](#not-done). Private groups are the exception:
+`viewingGroup` guards the group routes and `viewingPost`/`viewingComment`
+guard every post and comment route (`mayViewPost`), so a non-member gets a
+404 for the group, its posts, and the comments and reactions on them.
 
 ## Browser origins
 
@@ -159,10 +163,10 @@ Things a reader should know are absent, so they are not assumed:
 
 - No email, verification, two-factor authentication, account lockout beyond the
   per-IP rate limit, or audit log.
-- Posts, groups and profiles are fetchable by id by any signed-in user who knows
-  the id; privacy is at the level of listings and of group chats and calls, not
-  of single objects. Ids are random UUIDs, so they cannot be enumerated, but a
-  shared link reveals one.
+- Profile posts, public groups and profiles are fetchable by id by any
+  signed-in user who knows the id; privacy is at the level of listings, except
+  for private groups, whose detail and posts are members only. Ids are random
+  UUIDs, so they cannot be enumerated, but a shared link reveals one.
 - Uploads that are never attached are kept forever. `-user-storage-gb` caps
   what one account may upload in total; without it the only bound is the
   rate limit and the disk.

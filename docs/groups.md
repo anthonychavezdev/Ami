@@ -29,8 +29,9 @@ GroupDetail: { "group": Group, "members": [ { "...User", "role": "admin" } ], "c
 - The admin can add friends, remove any non-owner member, delete any post or
   chat message in the group, and delete the group.
 - A **private** group (invite only) is hidden from discovery, cannot be joined,
-  and only the admin adds people. That is what the + button on the Messages tab
-  creates: a group chat among friends.
+  and only the admin adds people; its detail, members and posts are for members
+  only (anyone else gets a 404, as if it did not exist). That is what the +
+  button on the Messages tab creates: a group chat among friends.
 - People can only be **added if they are friends of the admin**
   (`friendsToAdd`), whether at creation or later. Anyone can join a public group.
 
@@ -50,9 +51,10 @@ and each member with their chat read marker at the current state. `201 GroupDeta
 
 ## GET /api/groups/{id}
 
-The `GroupDetail` as you see it. Any signed-in user can look at any group by
-id, private ones included: privacy is enforced on discovery, joining, the chat
-and the call, not on the detail or the posts listing.
+The `GroupDetail` as you see it. Any signed-in user can look at a public
+group by id; a private one answers `404 group not found` to anyone who is not
+a member (`groupVisible`), the same as a missing id, so its existence and its
+member list stay inside it.
 
 ## DELETE /api/groups/{id}
 
@@ -76,8 +78,8 @@ group's call if they were in it, and sends them their new unread total.
 
 ## GET /api/groups/{id}/posts
 
-The group's posts, paged. There is no membership check on this listing; posts
-in a private group are reachable to someone who knows the group's id. The feed
+The group's posts, paged. A private group's posts are for members only
+(`404` otherwise), here and when fetched one by one (`mayViewPost`). The feed
 only includes groups you belong to.
 
 ## POST /api/groups/{id}/members

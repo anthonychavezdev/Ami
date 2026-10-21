@@ -67,6 +67,37 @@ func (s *server) groupRole(groupID, userID string) (string, error) {
 	return role, err
 }
 
+// groupVisible says whether a viewer may look at a group: anyone signed in
+// for a public one, members only for a private one. A missing group counts as
+// visible, so the caller's own lookup answers the 404.
+func (s *server) groupVisible(groupID, viewer string) (bool, error) {
+	var private bool
+	err := s.db.QueryRow(`SELECT private FROM groups WHERE id = ?`, groupID).Scan(&private)
+	if errors.Is(err, sql.ErrNoRows) || (err == nil && !private) {
+		return true, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	role, err := s.groupRole(groupID, viewer)
+	return role != "", err
+}
+
+// viewingGroup guards a group route: a private group is "not found" to a
+// non-member, so neither its existence nor its members show.
+func (s *server) viewingGroup(h authedHandler) authedHandler {
+	return func(w http.ResponseWriter, r *http.Request, me *User) error {
+		ok, err := s.groupVisible(r.PathValue("id"), me.ID)
+		if err != nil {
+			return err
+		}
+		if !ok {
+			return notFound("group not found")
+		}
+		return h(w, r, me)
+	}
+}
+
 func (s *server) requireAdmin(groupID, userID string) error {
 	role, err := s.groupRole(groupID, userID)
 	if err != nil {
