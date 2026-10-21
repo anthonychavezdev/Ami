@@ -8,8 +8,10 @@ the loops for each platform, and the traps.
 The repository is a [devenv](https://devenv.sh) project ([`devenv.nix`](../devenv.nix)):
 `devenv shell` (or `direnv allow` once, through [`.envrc`](../.envrc)) gives you
 Go, Node and npm, the Android SDK with an emulator, JDK 17, watchman, MariaDB
-with its `mysql` client, Python for the end-to-end scripts and, on macOS,
-CocoaPods.
+with its `mysql` client, coturn, Python for the end-to-end scripts and, on
+macOS, CocoaPods. Go runs the patch release named by `toolchain` in
+[`go.mod`](../server/go.mod), fetched on first use (`GOTOOLCHAIN=auto`), so a
+standard-library fix is one line in `go.mod` away rather than a nixpkgs bump.
 Nothing is installed globally: Go's module cache, npm's cache, Gradle, CocoaPods
 and the Android AVDs all live inside the repository (`.go/`, `.npm/`, `.gradle/`,
 `.cocoapods/`, `.android/`), all gitignored. Xcode is the one thing Nix cannot
