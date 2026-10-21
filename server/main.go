@@ -41,7 +41,7 @@ type server struct {
 	calls         *callRooms // who is in which call
 	cpu           cpuMeter   // this process's recent CPU use, for /api/stats
 	ice           iceConfig  // the STUN and TURN servers handed to the apps for calls (ice.go)
-	invite        string     // registration needs this code when set (-invite)
+	invite        string     // the standing invite code (-invite); one-time ones live in the invites table
 	storageCap    int64      // the most one account may upload in total, in bytes; 0 is no limit (-user-storage-gb)
 }
 
@@ -55,6 +55,7 @@ type config struct {
 	dev, trustProxy, verbose                              bool
 	apiRate                                               int
 	resetPassword                                         string // a username: print a temporary password for it and exit
+	newInvite                                             bool   // print a one-time invite code and exit
 }
 
 func parseFlags() config {
@@ -73,7 +74,8 @@ func parseFlags() config {
 	flag.StringVar(&c.turnSecret, "turn-secret", envOr("AMI_TURN_SECRET", ""), "the static-auth-secret of a coturn server; the apps then get TURN credentials for it from /api/ice")
 	flag.StringVar(&c.turnURLs, "turn-urls", envOr("AMI_TURN_URLS", ""), "comma-separated TURN servers (turn:host:3478?transport=udp, turns:host:5349); empty means coturn on this host at -turn-port")
 	flag.IntVar(&c.turnPort, "turn-port", envInt("AMI_TURN_PORT", 3478), "port of the coturn on this host, when -turn-urls is empty")
-	flag.StringVar(&c.invite, "invite", envOr("AMI_INVITE", ""), "registration needs this invite code; empty leaves registration open to anyone")
+	flag.StringVar(&c.invite, "invite", envOr("AMI_INVITE", ""), "a standing invite code: registration needs it (or a one-time code); empty leaves registration open until a one-time code is made")
+	flag.BoolVar(&c.newInvite, "new-invite", false, "make a one-time invite code against the database (the server may keep running), print it, and exit; registration needs a code from then on")
 	flag.IntVar(&c.userStorageGB, "user-storage-gb", envInt("AMI_USER_STORAGE_GB", 0), "the most one account may upload in total, in GB (0 = no limit)")
 	flag.IntVar(&c.apiRate, "api-rate", 600, "requests per minute allowed per client IP on /api (0 disables)")
 	flag.BoolVar(&c.verbose, "verbose", false, "log every request and response with headers and body, and every WebSocket message (passwords and tokens redacted, bodies cut at 4 KB)")
@@ -87,6 +89,12 @@ func main() {
 	verbose = cfg.verbose
 	if cfg.resetPassword != "" {
 		if err := printTemporaryPassword(cfg); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
+	if cfg.newInvite {
+		if err := printNewInvite(cfg); err != nil {
 			log.Fatal(err)
 		}
 		return
@@ -128,7 +136,7 @@ func newServer(ctx context.Context, cfg config) (*server, error) {
 	if s.ice.secret != "" {
 		log.Printf("calls: handing out TURN credentials for %s", s.ice.describe())
 	}
-	if s.invite != "" {
+	if inviteOnly, _ := s.inviteOnly(); inviteOnly {
 		log.Print("registration: by invite code")
 	}
 	if s.storageCap > 0 {
@@ -246,7 +254,7 @@ func serve(ctx context.Context, cfg config, s *server) error {
 func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
 		registration := "open"
-		if s.invite != "" {
+		if inviteOnly, _ := s.inviteOnly(); inviteOnly {
 			registration = "invite"
 		}
 		writeJSON(w, http.StatusOK, struct {

@@ -19,11 +19,16 @@ authenticated. Code: [`server/sessions.go`](../server/sessions.go) on the server
 
 Body: `{"username": "ana", "password": "...", "display_name": "Ana García", "invite": "..."}`.
 
-When the server runs with `-invite` (`AMI_INVITE`), `invite` must be that code
-or the answer is `403 registration needs an invite code`, before anything
-else is looked at. `GET /api/health` says whether it is needed
-(`"registration": "invite"`), which is how the register screen decides to
-show the field. Login never needs it.
+Registration needs an invite code as soon as the server has a standing one
+(`-invite`, `AMI_INVITE`) or a one-time one has ever been made with
+`ami-server -new-invite` ([server.md](server.md#invite-codes)). Then
+`invite` must be the standing code or an unspent one-time code, or the
+answer is `403 registration needs an invite code`, checked before the
+username is, so nobody learns which usernames exist without a code. A
+one-time code is spent in the same transaction that creates the account:
+a taken username (409) leaves it usable. `GET /api/health` says whether a
+code is needed (`"registration": "invite"`), which is how the register
+screen decides to show the field. Login never needs one.
 
 Validation (`validCredentials`):
 

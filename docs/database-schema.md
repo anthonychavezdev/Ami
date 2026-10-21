@@ -38,6 +38,7 @@ erDiagram
     users ||--o{ push_tokens : "devices"
     users ||--o{ media_reactions : "reacts"
     users ||--o{ uploads : "uploaded"
+    users |o--o{ invites : "spent by"
 
     users {
         uuid id PK "UUID, version 7"
@@ -152,6 +153,12 @@ erDiagram
         uuid user_id FK "who uploaded it"
         int size "bytes, for the per-account cap"
         string created_at
+    }
+    invites {
+        string code_hash PK "SHA-256 of the one-time code"
+        string created_at
+        string used_at "null until spent"
+        uuid used_by FK "the account it registered"
     }
 ```
 
@@ -322,6 +329,7 @@ The list today:
 | 3 | reactions on messages | The same, for `message_reactions`. |
 | 4 | reactions on uploads | The same, for `media_reactions`. |
 | 5 | uploads are recorded with their owner and size | The same, for `uploads`. Files from before it are recorded at the next start from whatever references them (`recordOldUploads`), so the per-account total counts them. |
+| 6 | one-time invite codes | The same, for `invites`. |
 
 (The SQLite era's migrations, up to UUID ids, went with SQLite; there is no
 path from an old SQLite file to MariaDB other than starting over.)
