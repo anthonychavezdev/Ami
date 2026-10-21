@@ -26,6 +26,8 @@ services:
   # directly. The server mints its credentials from the same secret
   # (docs/calls.md#get-apiice). Behind Docker's NAT it must advertise the
   # machine's public address: AMI_PUBLIC_IP, or the one it detects itself.
+  # It relays only to public addresses (never into this machine's networks),
+  # with a cap on allocations per user and in total.
   turn:
     image: coturn/coturn:4.6
     restart: unless-stopped
@@ -39,6 +41,13 @@ services:
         --use-auth-secret --static-auth-secret="$$AMI_TURN_SECRET"
         --listening-port=3478 --min-port=49160 --max-port=49200
         --external-ip="$${AMI_PUBLIC_IP:-$$(detect-external-ip)}"
+        --no-multicast-peers --user-quota=32 --total-quota=2000
+        --denied-peer-ip=0.0.0.0-0.255.255.255 --denied-peer-ip=10.0.0.0-10.255.255.255
+        --denied-peer-ip=100.64.0.0-100.127.255.255 --denied-peer-ip=127.0.0.0-127.255.255.255
+        --denied-peer-ip=169.254.0.0-169.254.255.255 --denied-peer-ip=172.16.0.0-172.31.255.255
+        --denied-peer-ip=192.168.0.0-192.168.255.255 --denied-peer-ip=::1
+        --denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+        --denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff
     ports:
       - "${AMI_TURN_PORT:-3478}:3478/udp"
       - "${AMI_TURN_PORT:-3478}:3478/tcp"
@@ -55,6 +64,8 @@ services:
       AMI_DB: ami:${AMI_DB_PASSWORD}@tcp(db:3306)/ami
       AMI_TURN_SECRET: ${AMI_TURN_SECRET}
       AMI_TURN_PORT: ${AMI_TURN_PORT:-3478}
+      AMI_INVITE: ${AMI_INVITE:-}
+      AMI_USER_STORAGE_GB: ${AMI_USER_STORAGE_GB:-0}
     ports:
       - "${AMI_PORT:-8080}:8080"
     volumes:

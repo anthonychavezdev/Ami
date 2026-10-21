@@ -15,7 +15,7 @@ interface AuthContextValue {
   ready: boolean;
   update: (patch: Partial<Me>) => void; // local settings changes (e.g. appear offline)
   login: (username: string, password: string) => Promise<void>;
-  register: (username: string, password: string, displayName: string) => Promise<void>;
+  register: (username: string, password: string, displayName: string, invite?: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -67,8 +67,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await storage.set(TOKEN_KEY, r.token);
         signIn(r.token, r.user);
       },
-      register: async (username, password, displayName) => {
-        const r = await api.register(username, password, displayName);
+      register: async (username, password, displayName, invite) => {
+        const r = await api.register(username, password, displayName, invite);
         await storage.set(TOKEN_KEY, r.token);
         signIn(r.token, r.user);
       },

@@ -44,6 +44,11 @@ docker compose logs -f server
   add `-trust-proxy` to the server's command (`command:` under `server` in a
   `compose.override.yaml`, repeating the arguments from the Dockerfile's
   `CMD`). The browser only allows camera and microphone on HTTPS.
+- Who may join and how much they may upload: `AMI_INVITE` in `.env` makes
+  registration need that code (hand it to the people you invite), and
+  `AMI_USER_STORAGE_GB` caps what one account may upload in total. Both are
+  off by default, which is right for a first look and wrong for a public
+  address.
 - Demo data for a look around: the same override with `-dev` added, on an
   empty database only; never on a real one.
 - `docker compose down` keeps the volumes; `down -v` deletes everything.
@@ -105,6 +110,22 @@ services.coturn = {
   static-auth-secret-file = "/run/secrets/turn";   # the same value as AMI_TURN_SECRET
   min-port = 49152;
   max-port = 49999;
+  no-multicast-peers = true;
+  extraConfig = ''
+    # any account may ask for a relay: only to public addresses, and not without limit
+    user-quota=32
+    total-quota=2000
+    denied-peer-ip=0.0.0.0-0.255.255.255
+    denied-peer-ip=10.0.0.0-10.255.255.255
+    denied-peer-ip=100.64.0.0-100.127.255.255
+    denied-peer-ip=127.0.0.0-127.255.255.255
+    denied-peer-ip=169.254.0.0-169.254.255.255
+    denied-peer-ip=172.16.0.0-172.31.255.255
+    denied-peer-ip=192.168.0.0-192.168.255.255
+    denied-peer-ip=::1
+    denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+    denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+  '';
 };
 networking.firewall = {
   allowedTCPPorts = [ 3478 ];
@@ -132,6 +153,9 @@ After=mariadb.service
 [Service]
 User=ami
 Environment=AMI_DB=ami:a long password@unix(/run/mysqld/mysqld.sock)/ami
+Environment=AMI_TURN_SECRET=the coturn secret
+Environment=AMI_INVITE=a long invite code
+Environment=AMI_USER_STORAGE_GB=20
 ExecStart=/usr/local/bin/ami-server -media-dir /var/lib/ami/media -addr 127.0.0.1:8080 -trust-proxy -web-dir /var/lib/ami/web
 Restart=on-failure
 ```

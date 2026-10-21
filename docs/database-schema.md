@@ -37,6 +37,7 @@ erDiagram
     groups ||--o{ group_reads : "for"
     users ||--o{ push_tokens : "devices"
     users ||--o{ media_reactions : "reacts"
+    users ||--o{ uploads : "uploaded"
 
     users {
         uuid id PK "UUID, version 7"
@@ -145,6 +146,12 @@ erDiagram
         string media PK "the upload's file name"
         uuid user_id PK, FK
         string emoji
+    }
+    uploads {
+        string name PK "the file name under the media directory"
+        uuid user_id FK "who uploaded it"
+        int size "bytes, for the per-account cap"
+        string created_at
     }
 ```
 
@@ -314,6 +321,7 @@ The list today:
 | 2 | reactions on comments | Runs `schema` again, whose statements are all `CREATE ... IF NOT EXISTS`, which creates `comment_reactions` and leaves the rest alone. |
 | 3 | reactions on messages | The same, for `message_reactions`. |
 | 4 | reactions on uploads | The same, for `media_reactions`. |
+| 5 | uploads are recorded with their owner and size | The same, for `uploads`. Files from before it are recorded at the next start from whatever references them (`recordOldUploads`), so the per-account total counts them. |
 
 (The SQLite era's migrations, up to UUID ids, went with SQLite; there is no
 path from an old SQLite file to MariaDB other than starting over.)

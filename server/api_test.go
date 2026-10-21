@@ -1012,3 +1012,46 @@ func TestIceServers(t *testing.T) {
 	ts.check("configured TURN urls are handed out as they are",
 		len(servers) == 2 && strings.Join(strs(servers[1]["urls"]), " ") == "turns:turn.example.com:5349 turn:turn.example.com:3478?transport=udp", servers)
 }
+
+func TestInvite(t *testing.T) {
+	ts := newTestServer(t, false)
+	ts.check("registration is open unless the server says otherwise", ts.get("/api/health", "").obj().str("registration") == "open")
+	ts.s.invite = "friends-of-ana"
+	ts.check("the health check tells the app an invite is needed", ts.get("/api/health", "").obj().str("registration") == "invite")
+	body := J{"username": "zoe", "password": "a-long-password", "display_name": "Zoe"}
+	r := ts.post("/api/register", body, "")
+	ts.check("no code, no account", r.status == 403 && strings.Contains(string(r.body), "invite"), r)
+	body["invite"] = "wrong"
+	ts.check("a wrong code is refused the same way", ts.post("/api/register", body, "").status == 403)
+	body["invite"] = "friends-of-ana"
+	r = ts.post("/api/register", body, "")
+	ts.check("the right code registers and signs in", r.status < 300 && r.obj().str("token") != "", r)
+	ts.check("and the username is now taken", ts.post("/api/register", body, "").status == 409)
+	ts.check("login never needs the code", ts.post("/api/login", J{"username": "zoe", "password": "a-long-password"}, "").status == 200)
+}
+
+func TestStorageCap(t *testing.T) {
+	ts := newTestServer(t, false)
+	tom := ts.register("tom")
+	pic := int64(len(tinyPNG()))
+	ts.check("no limit unless the server sets one", ts.get("/api/stats", tom.token).obj().obj("storage").num("your_limit") == 0)
+	ts.s.storageCap = pic + pic/2
+
+	ts.check("the first upload fits", ts.upload(tom.token, tinyPNG(), "image/png").status == 201)
+	r := ts.upload(tom.token, tinyPNG(), "image/png")
+	ts.check("the second would pass the cap: 413 that says so", r.status == 413 && strings.Contains(string(r.body), "storage is full"), r)
+
+	req, _ := http.NewRequest("POST", ts.url+"/api/media", io.NopCloser(bytes.NewReader(tinyPNG()))) // no length: sent chunked
+	req.Header.Set("Content-Type", "image/png")
+	req.Header.Set("Authorization", "Bearer "+tom.token)
+	res, err := http.DefaultClient.Do(req)
+	ts.check("a body without a length is stored, measured and refused too", err == nil && res.StatusCode == 413, err)
+	if res != nil {
+		res.Body.Close()
+	}
+
+	storage := ts.get("/api/stats", tom.token).obj().obj("storage")
+	ts.check("the stats show what counts and the cap", storage.num("yours") == float64(pic) && storage.num("your_limit") == float64(ts.s.storageCap), storage)
+	entries, _ := os.ReadDir(ts.s.mediaDir)
+	ts.check("refused uploads leave no file behind", len(entries) == 1, len(entries))
+}

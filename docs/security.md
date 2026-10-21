@@ -16,6 +16,12 @@ defaults are production defaults; development extras are opt-in with `-dev`.
   setting a new password ([passwords.md](passwords.md)).
 - There is no email, so no verification and no self-service recovery; the
   operator resets passwords in person.
+- Registration is open unless the server runs with `-invite` (`AMI_INVITE`):
+  then `POST /api/register` needs that code, checked in constant time before
+  anything else, so an uninvited caller learns nothing about usernames. The
+  app asks `GET /api/health` whether to show the field. The code is shared
+  with the people you invite, not per person, and the register rate limit is
+  what stands against guessing it, so make it long.
 
 ## Authorization
 
@@ -89,6 +95,7 @@ carries a URL that was not produced by the server, except links, which must be
 | Auth attempts | 10 per minute per IP | `throttle` |
 | API requests | 600 per minute per IP (`-api-rate`) | `apiLimit` |
 | Uploads | 30 per minute per user | `uploadMedia` |
+| Storage | `-user-storage-gb` per account in total, counting every upload whether attached or not (off by default) | `uploadMedia` |
 | Post text | 5,000 bytes | `cleanPostInput` |
 | Message text | 4,000 bytes | `cleanMessage` |
 | Comment text | 1 to 2,000 bytes | `validCommentBody` |
@@ -127,9 +134,13 @@ in production.
 
 The server authorises who may enter a room (friends, members) and only relays
 signaling between seated participants. Media is encrypted end to end by WebRTC
-(DTLS-SRTP) and never passes through the server. The only STUN server
-configured is Google's public one; with no TURN server, some network pairs
-cannot connect at all, but nothing falls back to relaying through the server.
+(DTLS-SRTP) and never passes through the server. When two networks cannot
+reach each other, the media is relayed by the operator's coturn, which the
+server vouches for with credentials that expire after a day
+([calls.md](calls.md#get-apiice)); without one, such calls fail rather than
+fall back to the server. coturn itself should relay only to public addresses
+and with quotas ([deployment.md](deployment.md#turn)), since any account can
+ask it to relay.
 
 ## Not done
 
@@ -143,8 +154,9 @@ Things a reader should know are absent, so they are not assumed:
   the id; privacy is at the level of listings and of group chats and calls, not
   of single objects. Ids are random UUIDs, so they cannot be enumerated, but a
   shared link reveals one.
-- Uploads that are never attached are kept forever; there is no quota per user
-  beyond the rate limit.
+- Uploads that are never attached are kept forever. `-user-storage-gb` caps
+  what one account may upload in total; without it the only bound is the
+  rate limit and the disk.
 - Rate limits and the hub are per process; a reverse proxy in front should add
   its own limits for a public deployment.
 - Markdown is rendered client-side by a library configured to ignore HTML; the

@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
 
 import { Button, ErrorBanner, Input } from '@/components/ui';
+import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { setupNotifications } from '@/lib/notifications';
 import { useStyles } from '@/lib/theme';
@@ -14,15 +15,24 @@ export default function RegisterScreen() {
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [password, setPassword] = useState('');
+  const [invite, setInvite] = useState('');
+  const [needsInvite, setNeedsInvite] = useState(false); // the server says whether registration takes a code
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    api
+      .registration()
+      .then((r) => setNeedsInvite(r.registration === 'invite'))
+      .catch(() => {});
+  }, []);
 
   const submit = async () => {
     if (Platform.OS === 'web') void setupNotifications(); // browsers only ask on a click
     setBusy(true);
     setError(null);
     try {
-      await register(username.trim(), password, displayName.trim());
+      await register(username.trim(), password, displayName.trim(), needsInvite ? invite.trim() : undefined);
     } catch (e) {
       setError(errorMessage(e));
     } finally {
@@ -42,6 +52,9 @@ export default function RegisterScreen() {
           onChangeText={setUsername}
         />
         <Input placeholder="Display name (optional)" value={displayName} onChangeText={setDisplayName} />
+        {needsInvite && (
+          <Input placeholder="Invite code" autoCapitalize="none" autoCorrect={false} value={invite} onChangeText={setInvite} />
+        )}
         <Input
           placeholder="Password (8+ characters)"
           secureTextEntry
@@ -49,7 +62,12 @@ export default function RegisterScreen() {
           onChangeText={setPassword}
           onSubmitEditing={submit}
         />
-        <Button title="Create account" onPress={submit} loading={busy} disabled={username.length < 3 || password.length < 8} />
+        <Button
+          title="Create account"
+          onPress={submit}
+          loading={busy}
+          disabled={username.length < 3 || password.length < 8 || (needsInvite && invite.trim() === '')}
+        />
         <Text style={styles.hint}>Usernames are public. Only friends can message and call you.</Text>
       </View>
     </KeyboardAvoidingView>

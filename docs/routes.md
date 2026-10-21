@@ -49,14 +49,14 @@ that explains it in full. The route table itself is `routes()` in
 
 | Route | Auth | Summary | Details |
 | --- | --- | --- | --- |
-| `GET /api/health` | none | `{"status":"ok"}`; for load balancers and scripts. | [server.md](server.md) |
+| `GET /api/health` | none | `{"status":"ok","registration":"open"}`, or `"invite"` when registering needs the server's invite code; for load balancers, scripts and the register screen. | [server.md](server.md) |
 | `GET /*` | none | Only with `-web-dir`: serves the exported browser build, any unknown path gets `index.html` for the client-side router; `/api/*` paths that match nothing are 404. | [deployment.md](deployment.md#serving-the-web-app) |
 
 ## Accounts and sessions
 
 | Route | Auth | Request | Response | Summary | Details |
 | --- | --- | --- | --- | --- | --- |
-| `POST /api/register` | none, throttled | `{username, password, display_name?}` | `{token, user: Me}` | Creates an account and signs it in. 400 on bad input, 409 when the username is taken. | [login.md](login.md#post-apiregister) |
+| `POST /api/register` | none, throttled | `{username, password, display_name?, invite?}` | `{token, user: Me}` | Creates an account and signs it in. 403 without the invite code when the server wants one, 400 on bad input, 409 when the username is taken. | [login.md](login.md#post-apiregister) |
 | `POST /api/login` | none, throttled | `{username, password}` | `{token, user: Me}` | Signs in; 401 for a wrong username or password. | [login.md](login.md#post-apilogin) |
 | `POST /api/logout` | session | | 204 | Ends this session (other devices stay signed in). | [login.md](login.md#post-apilogout) |
 | `GET /api/me` | session | | `Me` | The signed-in account with its private settings. | [login.md](login.md#get-apime) |
@@ -108,7 +108,7 @@ that explains it in full. The route table itself is `routes()` in
 
 | Route | Auth | Request | Response | Summary | Details |
 | --- | --- | --- | --- | --- | --- |
-| `POST /api/media` | session | the file, with its `Content-Type` | 201 `Attachment` | Uploads one picture or video (JPEG, PNG, GIF, WebP, MP4, MOV, WebM, 20 GB max). | [media.md](media.md#post-apimedia) |
+| `POST /api/media` | session | the file, with its `Content-Type` | 201 `Attachment` | Uploads one picture or video (JPEG, PNG, GIF, WebP, MP4, MOV, WebM, 20 GB max). 413 when it would pass the account's storage cap. | [media.md](media.md#post-apimedia) |
 | `GET /api/media/{name}/reactions` | session | | `[{emoji, users}]` | Who reacted to the upload itself with what. | [media.md](media.md#reactions-on-uploads) |
 | `PUT /api/media/{name}/reaction` | session | `{emoji}` | `[{emoji, users}]` | Sets your one reaction to the upload. | [media.md](media.md#reactions-on-uploads) |
 | `DELETE /api/media/{name}/reaction` | session | | `[{emoji, users}]` | Removes it. | [media.md](media.md#reactions-on-uploads) |
