@@ -369,7 +369,7 @@ func logRequests(next http.Handler) http.Handler {
 		start := time.Now()
 		sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 		next.ServeHTTP(sw, r)
-		log.Printf("%s %s %d %s", r.Method, r.URL.Path, sw.status, time.Since(start).Round(time.Millisecond))
+		log.Printf("%s %s %d %s", r.Method, r.URL.EscapedPath(), sw.status, time.Since(start).Round(time.Millisecond)) // escaped: a path cannot forge log lines
 	})
 }
 
@@ -435,6 +435,7 @@ func (s *server) secureHeaders(next http.Handler) http.Handler {
 		h.Set("X-Content-Type-Options", "nosniff")
 		h.Set("Cache-Control", "no-store")
 		h.Set("Referrer-Policy", "no-referrer")
+		h.Set("Cross-Origin-Resource-Policy", "same-site") // browsers on other sites cannot embed uploads, even with their random names
 		h.Set("X-Frame-Options", "DENY")
 		h.Set("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'")
 		h.Set("Permissions-Policy", "camera=(), microphone=(), display-capture=(), geolocation=()")
