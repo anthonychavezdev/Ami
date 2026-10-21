@@ -35,8 +35,10 @@ reaction filled in, so the size of the audience does not multiply the work.
 - A **profile post** (`group_id` null) is visible to any signed-in user on the
   author's profile, and appears in the feeds of the author and their friends.
 - A **group post** appears in the group's listing and in the feeds of its members.
-- `GET /api/posts/{id}` returns any post to any signed-in user; visibility is
-  enforced on the listings, not on fetching a single post by id.
+- `GET /api/posts/{id}` returns a profile post or a public group's post to any
+  signed-in user; a private group's post is `404` to a non-member.
+  `mayViewPost` is where that check lives, and every post-level and
+  comment-level handler asks it first.
 
 `postAudience(authorID, groupID)` is the one place that rule lives for events:
 the author plus their friends for a profile post, the author plus the group's

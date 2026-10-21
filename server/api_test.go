@@ -28,7 +28,7 @@ func TestHealthAndOrigins(t *testing.T) {
 	ts.check("health", r.status == 200 && r.obj().str("status") == "ok", r)
 	h := r.header
 	ts.check("security headers", h.Get("X-Content-Type-Options") == "nosniff" && h.Get("Cache-Control") == "no-store", h)
-	ts.check("hardening headers", h.Get("X-Frame-Options") == "DENY" && strings.Contains(h.Get("Content-Security-Policy"), "default-src 'none'") &&
+	ts.check("hardening headers", h.Get("X-Frame-Options") == "DENY" && h.Get("Cross-Origin-Resource-Policy") == "same-site" && strings.Contains(h.Get("Content-Security-Policy"), "default-src 'none'") &&
 		strings.Contains(h.Get("Permissions-Policy"), "camera=()") && h.Get("Cross-Origin-Opener-Policy") == "same-origin", h)
 
 	r = ts.do("OPTIONS", "/api/posts", nil, "", "Origin", "http://good.example", "Access-Control-Request-Method", "POST")
@@ -1168,4 +1168,34 @@ func TestSocketLimits(t *testing.T) {
 	}
 	_, status = ts.ws(bob.token, "")
 	ts.check("the socket handshake counts against the per-address API budget", status == 429, status)
+}
+
+func TestPrivateGroupsAreMembersOnly(t *testing.T) {
+	ts := newTestServer(t, false)
+	ana, luis, bob := ts.register("ana"), ts.register("luis"), ts.register("bob")
+	ts.befriend(ana, luis)
+	group := ts.post("/api/groups", J{"name": "Secret", "private": true, "member_ids": []string{luis.id}}, ana.token).obj().obj("group").id("id")
+	post := ts.post("/api/posts", J{"body": "members only", "group_id": group}, ana.token).obj().id("id")
+	comment := ts.post("/api/posts/"+post+"/comments", J{"body": "indeed"}, luis.token).obj().id("id")
+
+	for name, path := range map[string]string{
+		"the group": "/api/groups/" + group, "its posts": "/api/groups/" + group + "/posts", "a post in it": "/api/posts/" + post,
+		"the post's comments": "/api/posts/" + post + "/comments", "the post's reactions": "/api/posts/" + post + "/reactions",
+		"a comment's reactions": "/api/comments/" + comment + "/reactions",
+	} {
+		ts.check("an outsider cannot see "+name, ts.get(path, bob.token).status == 404, name)
+		ts.check("a member sees "+name, ts.get(path, luis.token).status == 200, name)
+	}
+	ts.check("an outsider cannot react to the post", ts.put("/api/posts/"+post+"/reaction", J{"emoji": "👍"}, bob.token).status == 404)
+	ts.check("nor comment on it", ts.post("/api/posts/"+post+"/comments", J{"body": "hi"}, bob.token).status == 404)
+	ts.check("nor react to a comment", ts.put("/api/comments/"+comment+"/reaction", J{"emoji": "👍"}, bob.token).status == 404)
+	r := ts.put("/api/posts/"+post+"/reaction", J{"emoji": "👍"}, luis.token)
+	ts.check("a member can", r.status == 200, r)
+
+	r = ts.del("/api/groups/"+group+"/members/"+luis.id, ana.token)
+	ts.check("the admin removes luis", r.status == 200, r)
+	ts.check("and from then on he is an outsider too", ts.get("/api/groups/"+group, luis.token).status == 404 && ts.get("/api/posts/"+post, luis.token).status == 404)
+	public := ts.post("/api/groups", J{"name": "Open", "private": false}, ana.token).obj().obj("group").id("id")
+	r = ts.get("/api/groups/"+public, bob.token)
+	ts.check("a public group stays open to anyone signed in", r.status == 200, r)
 }

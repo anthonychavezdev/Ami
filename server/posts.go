@@ -139,6 +139,52 @@ func (s *server) postOwner(id string) (postOwner, error) {
 	return o, orNotFound(err, "post not found")
 }
 
+// mayViewPost is the one place a post's visibility is decided: anyone signed
+// in sees a profile post or a public group's; a private group's posts are for
+// its members, and to anyone else the post is not found.
+func (s *server) mayViewPost(viewer, postID string) error {
+	o, err := s.postOwner(postID)
+	if err != nil {
+		return err
+	}
+	if o.groupID == nil {
+		return nil
+	}
+	ok, err := s.groupVisible(*o.groupID, viewer)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return notFound("post not found")
+	}
+	return nil
+}
+
+// viewingPost and viewingComment guard the routes on a post or on a comment
+// (through its post) with mayViewPost, so no handler has to remember.
+func (s *server) viewingPost(h authedHandler) authedHandler {
+	return func(w http.ResponseWriter, r *http.Request, me *User) error {
+		if err := s.mayViewPost(me.ID, r.PathValue("id")); err != nil {
+			return err
+		}
+		return h(w, r, me)
+	}
+}
+
+func (s *server) viewingComment(h authedHandler) authedHandler {
+	return func(w http.ResponseWriter, r *http.Request, me *User) error {
+		var postID string
+		err := s.db.QueryRow(`SELECT post_id FROM comments WHERE id = ?`, r.PathValue("id")).Scan(&postID)
+		if err = orNotFound(err, "comment not found"); err != nil {
+			return err
+		}
+		if err := s.mayViewPost(me.ID, postID); err != nil {
+			return err
+		}
+		return h(w, r, me)
+	}
+}
+
 // postAudience lists who sees a post in their feed: the author and their
 // friends for profile posts, every member for group posts.
 func (s *server) postAudience(authorID string, groupID *string) []string {
