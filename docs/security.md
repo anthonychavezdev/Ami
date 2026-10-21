@@ -48,6 +48,7 @@ Every rule is enforced by the server, in the handler that performs the action:
 | Delete a group | the owner |
 | Edit your profile, change your password, register push tokens | you |
 | The server's disk, load and memory, and your own share of the uploads (`/api/stats`) | any signed-in user |
+| Whether someone is online (the hello event, search results, profiles) | any signed-in user, unless that person appears offline ([profile.md](profile.md)) |
 
 The listings scope what people discover (the feed, group discovery), but
 fetching a profile post, a public group or a profile by id is open to any
