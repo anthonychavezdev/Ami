@@ -35,7 +35,8 @@ Sending nothing is `400 nothing to update`. The response is the `Me` shape.
 ### Changing the username
 
 `newUsername` checks the pattern, the reserved list and, with
-`SELECT id FROM users WHERE username = ? COLLATE NOCASE AND id != ?`, that nobody
+`SELECT id FROM users WHERE username = ? AND id != ?` (the column's collation
+ignores case), that nobody
 else has the name. The unique index catches a lost race with a 409 as well.
 Changing the username frees the old one at once; the old name no longer logs
 in, the new one does ([testing.md](testing.md) covers this).

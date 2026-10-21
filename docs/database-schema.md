@@ -164,7 +164,7 @@ erDiagram
 
 ## Conventions
 
-- **Ids** are version 7 UUIDs stored as `TEXT` in their canonical form (lowercase,
+- **Ids** are version 7 UUIDs stored as `CHAR(36)` in their canonical form (lowercase,
   hyphenated, 36 characters), made by `newID()` in `server/util.go` before each
   insert. The first 48 bits are the creation time, so ids sort by age as plain
   strings: "newer" means "greater", every list is paged by id (`?before=`) and
@@ -172,19 +172,19 @@ erDiagram
   counted. Ids made by one process never go backwards; after a restart they
   continue from the clock, so only a clock set back by more than a millisecond
   could place a new row before older ones.
-- **Timestamps** are `TEXT` in RFC 3339 with nanoseconds, UTC (`2026-10-18T22:45:31.123456789Z`),
+- **Timestamps** are `VARCHAR(35)` in RFC 3339 with nanoseconds, UTC (`2026-10-18T22:45:31.123456789Z`),
   written by `nowString()`. They compare correctly as strings, which the
   conversations sort relies on.
-- **Booleans** are `INTEGER` 0 or 1 (`invisible`, `private`, `must_change_password`).
+- **Booleans** are `TINYINT(1)` 0 or 1 (`invisible`, `private`, `must_change_password`).
 - **JSON columns** (`posts.attachments`, `messages.attachments`, `users.avatar_crop`,
   `users.cover_crop`, `users.interests`, `users.links`) hold JSON text; defaults are
-  `'[]'` and `''`. `interests` is searched with `json_each`.
-- **Foreign keys** are declared with `ON DELETE CASCADE` and enforced
-  (`PRAGMA foreign_keys(ON)` in the connection string), so deleting a user or a
-  group removes its rows everywhere. `comments.parent_id` has no cascade: a parent
+  `'[]'` and `''`. `interests` is searched with `JSON_SEARCH`.
+- **Foreign keys** are declared with `ON DELETE CASCADE` and enforced by InnoDB,
+  so deleting a user or a group removes its rows everywhere.
+  `comments.parent_id` has no cascade: a parent
   is never hard-deleted while replies exist (see [comments.md](comments.md)).
-- **Usernames** are `UNIQUE COLLATE NOCASE`: `Ana` and `ana` are the same account,
-  for registration, renaming and login alike.
+- **Usernames** are unique under a case-insensitive collation: `Ana` and `ana`
+  are the same account, for registration, renaming and login alike.
 
 ## Tables
 

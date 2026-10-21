@@ -24,6 +24,10 @@ every proxy and browser log on the way. The server agrees to `ami` alone
    hub (`add`), starts the write loop, and sends `hello`.
 5. Reads frames until the connection drops; each is handed to
    `handleWSMessage`. More than 300 messages in 10 s closes the connection.
+   An account may hold 16 connections at once (`maxSocketsPerUser`; a dead
+   one is gone within the pong wait), and the handshake itself counts
+   against the per-address API budget (`-api-rate`), so a flood of
+   handshakes is 429 before any session lookup.
 6. On exit: `remove` from the hub, a timer to free any call seats after the
    presence grace, a close frame, and the socket is closed.
 

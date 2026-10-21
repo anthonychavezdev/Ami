@@ -36,7 +36,7 @@ pointed at. This page explains how it is put together; the pages linked from
 | `-trust-proxy` | off | Take the client IP from `X-Forwarded-For` and treat `X-Forwarded-Proto: https` as TLS. Only behind a reverse proxy you control. |
 | `-tls-cert`, `-tls-key` | empty | Serve HTTPS directly from these files. |
 | `-web-dir` | empty | Serve the exported browser build from this directory (see [deployment.md](deployment.md#serving-the-web-app)). |
-| `-api-rate` | `600` | Requests per minute per client IP on `/api/`; `0` disables. |
+| `-api-rate` | `600` | Requests per minute per client IP on `/api/` and the `/ws` handshake; `0` disables. |
 | `-stun-urls` | `$AMI_STUN_URLS`, else Google's public STUN | Comma-separated STUN servers the apps use for calls. |
 | `-turn-secret` | `$AMI_TURN_SECRET` | The `static-auth-secret` of your coturn. Set, `/api/ice` hands out TURN credentials for it ([calls.md](calls.md#get-apiice)). |
 | `-turn-urls` | `$AMI_TURN_URLS` | Comma-separated TURN servers (`turn:host:3478?transport=udp`, `turns:host:5349`). Empty means coturn on this host at `-turn-port`, named as the client reached the API. |
@@ -100,7 +100,7 @@ secureHeaders → cors → logRequests (or logTraffic with -verbose) → apiLimi
 | `secureHeaders` | `main.go` | Sets `X-Content-Type-Options: nosniff`, `Cache-Control: no-store`, `Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`, a `default-src 'none'` Content Security Policy, a `Permissions-Policy` that denies camera, microphone, display capture and geolocation, `Cross-Origin-Opener-Policy: same-origin`, and HSTS when the request came over TLS (or through a trusted proxy that says so). The web build and media handlers overwrite the CSP and permissions for their own needs. |
 | `cors` | `main.go` | Adds `Vary: Origin`. Requests without an `Origin` (the native app, curl) pass untouched. An allowed origin gets `Access-Control-Allow-Origin` set to itself, the allowed methods and headers, a 600 s preflight cache, and preflights are answered 204. Any other origin gets no CORS headers (the browser blocks the response) and 403 on preflight. `originAllowed` is shared with the WebSocket upgrade. |
 | `logRequests` | `main.go` | One line per request: method, path, status, duration. Replaced by `logTraffic` under `-verbose`. |
-| `apiLimit` | `main.go` | 429 with `Retry-After: 60` once a client IP exceeds `-api-rate` requests per minute on `/api/` paths (OPTIONS excluded). |
+| `apiLimit` | `main.go` | 429 with `Retry-After: 60` once a client IP exceeds `-api-rate` requests per minute on `/api/` paths and the `/ws` handshake (OPTIONS excluded). |
 | `mux` | `main.go` (`routes`) | The route table, plus the web build fallback at `/` when `-web-dir` is set. |
 
 Inside the router, individual routes add their own wrappers: `throttle` on

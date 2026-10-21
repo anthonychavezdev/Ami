@@ -418,7 +418,7 @@ func (s *server) cors(next http.Handler) http.Handler {
 // register handlers have their own, much lower, budget.
 func (s *server) apiLimit(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if s.apiLimiter != nil && strings.HasPrefix(r.URL.Path, "/api/") && r.Method != http.MethodOptions && !s.apiLimiter.allow(s.clientIP(r)) {
+		if s.apiLimiter != nil && (strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/ws") && r.Method != http.MethodOptions && !s.apiLimiter.allow(s.clientIP(r)) {
 			w.Header().Set("Retry-After", "60")
 			writeError(w, http.StatusTooManyRequests, "too many requests")
 			return

@@ -33,10 +33,10 @@ screen decides to show the field. Login never needs one.
 Validation (`validCredentials`):
 
 - `username`: 3 to 24 characters from `A-Z`, `a-z`, `0-9` and `_`, after trimming.
-  Case does not matter for uniqueness: the column is `COLLATE NOCASE`, so a second
-  `Ana` fails with `409 {"error":"username already taken"}`. Note that the reserved
-  names (`deleted`, `admin`, `ami`, `me`, `system`) are only refused when
-  *renaming* an account ([profile.md](profile.md#changing-the-username)), not here.
+  Case does not matter for uniqueness: the column's collation ignores case, so a
+  second `Ana` fails with `409 {"error":"username already taken"}`. The reserved
+  names (`deleted`, `admin`, `ami`, `me`, `system`) are refused here as when
+  *renaming* an account ([profile.md](profile.md#changing-the-username)).
 - `password`: 8 to 128 bytes.
 - `display_name`: up to 50 bytes after trimming; empty means the username.
 
@@ -50,7 +50,7 @@ invite code are the only brakes on mass registration.
 Body: `{"username": "ana", "password": "..."}`.
 
 `login` loads the stored hash, salt and round count by username (trimmed; the
-NOCASE column makes the lookup case-insensitive), hashes the given password with
+column's collation makes the lookup case-insensitive), hashes the given password with
 them and compares in constant time. A missing user and a wrong password both
 answer `401 {"error":"invalid username or password"}`, so the API does not reveal
 which usernames exist. Hashing costs real CPU (hundreds of milliseconds), which
