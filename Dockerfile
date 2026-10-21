@@ -24,7 +24,7 @@ RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /ami-server .
 # What runs: the binary, the web build, its own user, the media volume.
 # Certificates are for the push notifications it sends to Expo.
 FROM alpine:3.21
-RUN apk add --no-cache ca-certificates tzdata && adduser -D -H -u 1000 ami
+RUN apk upgrade --no-cache && apk add --no-cache ca-certificates tzdata && adduser -D -H -u 1000 ami
 COPY --from=server /ami-server /usr/local/bin/ami-server
 COPY --from=web /web /web
 RUN mkdir -p /data/media && chown ami /data/media
