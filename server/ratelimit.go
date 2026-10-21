@@ -46,12 +46,14 @@ func (l *limiter) allow(key string) bool {
 	return w.n <= l.max
 }
 
-// clientIP is the peer address, or the first X-Forwarded-For hop when the
-// server is told it sits behind a trusted reverse proxy.
+// clientIP is the peer address, or, when the server is told it sits behind a
+// trusted reverse proxy, the last X-Forwarded-For hop: the one that proxy
+// appended, which a client cannot choose by sending the header itself.
 func (s *server) clientIP(r *http.Request) string {
 	if s.trustProxy {
 		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-			return strings.TrimSpace(strings.Split(xff, ",")[0])
+			hops := strings.Split(xff, ",")
+			return strings.TrimSpace(hops[len(hops)-1])
 		}
 	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)

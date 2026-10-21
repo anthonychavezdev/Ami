@@ -18,6 +18,18 @@ const (
 	wsWriteWait  = 10 * time.Second
 )
 
+// wsToken is the session token a client sends as a WebSocket subprotocol next
+// to "ami": browsers can set no headers on the handshake, and a token in the
+// URL would end up in proxy and browser logs. The server agrees to "ami" only.
+func wsToken(r *http.Request) string {
+	for _, p := range websocket.Subprotocols(r) {
+		if p != "ami" {
+			return p
+		}
+	}
+	return ""
+}
+
 // wsUpgrade performs the opening handshake. On failure it has already written
 // an HTTP error response (403 for a disallowed origin).
 func (s *server) wsUpgrade(w http.ResponseWriter, r *http.Request) (*websocket.Conn, error) {

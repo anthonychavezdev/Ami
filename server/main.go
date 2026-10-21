@@ -148,7 +148,7 @@ func newServer(ctx context.Context, cfg config) (*server, error) {
 	}
 	presenceHook = s.markPresence
 	s.hub.decorate = s.markPresence
-	s.upgrader = websocket.Upgrader{ReadBufferSize: 4096, WriteBufferSize: 4096, CheckOrigin: s.originAllowed}
+	s.upgrader = websocket.Upgrader{ReadBufferSize: 4096, WriteBufferSize: 4096, CheckOrigin: s.originAllowed, Subprotocols: []string{"ami"}}
 	go s.purgeSessions(ctx)
 	go s.meterCPU(ctx)
 	return s, nil

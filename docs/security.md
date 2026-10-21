@@ -9,7 +9,8 @@ defaults are production defaults; development extras are opt-in with `-dev`.
   16-byte salt per password, and compared in constant time. The round count is
   stored per user and raised at login when the constant grows
   ([login.md](login.md)). Register and login are limited to 10 attempts per
-  minute per IP, and a wrong username and a wrong password are the same 401.
+  minute per IP, login also to 10 per minute per account from any number of
+  addresses, and a wrong username and a wrong password are the same 401.
 - Sessions are 256-bit random tokens stored only as SHA-256 hashes, expire after
   30 days, and are purged hourly. A password change signs out every other
   device; an operator reset signs out all of them and restricts the account to
@@ -116,19 +117,22 @@ carries a URL that was not produced by the server, except links, which must be
 Internal errors are logged and answered with a generic 500; clients never see
 SQL or stack details. The normal log holds method, path, status and duration
 only. `-verbose` logs bodies for debugging, with the credential fields of the
-auth and push-token routes, the `Authorization` header and the socket's
-`?token=` redacted, bodies that hold credentials but cannot be parsed hidden
-entirely, and uploads shown by size only ([server.md](server.md#logging)).
+auth and push-token routes, the `Authorization` header and any `token`
+query parameter redacted, bodies that hold credentials but cannot be parsed
+hidden entirely, and uploads shown by size only ([server.md](server.md#logging)).
 
 ## Transport
 
 TLS 1.2 is the minimum when the server terminates TLS. Behind a proxy,
 `-trust-proxy` must only be set when the proxy is the sole route to the port,
 since it makes the server believe `X-Forwarded-For` and `X-Forwarded-Proto`.
-Session tokens travel in the `Authorization` header, or in the `?token=` query
-of the WebSocket handshake (browsers cannot set headers there), which is why
-the verbose log redacts that parameter and why the server should run on HTTPS
-in production.
+The client address is then the *last* `X-Forwarded-For` hop, the one the
+proxy appended, so a client sending the header itself gains nothing; with a
+chain of proxies, have the inner one pass a single hop. Session tokens travel
+only in the `Authorization` header and, on the WebSocket handshake where
+browsers cannot set headers, in the `Sec-WebSocket-Protocol` subprotocols
+(`ami, <token>`); never in a URL, which proxies and browsers log. The server
+should run on HTTPS in production.
 
 ## Calls
 
@@ -148,8 +152,6 @@ Things a reader should know are absent, so they are not assumed:
 
 - No email, verification, two-factor authentication, account lockout beyond the
   per-IP rate limit, or audit log.
-- Reserved usernames (`deleted`, `admin`, `ami`, `me`, `system`) are refused when
-  renaming, but not at registration.
 - Posts, groups and profiles are fetchable by id by any signed-in user who knows
   the id; privacy is at the level of listings and of group chats and calls, not
   of single objects. Ids are random UUIDs, so they cannot be enumerated, but a

@@ -204,8 +204,8 @@ line becomes a numbered entry with the client address, every header and the
 body, followed by the response with its status, duration, the session's user,
 headers and body; WebSocket messages in and out and push traffic are logged too.
 Passwords and tokens are redacted (the credential fields of login, register,
-password change and push-token calls, the `Authorization` header and the
-WebSocket's `?token=`), uploads are shown by type and size only, and bodies are
+password change and push-token calls, the `Authorization` header and any
+`token` query parameter), uploads are shown by type and size only, and bodies are
 cut at 4 KB. See [development.md](development.md#watching-the-traffic).
 
 ## Shutting down

@@ -21,7 +21,7 @@ flowchart LR
     LIB -- "fetch, Authorization: Bearer" --> MW --> H --> DB
     H --> MEDIA
     H -- events --> HUB
-    LIB <-- "GET /ws?token=" --> HUB
+    LIB <-- "GET /ws" --> HUB
     HUB --> CALLS
     H -- "offline users" --> EXPO
     LIB <-. "WebRTC media, peer to peer" .-> LIB

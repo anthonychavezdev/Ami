@@ -229,7 +229,7 @@ POST   /api/messages/{userId}/read   PUT|DELETE /api/messages/{userId}/{messageI
 PUT|DELETE /api/messages/{userId}/{messageId}/reaction {emoji}   GET /api/messages/{userId}/{messageId}/reactions
 PUT|DELETE /api/push-token {token}
 GET    /api/stats   (disk, uploads and your share, load, memory)
-GET    /ws?token=   (every event and client message is a struct in server/events.go, mirrored by
+GET    /ws          (token as a handshake subprotocol; every event and client message is a struct in server/events.go, mirrored by
                      mobile/src/lib/events.ts; the call protocol is described in server/calls.go)
 ```
 
