@@ -17,6 +17,11 @@ import (
 var presenceGrace = 5 * time.Second
 
 // hub tracks every live WebSocket connection per user and fans events out.
+// maxSocketsPerUser bounds what one account can hold open; a phone, a
+// laptop and a few tabs are a handful, and a dead connection is gone within
+// wsPongWait, so the rest is someone trying to tie the server up.
+const maxSocketsPerUser = 16
+
 type hub struct {
 	mu       sync.RWMutex
 	users    map[string]map[*client]struct{}
@@ -34,6 +39,13 @@ type client struct {
 
 func newHub() *hub {
 	return &hub{users: map[string]map[*client]struct{}{}, leaving: map[string]*time.Timer{}, hidden: map[string]bool{}}
+}
+
+// count is how many connections an account holds right now.
+func (h *hub) count(userID string) int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.users[userID])
 }
 
 func (h *hub) add(c *client) {
@@ -239,6 +251,11 @@ func (s *server) handleWS(w http.ResponseWriter, r *http.Request) {
 	}
 	me := su.User
 	noteUser(r, me.ID)
+	if s.hub.count(me.ID) >= maxSocketsPerUser {
+		w.Header().Set("Retry-After", "60")
+		writeError(w, http.StatusTooManyRequests, "too many connections for this account")
+		return
+	}
 	s.hub.setHidden(me.ID, s.invisible(me.ID)) // before add, so an invisible user is never announced
 	ws, err := s.wsUpgrade(w, r)
 	if err != nil {

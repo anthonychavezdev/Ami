@@ -97,7 +97,8 @@ carries a URL that was not produced by the server, except links, which must be
 | Request headers | 64 KB | `http.Server` |
 | WebSocket message | 64 KB | `wsUpgrade` |
 | WebSocket messages | 300 per 10 s per connection | `handleWS` |
-| Auth attempts | 10 per minute per IP | `throttle` |
+| Auth attempts | 10 per minute per IP, and login 10 per minute per account | `throttle`, `login` |
+| Sockets | 16 open per account; the handshake counts against the API budget | `handleWS`, `apiLimit` |
 | API requests | 600 per minute per IP (`-api-rate`) | `apiLimit` |
 | Uploads | 30 per minute per user | `uploadMedia` |
 | Storage | `-user-storage-gb` per account in total, counting every upload whether attached or not (off by default) | `uploadMedia` |

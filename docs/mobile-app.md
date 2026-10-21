@@ -135,8 +135,9 @@ refetches after a reconnect.
    emulator loopback (`10.0.2.2` on Android, `localhost` on iOS).
 4. On a device in production without the variable: an error at start, on purpose.
 
-`WS_URL` is `API_URL` with `ws(s)://` and `/ws`. `ICE_SERVERS` is the STUN list
-for calls.
+`WS_URL` is `API_URL` with `ws(s)://` and `/ws`. `ICE_SERVERS` is the STUN
+list a call starts with until the server's `/api/ice` answers
+([calls.md](calls.md#get-apiice)).
 
 ### The API client
 

@@ -195,8 +195,8 @@ project id the app simply never registers a push token.
   platform supports it (web/desktop browsers) the shared window's audio is sent.
   react-native-webrtc on Android/iOS captures screen video only; Discord-style
   per-app audio capture would need a native `AudioPlaybackCapture` module.
-- Calls across different networks usually need a TURN server; add one to
-  `ICE_SERVERS` in `mobile/src/lib/config.ts`.
+- Calls across different networks usually need a TURN server; the server hands
+  out coturn credentials when it has `AMI_TURN_SECRET` ([docs/deployment.md](docs/deployment.md#turn)).
 
 ## API
 

@@ -1136,3 +1136,36 @@ func TestOneTimeInvites(t *testing.T) {
 	ts.check("the standing code works alongside the one-time ones", ts.post("/api/register", body, "").status < 300)
 	_ = tom
 }
+
+func TestSocketLimits(t *testing.T) {
+	ts := newTestServer(t, false)
+	ana := ts.register("ana")
+	var open []*wsClient
+	for i := 0; i < maxSocketsPerUser; i++ {
+		c, status := ts.ws(ana.token, "")
+		if c == nil {
+			t.Fatalf("socket %d refused: %d", i+1, status)
+		}
+		open = append(open, c)
+	}
+	_, status := ts.ws(ana.token, "")
+	ts.check("one account cannot hold more than its share of connections", status == 429, status)
+	open[0].close()
+	time.Sleep(200 * time.Millisecond) // the hub drops it when the read loop ends
+	c, status := ts.ws(ana.token, "")
+	ts.check("closing one frees a place", c != nil, status)
+	if c != nil {
+		open = append(open, c)
+	}
+	for _, c := range open[1:] {
+		c.close()
+	}
+
+	bob := ts.register("bob")
+	ts.s.apiLimiter = newLimiter(1, time.Minute) // one request a minute from here on
+	if c, _ := ts.ws(bob.token, ""); c != nil {
+		c.close() // the one allowed
+	}
+	_, status = ts.ws(bob.token, "")
+	ts.check("the socket handshake counts against the per-address API budget", status == 429, status)
+}
