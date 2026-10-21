@@ -63,7 +63,9 @@ any origin unless a list is given.
 ## Headers
 
 Every response gets `X-Content-Type-Options: nosniff`, `Cache-Control: no-store`,
-`Referrer-Policy: no-referrer`, `X-Frame-Options: DENY`,
+`Referrer-Policy: no-referrer`, `Cross-Origin-Resource-Policy: same-site` (a
+page on another site cannot embed an upload, random name or not),
+`X-Frame-Options: DENY`,
 `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`, a
 `Permissions-Policy` denying camera, microphone, display capture and geolocation,
 `Cross-Origin-Opener-Policy: same-origin`, and HSTS when served over TLS or
@@ -164,6 +166,13 @@ Things a reader should know are absent, so they are not assumed:
 - Uploads that are never attached are kept forever. `-user-storage-gb` caps
   what one account may upload in total; without it the only bound is the
   rate limit and the disk.
+- In the browser the session token lives in `localStorage` (phones keep it in
+  the Keychain or Keystore), so the page's CSP, which allows only its own
+  scripts, is what stands between a script injection and the token.
+- Push notifications carry the sender's name and the message text through
+  Expo's push service and Apple's and Google's, so a message is not private
+  from those services while a recipient's app is closed
+  ([notifications.md](notifications.md)).
 - Rate limits and the hub are per process; a reverse proxy in front should add
   its own limits for a public deployment.
 - Markdown is rendered client-side by a library configured to ignore HTML; the
