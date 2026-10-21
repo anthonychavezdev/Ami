@@ -61,10 +61,15 @@ export default function ServerScreen() {
           <Meter
             label="Your pictures and videos"
             value={storage.yours}
-            max={storage.uploads}
-            detail={`${formatBytes(storage.yours)} of the ${formatBytes(storage.uploads)} everyone has uploaded`}
+            max={storage.your_limit || storage.uploads}
+            warnAt={storage.your_limit ? 0.9 : undefined}
+            detail={
+              storage.your_limit
+                ? `${formatBytes(storage.yours)} of the ${formatBytes(storage.your_limit)} you may upload`
+                : `${formatBytes(storage.yours)} of the ${formatBytes(storage.uploads)} everyone has uploaded`
+            }
           />
-          <Text style={styles.hint}>The files on your posts, your messages and your profile.</Text>
+          <Text style={styles.hint}>Everything you have uploaded, on your posts, your messages and your profile.</Text>
           <Meter
             label="Disk"
             value={diskUsed}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"image"
@@ -71,6 +72,13 @@ func (s *server) uploadMedia(w http.ResponseWriter, r *http.Request, me *User) e
 	if r.ContentLength > maxUploadBytes {
 		return tooLarge()
 	}
+	used, err := s.userUploads(me.ID)
+	if err != nil {
+		return err
+	}
+	if s.storageCap > 0 && r.ContentLength > 0 && used+r.ContentLength > s.storageCap {
+		return storageFull(used, s.storageCap)
+	}
 	rc := http.NewResponseController(w)
 	body := &pacedReader{Reader: http.MaxBytesReader(w, r.Body, maxUploadBytes)}
 	body.extend = func() { _ = rc.SetReadDeadline(time.Now().Add(transferIdle)) }
@@ -86,11 +94,103 @@ func (s *server) uploadMedia(w http.ResponseWriter, r *http.Request, me *User) e
 		return fail(http.StatusUnsupportedMediaType, "only JPEG, PNG, GIF and WebP pictures or MP4, MOV and WebM videos are accepted")
 	}
 	name := hex.EncodeToString(randomBytes(16)) + ext
-	if err := s.storeUpload(name, head, body); err != nil {
+	size, err := s.storeUpload(name, head, body)
+	if err != nil {
+		return err
+	}
+	if s.storageCap > 0 && used+size > s.storageCap { // a body sent without a length is only known now
+		os.Remove(filepath.Join(s.mediaDir, name))
+		return storageFull(used, s.storageCap)
+	}
+	if _, err := s.db.Exec(`INSERT INTO uploads(name, user_id, size, created_at) VALUES (?, ?, ?, ?)`, name, me.ID, size, nowString()); err != nil {
+		os.Remove(filepath.Join(s.mediaDir, name))
 		return err
 	}
 	_ = rc.SetWriteDeadline(time.Now().Add(transferIdle)) // the request's own write deadline may be hours gone
 	return created(w, s.attachmentFor(mime, name))
+}
+
+// storageFull refuses an upload that would take an account past -user-storage-gb.
+func storageFull(used, limit int64) error {
+	return fail(http.StatusRequestEntityTooLarge, fmt.Sprintf("your storage is full: %s of %s used", formatBytes(used), formatBytes(limit)))
+}
+
+// formatBytes is decimal, like the app and the upload limit: 1 GB is a thousand million bytes.
+func formatBytes(n int64) string {
+	switch {
+	case n >= 1_000_000_000:
+		return fmt.Sprintf("%.1f GB", float64(n)/1e9)
+	case n >= 1_000_000:
+		return fmt.Sprintf("%.1f MB", float64(n)/1e6)
+	case n >= 1_000:
+		return fmt.Sprintf("%.1f kB", float64(n)/1e3)
+	}
+	return fmt.Sprintf("%d B", n)
+}
+
+// userUploads is what an account has uploaded so far, in bytes, attached or not.
+func (s *server) userUploads(userID string) (int64, error) {
+	var total int64
+	err := s.db.QueryRow(`SELECT COALESCE(SUM(size), 0) FROM uploads WHERE user_id = ?`, userID).Scan(&total)
+	return total, err
+}
+
+// recordOldUploads gives the files from before the uploads table an owner and
+// a size: the author of a post or message that attached them, or the profile
+// wearing them. It runs at every start and costs a lookup per known file.
+func (s *server) recordOldUploads() error {
+	known := map[string]bool{}
+	for _, name := range queryIDs(s.db, `SELECT name FROM uploads`) {
+		known[name] = true
+	}
+	record := func(owner, url string) {
+		name, isUpload := uploadName(url)
+		if !isUpload || known[name] {
+			return
+		}
+		known[name] = true
+		info, err := os.Stat(filepath.Join(s.mediaDir, name))
+		if err != nil {
+			return
+		}
+		_, _ = s.db.Exec(`INSERT IGNORE INTO uploads(name, user_id, size, created_at) VALUES (?, ?, ?, ?)`,
+			name, owner, info.Size(), info.ModTime().UTC().Format(time.RFC3339Nano))
+	}
+	rows, err := s.db.Query(`SELECT id, avatar_url, cover_url FROM users`)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var id, avatar, cover string
+		if err := rows.Scan(&id, &avatar, &cover); err != nil {
+			rows.Close()
+			return err
+		}
+		record(id, avatar)
+		record(id, cover)
+	}
+	rows.Close()
+	for _, query := range []string{`SELECT author_id, attachments FROM posts`, `SELECT sender_id, attachments FROM messages WHERE sender_id IS NOT NULL`} {
+		rows, err := s.db.Query(query)
+		if err != nil {
+			return err
+		}
+		for rows.Next() {
+			var owner, raw string
+			if err := rows.Scan(&owner, &raw); err != nil {
+				rows.Close()
+				return err
+			}
+			var atts []Attachment
+			if json.Unmarshal([]byte(raw), &atts) == nil {
+				for _, a := range atts {
+					record(owner, a.URL)
+				}
+			}
+		}
+		rows.Close()
+	}
+	return nil
 }
 
 // pacer calls extend as bytes pass through a transfer, at most once a second,
@@ -133,28 +233,29 @@ func (p *pacedWriter) Write(b []byte) (int, error) {
 func (p *pacedWriter) Unwrap() http.ResponseWriter { return p.ResponseWriter }
 
 // storeUpload writes the sniffed head and the rest of the body to a new file.
-func (s *server) storeUpload(name string, head []byte, rest io.Reader) error {
+func (s *server) storeUpload(name string, head []byte, rest io.Reader) (int64, error) {
 	path := filepath.Join(s.mediaDir, name)
 	out, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
 	if err != nil {
-		return err
+		return 0, err
 	}
+	var copied int64
 	if _, err = out.Write(head); err == nil {
-		_, err = io.Copy(out, rest)
+		copied, err = io.Copy(out, rest)
 	}
 	out.Close()
 	if err == nil {
-		return nil
+		return int64(len(head)) + copied, nil
 	}
 	os.Remove(path)
 	var tooBig *http.MaxBytesError
 	if errors.As(err, &tooBig) {
-		return tooLarge()
+		return 0, tooLarge()
 	}
 	if errors.Is(err, syscall.ENOSPC) {
-		return fail(http.StatusInsufficientStorage, "no space left for uploads")
+		return 0, fail(http.StatusInsufficientStorage, "no space left for uploads")
 	}
-	return err
+	return 0, err
 }
 
 // attachmentFor describes a stored upload; pictures carry their size.

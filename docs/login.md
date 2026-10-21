@@ -17,7 +17,13 @@ authenticated. Code: [`server/sessions.go`](../server/sessions.go) on the server
 
 ## POST /api/register
 
-Body: `{"username": "ana", "password": "...", "display_name": "Ana García"}`.
+Body: `{"username": "ana", "password": "...", "display_name": "Ana García", "invite": "..."}`.
+
+When the server runs with `-invite` (`AMI_INVITE`), `invite` must be that code
+or the answer is `403 registration needs an invite code`, before anything
+else is looked at. `GET /api/health` says whether it is needed
+(`"registration": "invite"`), which is how the register screen decides to
+show the field. Login never needs it.
 
 Validation (`validCredentials`):
 
@@ -31,8 +37,8 @@ Validation (`validCredentials`):
 
 On success the account is inserted with its salt, hash and round count, a
 session is created and the response is the same as login's: `200 {"token": "...", "user": Me}`.
-There is no email, verification or captcha; the rate limit is the only brake on
-mass registration.
+There is no email, verification or captcha; the rate limit and, when set, the
+invite code are the only brakes on mass registration.
 
 ## POST /api/login
 

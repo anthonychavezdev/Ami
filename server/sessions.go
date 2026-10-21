@@ -133,6 +133,7 @@ type credentials struct {
 	Username    string `json:"username"`
 	DisplayName string `json:"display_name"`
 	Password    string `json:"password"`
+	Invite      string `json:"invite"` // the code the server was started with (-invite), when it was
 }
 
 // validCredentials trims and checks a registration.
@@ -163,6 +164,9 @@ func (s *server) register(w http.ResponseWriter, r *http.Request) error {
 	var in credentials
 	if err := readJSON(w, r, &in); err != nil {
 		return err
+	}
+	if s.invite != "" && subtle.ConstantTimeCompare([]byte(in.Invite), []byte(s.invite)) != 1 {
+		return forbidden("registration needs an invite code") // checked first, so nobody learns which usernames exist
 	}
 	c, err := validCredentials(in)
 	if err != nil {

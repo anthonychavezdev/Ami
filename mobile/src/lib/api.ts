@@ -92,8 +92,10 @@ const q = (params: Record<string, string | number | undefined>) => {
 
 export const api = {
   // auth
-  register: (username: string, password: string, display_name: string) =>
-    post<{ token: string; user: Me }>('/api/register', { username, password, display_name }),
+  register: (username: string, password: string, display_name: string, invite?: string) =>
+    post<{ token: string; user: Me }>('/api/register', { username, password, display_name, ...(invite ? { invite } : {}) }),
+  /** Whether creating an account needs an invite code (the server's -invite). */
+  registration: () => get<{ status: string; registration: 'open' | 'invite' }>('/api/health'),
   login: (username: string, password: string) => post<{ token: string; user: Me }>('/api/login', { username, password }),
   logout: () => post<void>('/api/logout'),
   me: () => get<Me>('/api/me'),

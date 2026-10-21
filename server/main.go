@@ -41,6 +41,8 @@ type server struct {
 	calls         *callRooms // who is in which call
 	cpu           cpuMeter   // this process's recent CPU use, for /api/stats
 	ice           iceConfig  // the STUN and TURN servers handed to the apps for calls (ice.go)
+	invite        string     // registration needs this code when set (-invite)
+	storageCap    int64      // the most one account may upload in total, in bytes; 0 is no limit (-user-storage-gb)
 }
 
 // config is everything the command-line flags decide.
@@ -48,6 +50,8 @@ type config struct {
 	addr, dsn, mediaDir, origins, tlsCert, tlsKey, webDir string
 	stunURLs, turnURLs, turnSecret                        string // ICE servers for calls (ice.go)
 	turnPort                                              int
+	invite                                                string // registration needs this code when set
+	userStorageGB                                         int    // the most one account may upload in total; 0 is no limit
 	dev, trustProxy, verbose                              bool
 	apiRate                                               int
 	resetPassword                                         string // a username: print a temporary password for it and exit
@@ -69,6 +73,8 @@ func parseFlags() config {
 	flag.StringVar(&c.turnSecret, "turn-secret", envOr("AMI_TURN_SECRET", ""), "the static-auth-secret of a coturn server; the apps then get TURN credentials for it from /api/ice")
 	flag.StringVar(&c.turnURLs, "turn-urls", envOr("AMI_TURN_URLS", ""), "comma-separated TURN servers (turn:host:3478?transport=udp, turns:host:5349); empty means coturn on this host at -turn-port")
 	flag.IntVar(&c.turnPort, "turn-port", envInt("AMI_TURN_PORT", 3478), "port of the coturn on this host, when -turn-urls is empty")
+	flag.StringVar(&c.invite, "invite", envOr("AMI_INVITE", ""), "registration needs this invite code; empty leaves registration open to anyone")
+	flag.IntVar(&c.userStorageGB, "user-storage-gb", envInt("AMI_USER_STORAGE_GB", 0), "the most one account may upload in total, in GB (0 = no limit)")
 	flag.IntVar(&c.apiRate, "api-rate", 600, "requests per minute allowed per client IP on /api (0 disables)")
 	flag.BoolVar(&c.verbose, "verbose", false, "log every request and response with headers and body, and every WebSocket message (passwords and tokens redacted, bodies cut at 4 KB)")
 	flag.StringVar(&c.resetPassword, "reset-password", "", "give this user a temporary password (printed) that must be changed at their next login, sign out their devices, and exit")
@@ -116,9 +122,17 @@ func newServer(ctx context.Context, cfg config) (*server, error) {
 		uploadLimiter: newLimiter(30, time.Minute),
 		origins:       allowedOrigins(cfg.origins, cfg.dev),
 		ice:           newICEConfig(cfg),
+		invite:        cfg.invite,
+		storageCap:    int64(cfg.userStorageGB) * 1_000_000_000,
 	}
 	if s.ice.secret != "" {
 		log.Printf("calls: handing out TURN credentials for %s", s.ice.describe())
+	}
+	if s.invite != "" {
+		log.Print("registration: by invite code")
+	}
+	if s.storageCap > 0 {
+		log.Printf("uploads: %s per account", formatBytes(s.storageCap))
 	}
 	if cfg.apiRate > 0 {
 		s.apiLimiter = newLimiter(cfg.apiRate, time.Minute)
@@ -128,6 +142,9 @@ func newServer(ctx context.Context, cfg config) (*server, error) {
 			return nil, fmt.Errorf("seed demo data: %w", err)
 		}
 		log.Printf("dev mode: browser origins allowed: %s", describeOrigins(s.origins))
+	}
+	if err := s.recordOldUploads(); err != nil {
+		return nil, fmt.Errorf("record uploads: %w", err)
 	}
 	presenceHook = s.markPresence
 	s.hub.decorate = s.markPresence
@@ -228,9 +245,14 @@ func serve(ctx context.Context, cfg config, s *server) error {
 
 func (s *server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/health", func(w http.ResponseWriter, r *http.Request) {
+		registration := "open"
+		if s.invite != "" {
+			registration = "invite"
+		}
 		writeJSON(w, http.StatusOK, struct {
-			Status string `json:"status"`
-		}{"ok"})
+			Status       string `json:"status"`
+			Registration string `json:"registration"` // "open", or "invite" when POST /api/register needs the code
+		}{"ok", registration})
 	})
 
 	// auth and profile

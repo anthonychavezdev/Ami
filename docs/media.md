@@ -33,6 +33,13 @@ required; 30 uploads per minute per user (`uploadLimiter`, `429` beyond).
    ordinary requests, so the handler keeps extending them while bytes arrive
    (`pacedReader`, at most once a second) and drops a transfer that stalls for
    two minutes (`transferIdle`). A full disk is `507 no space left for uploads`.
+   With `-user-storage-gb` set, an upload that would take the account past its
+   total is `413 your storage is full: 1.9 GB of 2.0 GB used`, refused from the
+   declared length when there is one and after measuring the body otherwise,
+   in which case the file is removed again. Every stored upload is recorded in
+   the `uploads` table with its owner and size, which is what the total and
+   `/api/stats` count; files from before that table existed are recorded at
+   start from whatever references them (`recordOldUploads`).
 2. The first 512 bytes are sniffed. `sniffMedia` trusts `http.DetectContentType`
    when it recognises a supported type; otherwise, for a declared `video/*` type
    whose bytes start with an ISO media `ftyp` box (iPhone MOV/MP4 brands Go does

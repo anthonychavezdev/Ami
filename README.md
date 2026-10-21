@@ -105,6 +105,8 @@ running here, another device just opens `http://<this machine's IP>:8081`.
   `AMI_TURN_SECRET` ([docs/deployment.md](docs/deployment.md#turn)).
   Or run all of it in containers: `cp .env.example .env`, fill in the two
   secrets, `docker compose up -d --build` ([docs/deployment.md](docs/deployment.md#docker)).
+  Before handing out the address, set `AMI_INVITE` (registration then needs
+  that code) and `AMI_USER_STORAGE_GB` (what one account may upload in total).
 - `dist/web`: the browser build (minified, hashed bundles). Serve it from the
   same binary with `-web-dir dist/web`: the page then talks to the origin it
   was loaded from, so no CORS setup is needed. If `EXPO_PUBLIC_API_URL` is set

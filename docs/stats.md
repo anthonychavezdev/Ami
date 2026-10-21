@@ -14,7 +14,7 @@ Session required. Answers:
   "storage": {
     "disk_total": 494384795648, "disk_free": 85396652032,
     "uploads": 7340032, "database": 1048576,
-    "yours": 2621440, "upload_limit": 20000000000
+    "yours": 2621440, "your_limit": 20000000000, "upload_limit": 20000000000
   },
   "cpu": { "cores": 8, "load_1": 0.42, "load_5": 0.31, "load_15": 0.25, "server_percent": 1.4 },
   "memory": { "total": 16777216000, "available": 9663676416, "server": 48234496 }
@@ -24,10 +24,12 @@ Session required. Answers:
 - **storage**: `disk_total` and `disk_free` describe the volume the media
   directory sits on (`statfs`; free is what ordinary programs may still use).
   `uploads` is the size of everything in the media directory, `database` what
-  MariaDB reports for the tables and indexes (`information_schema`). `yours` is the uploads the signed-in
-  person's posts, messages, profile picture and cover reference, each file
-  counted once however often it appears (`userStorage`). `upload_limit` is
-  the most one upload may be ([media.md](media.md#post-apimedia)).
+  MariaDB reports for the tables and indexes (`information_schema`). `yours`
+  is everything the signed-in person has uploaded, attached or not, from the
+  `uploads` table (`userUploads`); `your_limit` is the most they may upload in
+  total (`-user-storage-gb`, `0` for no limit), which the app shows the meter
+  against. `upload_limit` is the most one upload may be
+  ([media.md](media.md#post-apimedia)).
 - **cpu**: `cores` from the Go runtime; `load_1`, `load_5` and `load_15` are
   the system load averages, the number of runnable processes averaged over
   those minutes, so a load equal to `cores` means every core is busy.

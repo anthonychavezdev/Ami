@@ -41,6 +41,8 @@ pointed at. This page explains how it is put together; the pages linked from
 | `-turn-secret` | `$AMI_TURN_SECRET` | The `static-auth-secret` of your coturn. Set, `/api/ice` hands out TURN credentials for it ([calls.md](calls.md#get-apiice)). |
 | `-turn-urls` | `$AMI_TURN_URLS` | Comma-separated TURN servers (`turn:host:3478?transport=udp`, `turns:host:5349`). Empty means coturn on this host at `-turn-port`, named as the client reached the API. |
 | `-turn-port` | `$AMI_TURN_PORT`, else `3478` | The port of that coturn. |
+| `-invite` | `$AMI_INVITE` | Registration needs this invite code; empty leaves it open to anyone ([security.md](security.md#accounts)). |
+| `-user-storage-gb` | `$AMI_USER_STORAGE_GB`, else `0` | The most one account may upload in total, in GB; `0` is no limit ([media.md](media.md#post-apimedia)). |
 | `-verbose` | off | Log every request and response with headers and bodies, and every WebSocket message. See [Logging](#logging). |
 | `-reset-password` | empty | A username: give it a temporary password, print it, sign out its devices, exit. |
 

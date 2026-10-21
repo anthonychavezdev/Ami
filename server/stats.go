@@ -2,10 +2,8 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"net/http"
 	"os"
-	"path/filepath"
 	"runtime"
 	"runtime/metrics"
 	"sync"
@@ -26,7 +24,8 @@ type StorageStats struct {
 	DiskFree    int64 `json:"disk_free"`
 	Uploads     int64 `json:"uploads"`      // everyone's pictures and videos
 	Database    int64 `json:"database"`     // the tables and indexes, as MariaDB keeps them
-	Yours       int64 `json:"yours"`        // the uploads your posts, messages and profile reference
+	Yours       int64 `json:"yours"`        // what you have uploaded so far
+	YourLimit   int64 `json:"your_limit"`   // the most you may upload in total (-user-storage-gb); 0 is no limit
 	UploadLimit int64 `json:"upload_limit"` // the most one upload may be
 }
 
@@ -51,7 +50,7 @@ type host struct {
 }
 
 func (s *server) stats(w http.ResponseWriter, r *http.Request, me *User) error {
-	yours, err := s.userStorage(me.ID)
+	yours, err := s.userUploads(me.ID)
 	if err != nil {
 		return err
 	}
@@ -63,55 +62,12 @@ func (s *server) stats(w http.ResponseWriter, r *http.Request, me *User) error {
 			Uploads:     dirSize(s.mediaDir),
 			Database:    databaseSize(s.db),
 			Yours:       yours,
+			YourLimit:   s.storageCap,
 			UploadLimit: maxUploadBytes,
 		},
 		CPU:    CPUStats{Cores: runtime.NumCPU(), Load1: h.load[0], Load5: h.load[1], Load15: h.load[2], ServerPercent: s.cpu.get()},
 		Memory: MemoryStats{Total: h.memTotal, Available: h.memAvailable, Server: processMemory()},
 	})
-}
-
-// userStorage adds up the uploads a person's posts, messages, profile picture
-// and cover reference; a file referenced twice counts once.
-func (s *server) userStorage(userID string) (int64, error) {
-	seen := map[string]bool{}
-	var total int64
-	add := func(url string) {
-		name, isUpload := uploadName(url)
-		if !isUpload || seen[name] {
-			return
-		}
-		seen[name] = true
-		if info, err := os.Stat(filepath.Join(s.mediaDir, name)); err == nil {
-			total += info.Size()
-		}
-	}
-	var avatar, cover string
-	if err := s.db.QueryRow(`SELECT avatar_url, cover_url FROM users WHERE id = ?`, userID).Scan(&avatar, &cover); err != nil {
-		return 0, err
-	}
-	add(avatar)
-	add(cover)
-	for _, query := range []string{`SELECT attachments FROM posts WHERE author_id = ?`, `SELECT attachments FROM messages WHERE sender_id = ?`} {
-		rows, err := s.db.Query(query, userID)
-		if err != nil {
-			return 0, err
-		}
-		for rows.Next() {
-			var raw string
-			if err := rows.Scan(&raw); err != nil {
-				rows.Close()
-				return 0, err
-			}
-			var atts []Attachment
-			if json.Unmarshal([]byte(raw), &atts) == nil {
-				for _, a := range atts {
-					add(a.URL)
-				}
-			}
-		}
-		rows.Close()
-	}
-	return total, nil
 }
 
 // dirSize is the bytes of the files in dir (uploads are one flat directory).

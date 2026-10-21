@@ -193,6 +193,15 @@ CREATE TABLE IF NOT EXISTS push_tokens (
 	KEY push_tokens_user (user_id),
 	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
+
+CREATE TABLE IF NOT EXISTS uploads (
+	name       VARCHAR(64) NOT NULL PRIMARY KEY,
+	user_id    CHAR(36) NOT NULL,
+	size       BIGINT NOT NULL,
+	created_at VARCHAR(35) NOT NULL,
+	KEY uploads_user (user_id),
+	FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin;
 `
 
 // A database records its schema version in the schema_version table. A new
@@ -217,6 +226,9 @@ var migrations = []migration{
 	}},
 	{"reactions on uploads", func(tx *sql.Tx) error {
 		return execEach(tx, schema) // likewise: only media_reactions is new
+	}},
+	{"uploads are recorded with their owner and size", func(tx *sql.Tx) error {
+		return execEach(tx, schema) // likewise: only uploads is new; the server fills it for older files at start (recordOldUploads)
 	}},
 }
 

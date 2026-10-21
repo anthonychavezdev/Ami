@@ -150,7 +150,15 @@ export type IceConfig = { ice_servers: IceServer[]; ttl: number };
 // GET /api/stats: the resources behind the server. Host figures its platform
 // cannot provide are 0.
 export type ServerStats = {
-  storage: { disk_total: number; disk_free: number; uploads: number; database: number; yours: number; upload_limit: number };
+  storage: {
+    disk_total: number;
+    disk_free: number;
+    uploads: number;
+    database: number;
+    yours: number; // what you have uploaded so far
+    your_limit: number; // the most you may upload in total; 0 is no limit
+    upload_limit: number;
+  };
   cpu: { cores: number; load_1: number; load_5: number; load_15: number; server_percent: number };
   memory: { total: number; available: number; server: number };
 };
