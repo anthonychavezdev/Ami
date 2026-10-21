@@ -80,12 +80,13 @@ Provided by the dev shell ([`devenv.nix`](../devenv.nix)), nothing installed glo
 | Tool | Version | Role |
 | --- | --- | --- |
 | devenv (Nix) | rolling nixpkgs via `devenv.yaml` | Reproducible shell with every tool below; `direnv` loads it on `cd`. |
-| Go | 1.26 | The server. `crypto/pbkdf2` needs Go 1.24, the method-and-pattern router 1.22, the `min`/`max` builtins 1.21. |
+| Go | 1.26, the patch release named in `go.mod` | The server. `crypto/pbkdf2` needs Go 1.24, the method-and-pattern router 1.22, the `min`/`max` builtins 1.21. The `toolchain` line is bumped when the standard library gets a security fix ([testing.md](testing.md#dependency-checks)). |
 | Node, npm | 24, 11 | Metro, the Expo CLI, the checks. |
 | JDK 17 | | What React Native's Gradle build expects. |
 | Android SDK | platform 36, build tools 36.0.0 and 35.0.0, NDK 27.1, CMake 3.22, a `google_apis` emulator image matching the host CPU | Building the Android app and running the `ami` emulator. |
 | watchman | | Faster file watching for Metro. |
 | MariaDB | 11 | The database, run by `devenv up` (or by `test` for the duration); its `mysql` client for inspecting it. |
+| coturn | 4.17 | The TURN relay for calls, run by `devenv up`; `turnutils_*` to poke at it. nixpkgs marks it broken on macOS since a 2018 SDK problem that is long gone, so `devenv.nix` clears the flag. Production uses the `coturn/coturn` image or NixOS's `services.coturn`. |
 | python3 | 3.14 | The end-to-end scripts (standard library only). |
 | CocoaPods | macOS only | iOS native dependencies; Xcode itself comes from the App Store. |
 | process-compose | via `devenv up` | Runs the dev server as a supervised process, optional. |
