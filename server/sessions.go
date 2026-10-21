@@ -52,9 +52,9 @@ func tokenHash(token string) string {
 
 func bearerToken(r *http.Request) string {
 	if h := r.Header.Get("Authorization"); strings.HasPrefix(h, "Bearer ") {
-		return strings.TrimSpace(h[len("Bearer "):])
+		return strings.TrimPrefix(h, "Bearer ")
 	}
-	return r.URL.Query().Get("token")
+	return "" // never from the URL: query strings end up in proxy and browser logs (the socket uses wsToken)
 }
 
 // sessionUser is the account behind a token, and whether it is restricted to
@@ -110,7 +110,7 @@ type authedHandler func(w http.ResponseWriter, r *http.Request, me *User) error
 var passwordChangeOnly = map[string]bool{"GET /api/me": true, "PUT /api/me/password": true, "POST /api/logout": true}
 
 // auth wraps a handler, requiring a valid session token
-// (Authorization: Bearer <token>, or ?token=<token> for WebSockets).
+// (Authorization: Bearer <token>; the WebSocket carries it as a subprotocol).
 func (s *server) auth(h authedHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		su, err := s.userForToken(bearerToken(r))
@@ -142,6 +142,8 @@ func validCredentials(c credentials) (credentials, error) {
 	switch {
 	case !usernameRe.MatchString(c.Username):
 		return c, badRequest("username must be 3-24 letters, digits or underscores")
+	case reservedUsernames[strings.ToLower(c.Username)]:
+		return c, badRequest("that username is reserved")
 	case validPassword(c.Password) != nil:
 		return c, validPassword(c.Password)
 	case len(c.DisplayName) > 50:
@@ -207,6 +209,10 @@ func (s *server) login(w http.ResponseWriter, r *http.Request) error {
 	var c credentials
 	if err := readJSON(w, r, &c); err != nil {
 		return err
+	}
+	if !s.limiter.allow("user:" + strings.ToLower(strings.TrimSpace(c.Username))) { // the per-address budget again, per account: guessing from many addresses is no faster
+		w.Header().Set("Retry-After", "60")
+		return fail(http.StatusTooManyRequests, "too many attempts, try again in a minute")
 	}
 	p, err := s.passwordOf("username", strings.TrimSpace(c.Username))
 	if errors.Is(err, sql.ErrNoRows) || (err == nil && !p.matches(c.Password)) {

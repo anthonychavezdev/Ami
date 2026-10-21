@@ -320,8 +320,9 @@ func (ts *testServer) ws(token, origin string) (*wsClient, int) {
 	if origin != "" {
 		header.Set("Origin", origin)
 	}
-	url := strings.Replace(ts.url, "http://", "ws://", 1) + "/ws?token=" + token
-	conn, res, err := websocket.DefaultDialer.Dial(url, header)
+	url := strings.Replace(ts.url, "http://", "ws://", 1) + "/ws"
+	dialer := websocket.Dialer{Subprotocols: []string{"ami", token}}
+	conn, res, err := dialer.Dial(url, header)
 	if err != nil {
 		if res != nil {
 			return nil, res.StatusCode

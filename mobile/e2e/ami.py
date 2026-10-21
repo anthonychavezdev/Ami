@@ -179,7 +179,7 @@ class WS:
         self.s = socket.create_connection((host, int(port)))
         self.s.settimeout(8)
         key = base64.b64encode(os.urandom(16)).decode()
-        self.s.send(f'GET /ws?token={token} HTTP/1.1\r\nHost: {host}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n'.encode())
+        self.s.send(f'GET /ws HTTP/1.1\r\nHost: {host}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Protocol: ami, {token}\r\n\r\n'.encode())
         resp = b''
         while b'\r\n\r\n' not in resp:
             resp += self.s.recv(1024)

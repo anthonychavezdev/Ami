@@ -230,9 +230,9 @@ func (c *client) writeLoop() {
 	}
 }
 
-// handleWS upgrades GET /ws?token=... and serves the connection until it drops.
+// handleWS upgrades GET /ws (token in the subprotocols, see wsToken) and serves the connection until it drops.
 func (s *server) handleWS(w http.ResponseWriter, r *http.Request) {
-	su, err := s.userForToken(bearerToken(r))
+	su, err := s.userForToken(wsToken(r))
 	if err != nil {
 		writeError(w, http.StatusUnauthorized, "unauthorized")
 		return

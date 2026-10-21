@@ -10,7 +10,9 @@ that explains it in full. The route table itself is `routes()` in
   app works it out in [`mobile/src/lib/config.ts`](../mobile/src/lib/config.ts).
 - **Authentication**: every route marked *session* needs `Authorization: Bearer <token>`,
   where the token came from `/api/register` or `/api/login`. The WebSocket passes
-  it as `?token=` instead. A missing or expired token is `401 {"error":"unauthorized"}`.
+  it as a handshake subprotocol instead (`Sec-WebSocket-Protocol: ami, <token>`);
+  a token in a query string is ignored. A missing or expired token is
+  `401 {"error":"unauthorized"}`.
   While an account has a temporary password, every session route except
   `GET /api/me`, `PUT /api/me/password` and `POST /api/logout` answers
   `403 {"error":"set a new password first"}` ([passwords.md](passwords.md#the-forced-change)).
@@ -175,7 +177,7 @@ Direct chats live under `/api/messages/{userId}`, group chats under
 
 | Route | Auth | Summary | Details |
 | --- | --- | --- | --- |
-| `GET /ws?token=` | session (query) | Upgrades to the realtime connection: a `hello` event, then every event the account is an audience of, and the call signaling channel. | [websocket.md](websocket.md), [calls.md](calls.md) |
+| `GET /ws` | session (subprotocol) | Upgrades to the realtime connection: a `hello` event, then every event the account is an audience of, and the call signaling channel. | [websocket.md](websocket.md), [calls.md](calls.md) |
 
 Client messages over the socket are `{"type":"ping"}` and the `call.*`
 messages; server events are listed in [websocket.md](websocket.md#events).

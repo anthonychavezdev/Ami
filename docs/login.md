@@ -92,9 +92,15 @@ func (s *server) auth(h authedHandler) http.HandlerFunc {
 }
 ```
 
-`bearerToken` reads `Authorization: Bearer <token>` and falls back to the
-`?token=` query parameter, which is how the WebSocket (`GET /ws`) authenticates,
-since browsers cannot set headers on a WebSocket handshake.
+`bearerToken` reads `Authorization: Bearer <token>` and nothing else: a token
+in a query string would end up in proxy and browser logs. The WebSocket, where
+browsers cannot set headers, carries it in the handshake's subprotocols
+([websocket.md](websocket.md#connecting)).
+
+Login is limited per account as well as per address: ten attempts a minute
+on one username, from however many addresses, and the account answers 429
+for a minute. Registration refuses the reserved names (`deleted`, `admin`,
+`ami`, `me`, `system`) like a rename does.
 
 `passwordChangeOnly` is the whole allow-list for an account with a temporary
 password: `GET /api/me`, `PUT /api/me/password`, `POST /api/logout`. Everything

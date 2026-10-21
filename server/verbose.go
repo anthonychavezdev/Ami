@@ -85,7 +85,7 @@ func (w *captureWriter) Write(p []byte) (int, error) {
 	return w.statusWriter.Write(p)
 }
 
-// requestURI is the path and query, with a ?token= (the WebSocket's) hidden.
+// requestURI is the path and query, with any ?token= hidden (nothing sends one any more, but a log must never show it if something does).
 func requestURI(r *http.Request) string {
 	if q := r.URL.Query(); q.Has("token") {
 		q.Set("token", "redacted")

@@ -4,14 +4,18 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"runtime"
 	"strconv"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/gorilla/websocket"
 )
 
 // Each test covers one area of the API end to end; the check names say what
@@ -1054,4 +1058,54 @@ func TestStorageCap(t *testing.T) {
 	ts.check("the stats show what counts and the cap", storage.num("yours") == float64(pic) && storage.num("your_limit") == float64(ts.s.storageCap), storage)
 	entries, _ := os.ReadDir(ts.s.mediaDir)
 	ts.check("refused uploads leave no file behind", len(entries) == 1, len(entries))
+}
+
+func TestTokensNeverInURLs(t *testing.T) {
+	ts := newTestServer(t, false)
+	ana := ts.register("ana")
+	ts.check("a token in the query is not a session", ts.get("/api/me?token="+ana.token, "").status == 401)
+	wsURL := strings.Replace(ts.url, "http://", "ws://", 1) + "/ws"
+	_, res, err := websocket.DefaultDialer.Dial(wsURL+"?token="+ana.token, nil)
+	ts.check("nor on the socket", err != nil && res != nil && res.StatusCode == 401, res)
+	conn, res, err := (&websocket.Dialer{Subprotocols: []string{"ami", ana.token}}).Dial(wsURL, nil)
+	ts.check("the socket takes it as a subprotocol and agrees to ami alone", err == nil && res.Header.Get("Sec-WebSocket-Protocol") == "ami", err)
+	if conn != nil {
+		conn.Close()
+	}
+	_, res, err = websocket.DefaultDialer.Dial(wsURL, nil)
+	ts.check("no subprotocol, no session", err != nil && res != nil && res.StatusCode == 401, res)
+}
+
+func TestClientAddressBehindProxy(t *testing.T) {
+	ts := newTestServer(t, false)
+	req := httptest.NewRequest("GET", "/api/health", nil)
+	req.RemoteAddr = "10.0.0.9:4321"
+	req.Header.Set("X-Forwarded-For", "203.0.113.7, 198.51.100.2")
+	ts.check("without -trust-proxy the peer address counts", ts.s.clientIP(req) == "10.0.0.9")
+	ts.s.trustProxy = true
+	ts.check("behind the proxy, the hop it appended counts, not what the client sent first", ts.s.clientIP(req) == "198.51.100.2")
+	req.Header.Set("X-Forwarded-For", "198.51.100.2")
+	ts.check("a single hop is the client", ts.s.clientIP(req) == "198.51.100.2")
+}
+
+func TestLoginBudgetPerAccount(t *testing.T) {
+	ts := newTestServer(t, false)
+	ts.register("ana")
+	ts.s.limiter = newLimiter(10, time.Minute)
+	ts.s.trustProxy = true // every attempt from another address, so only the account's budget can run out
+	codes := []int{}
+	for i := 0; i < 11; i++ {
+		r := ts.do("POST", "/api/login", J{"username": "Ana", "password": "wrong-password"}, "", "X-Forwarded-For", fmt.Sprintf("203.0.113.%d", i+1))
+		codes = append(codes, r.status)
+	}
+	ts.check("ten wrong guesses from ten addresses, then the account is paused for a minute", codes[9] == 401 && codes[10] == 429, codes)
+	ts.check("another account is not affected", ts.post("/api/login", J{"username": "bob", "password": "wrong-password"}, "").status == 401)
+}
+
+func TestReservedUsernamesAtRegistration(t *testing.T) {
+	ts := newTestServer(t, false)
+	for _, name := range []string{"admin", "Deleted", "ami", "system"} { // "me" is too short to register anyway
+		r := ts.post("/api/register", J{"username": name, "password": "a-long-password"}, "")
+		ts.check("cannot register as "+name, r.status == 400 && strings.Contains(string(r.body), "reserved"), r)
+	}
 }

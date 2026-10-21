@@ -51,7 +51,8 @@ class SocketClient {
 
   private open() {
     if (!this.token) return;
-    const ws = new WebSocket(`${WS_URL}?token=${encodeURIComponent(this.token)}`);
+    // The token goes in the handshake's subprotocols, next to "ami" (browsers set no headers there); never in the URL, which proxies log.
+    const ws = new WebSocket(WS_URL, ['ami', this.token]);
     this.ws = ws;
     ws.onopen = () => {
       this.retry = 0;

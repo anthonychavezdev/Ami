@@ -8,9 +8,13 @@ in the app [`ws.ts`](../mobile/src/lib/ws.ts), [`events.ts`](../mobile/src/lib/e
 
 ## Connecting
 
-`GET /ws?token=<session token>` (a Bearer header works too). `handleWS`:
+`GET /ws` with the session token in the handshake's subprotocols,
+`Sec-WebSocket-Protocol: ami, <session token>`: browsers can set no other
+header on a WebSocket handshake, and a token in the URL would be written to
+every proxy and browser log on the way. The server agrees to `ami` alone
+(`wsToken`, `Upgrader.Subprotocols`). `handleWS`:
 
-1. Resolves the session like any route; no or bad token is `401`. The
+1. Resolves the session from that token; none or a bad one is `401`. The
    `must_change_password` restriction does not apply to the socket itself.
 2. Checks the browser origin like CORS does (`originAllowed`); a refused origin
    is `403` from the upgrader. Native apps send no `Origin`.
@@ -131,7 +135,7 @@ An unknown type is logged and ignored.
 
 `SocketClient` in [`ws.ts`](../mobile/src/lib/ws.ts) is small on purpose:
 
-- `connect(token)` opens `WS_URL?token=...`; `disconnect()` closes for good.
+- `connect(token)` opens `WS_URL` with `['ami', token]` as the subprotocols; `disconnect()` closes for good.
 - Every frame is parsed and dispatched by its `type` to the handlers registered
   with `on(type, handler)`, which returns the unsubscribe function. Hooks call
   it in effects and return the unsubscribe as the cleanup.
