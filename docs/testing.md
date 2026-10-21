@@ -73,6 +73,30 @@ A failing check prints its name and the value it looked at
 component unit tests; the hooks are small and the end-to-end scripts cover the
 flows that matter.
 
+## Dependency checks
+
+Two scanners, run before a release and after a dependency bump:
+
+```sh
+cd server && go run golang.org/x/vuln/cmd/govulncheck@latest ./...
+cd mobile && npm audit --omit=dev
+```
+
+`govulncheck` reports only vulnerabilities in code paths the server actually
+reaches, most of them in the standard library, which is fixed by building with
+the newest Go patch release: `toolchain` in `go.mod` names it and the dev shell
+lets Go fetch it (`GOTOOLCHAIN=auto`), as does the Docker build.
+
+`npm audit` lists everything in the tree, and most of it is build tooling
+(Expo CLI, Metro, config plugins, the Xcode project writer) that never ships
+in the app. What does ship and stays flagged: `markdown-it` and `linkify-it`
+under `react-native-markdown-display`, with quadratic-time rules on hostile
+input, which the server's text caps (5,000 bytes a post, 2,000 a comment,
+4,000 a message) keep harmless, and the smart-quotes rule is off; and
+`decode-uri-component` under `expo-router`, a slow-path on malformed web
+URLs. Upgrading past them means the next major of each, so they are taken
+with the next Expo SDK rather than overridden.
+
 ## End-to-end scripts
 
 [`mobile/e2e/`](../mobile/e2e) holds Python scripts (standard library only) that

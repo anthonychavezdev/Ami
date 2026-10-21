@@ -9,7 +9,7 @@ FROM node:22-alpine AS web
 WORKDIR /app
 ENV CI=1 EXPO_NO_TELEMETRY=1
 COPY mobile/package.json mobile/package-lock.json ./
-RUN npm ci
+RUN npm ci --ignore-scripts
 COPY mobile/ ./
 RUN npx expo export --platform web --output-dir /web
 

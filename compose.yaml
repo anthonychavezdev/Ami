@@ -3,10 +3,20 @@
 # the two secrets, then `docker compose up -d`. docs/deployment.md#docker
 # covers TLS, backups and upgrades. AMI_PORT and AMI_TURN_PORT (8080 and
 # 3478 unless .env says otherwise) are the ports published on this machine.
+# Every container: no privilege escalation, logs capped so they cannot fill
+# the disk. The server also runs on a read-only root with no capabilities;
+# it writes only to its media volume.
+x-hardened: &hardened
+  restart: unless-stopped
+  security_opt: ["no-new-privileges:true"]
+  logging:
+    driver: json-file
+    options: { max-size: "10m", max-file: "3" }
+
 services:
   db:
+    <<: *hardened
     image: mariadb:11.4
-    restart: unless-stopped
     environment:
       MARIADB_DATABASE: ami
       MARIADB_USER: ami
@@ -29,8 +39,8 @@ services:
   # It relays only to public addresses (never into this machine's networks),
   # with a cap on allocations per user and in total.
   turn:
+    <<: *hardened
     image: coturn/coturn:4.6
-    restart: unless-stopped
     environment:
       AMI_TURN_SECRET: ${AMI_TURN_SECRET:?set AMI_TURN_SECRET in .env}
       AMI_PUBLIC_IP: ${AMI_PUBLIC_IP:-}
@@ -54,9 +64,11 @@ services:
       - "49160-49200:49160-49200/udp"
 
   server:
+    <<: *hardened
     build: .
     image: ami-server
-    restart: unless-stopped
+    read_only: true
+    cap_drop: [ALL]
     depends_on:
       db:
         condition: service_healthy

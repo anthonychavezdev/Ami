@@ -116,6 +116,7 @@ in
     GOCACHE = "${root}/.go/cache";
     GOBIN = "${root}/.go/bin";
     GOFLAGS = "-modcacherw";
+    GOTOOLCHAIN = lib.mkForce "auto"; # devenv pins the nix Go to "local"; this lets go.mod's `toolchain` line fetch the newest patch release, which is where standard-library fixes land
 
     # npm / npx: package cache and "global" installs under ./.npm
     npm_config_cache = "${root}/.npm/cache";

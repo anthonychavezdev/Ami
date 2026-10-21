@@ -158,7 +158,22 @@ Environment=AMI_INVITE=a long invite code
 Environment=AMI_USER_STORAGE_GB=20
 ExecStart=/usr/local/bin/ami-server -media-dir /var/lib/ami/media -addr 127.0.0.1:8080 -trust-proxy -web-dir /var/lib/ami/web
 Restart=on-failure
+# the binary needs the network, the database socket and its media directory, nothing else
+NoNewPrivileges=true
+CapabilityBoundingSet=
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+ReadWritePaths=/var/lib/ami/media
 ```
+
+Secrets are better read from a file than written in the unit:
+`EnvironmentFile=/etc/ami/env` with `AMI_DB=...` lines, owned by root and
+readable by nobody else.
 
 ## Serving the web app
 
