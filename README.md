@@ -106,7 +106,7 @@ running here, another device just opens `http://<this machine's IP>:8081`.
 - `dist/ami-server`: static, stripped binary (set `GOOS`/`GOARCH` to cross-compile).
   Run it with `AMI_DB` pointing at a MariaDB database of its own and either
   `-tls-cert`/`-tls-key`, or behind a TLS-terminating reverse proxy plus
-  `-trust-proxy`. Never pass `-dev`.
+  `-trust-proxy`. Never pass `-dev` or set `AMI_DEV=1`.
   Other flags: `-addr`, `-allowed-origins` (CORS is off by default), `-web-dir`.
   For calls between strict NATs run coturn next to it with the same
   `AMI_TURN_SECRET` ([docs/deployment.md](docs/deployment.md#turn)).

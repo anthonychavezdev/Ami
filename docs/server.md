@@ -31,7 +31,7 @@ pointed at. This page explains how it is put together; the pages linked from
 | `-addr` | `:8080` | Listen address, on every interface. |
 | `-db` | `$AMI_DB`, else `ami:ami@tcp(127.0.0.1:3306)/ami` | The MariaDB connection: `user:password@tcp(host:3306)/database` or `user:password@unix(/path/mysql.sock)/database`. The database must exist; its tables are created and migrated on start. The password is never logged. |
 | `-media-dir` | `media` | Directory for uploaded pictures and videos. Created on start. |
-| `-dev` | off | Development mode: seed demo data into an empty database and allow any browser origin. |
+| `-dev` | off, or `$AMI_DEV=1` | Development mode: seed demo data into an empty database and allow any browser origin. |
 | `-allowed-origins` | empty | Comma-separated browser origins allowed by CORS and the WebSocket upgrade. Empty means no cross-origin browser access (the page's own origin is always allowed). |
 | `-trust-proxy` | off | Take the client IP from `X-Forwarded-For` and treat `X-Forwarded-Proto: https` as TLS. Only behind a reverse proxy you control. |
 | `-tls-cert`, `-tls-key` | empty | Serve HTTPS directly from these files. |

@@ -64,7 +64,7 @@ func parseFlags() config {
 	flag.StringVar(&c.dsn, "db", envOr("AMI_DB", "ami:ami@tcp(127.0.0.1:3306)/ami"),
 		"MariaDB: user:password@tcp(host:3306)/database or user:password@unix(/path/mysql.sock)/database (default $AMI_DB)")
 	flag.StringVar(&c.mediaDir, "media-dir", "media", "directory for uploaded pictures and videos")
-	flag.BoolVar(&c.dev, "dev", false, "development mode: seed demo data into an empty database and allow any CORS origin")
+	flag.BoolVar(&c.dev, "dev", envOr("AMI_DEV", "") == "1", "development mode (or AMI_DEV=1): seed demo data into an empty database and allow any CORS origin")
 	flag.StringVar(&c.origins, "allowed-origins", "", "comma-separated browser origins allowed to call the API (CORS); empty disables CORS")
 	flag.BoolVar(&c.trustProxy, "trust-proxy", false, "take client IPs from X-Forwarded-For (only behind a trusted reverse proxy)")
 	flag.StringVar(&c.tlsCert, "tls-cert", "", "serve HTTPS with this certificate file (needs -tls-key)")
