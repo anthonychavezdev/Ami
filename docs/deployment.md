@@ -41,7 +41,7 @@ AMI_DB='ami:a long password@unix(/run/mysqld/mysqld.sock)/ami' ./ami-server -med
   for the database at start, which covers a reboot where both come up at once.
 - Run it as its own user with write access to the media directory; the binary
   needs nothing else. The directory is created if missing.
-- **Never pass `-dev`** in production: it seeds demo accounts into an empty
+- **Never pass `-dev`** (or set `AMI_DEV=1`) in production: it seeds demo accounts into an empty
   database and allows every browser origin.
 - TLS: either `-tls-cert` and `-tls-key` to serve HTTPS directly, or a
   reverse proxy that terminates TLS plus `-trust-proxy`, which makes the server

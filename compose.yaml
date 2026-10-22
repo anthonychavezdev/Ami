@@ -78,6 +78,7 @@ services:
       AMI_TURN_SECRET: ${AMI_TURN_SECRET}
       AMI_TURN_PORT: ${AMI_TURN_PORT:-3478}
       AMI_INVITE: ${AMI_INVITE:-}
+      AMI_DEV: ${AMI_DEV:-}
       AMI_USER_STORAGE_GB: ${AMI_USER_STORAGE_GB:-0}
     ports:
       - "${AMI_PORT:-8080}:8080"

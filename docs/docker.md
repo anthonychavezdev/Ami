@@ -32,6 +32,34 @@ you are in. What is running:
 Open 8080 (or the proxy's 443, see below), 3478 and 49160 to 49200 on the
 firewall; nothing else needs to be reachable.
 
+### Production or development
+
+The stack above is production mode: an empty database, registration open
+until the first invite code, browser requests accepted from the page's own
+origin only. For a look around with data in it, or to work on the app
+against these containers, run it in development mode instead. One line in
+`.env`:
+
+```sh
+AMI_DEV=1
+```
+
+then `docker compose up -d` (or `up -d --build` the first time). The server
+starts with `-dev`: it seeds the demo accounts (`ana`, `luis`, `sofia`,
+`diego` and friends, with the password a dev build's login screen shows and
+[development.md](development.md#demo-data) lists), their friendships,
+groups, posts, chats and calls into the empty database, and it accepts
+browser requests from any origin, so the app served by Metro on port 8081
+(`web` or `mobile` in the dev shell, with `AMI_PORT` pointing at the
+container's port) can talk to it. The seed runs only when the database is
+empty: to start over, `docker compose down -v` and up again. Everything
+else, coturn included, runs the same in both modes.
+
+Development mode on a database with real accounts is a mistake: the demo
+accounts would be created on any empty one and every website could call the
+API with a user's browser. Remove the line and `docker compose up -d` to go
+back; the containers are recreated and the data stays.
+
 ### Before handing out the address
 
 - **Registration.** It is open to anyone who finds the address until a
@@ -64,9 +92,8 @@ firewall; nothing else needs to be reachable.
       command: ["-addr", ":8080", "-media-dir", "/data/media", "-web-dir", "/web", "-trust-proxy"]
   ```
 
-  The same override is where `-dev` would go for a look at the demo data on
-  an empty database, never on a real one, and where `-allowed-origins`
-  belongs if the page is ever served from another origin.
+  The same override is where `-allowed-origins` belongs if the page is ever
+  served from another origin.
 
 ### Settings
 
