@@ -17,42 +17,12 @@ that come with it.
 
 ## Docker
 
-[`Dockerfile`](../Dockerfile) and [`compose.yaml`](../compose.yaml) run the
-whole thing in containers: MariaDB, coturn and the server, which serves the
-browser app from the same origin. The phone apps are still built with
-`build android` and `build ios`, pointed at the server's `https://` address.
-
-```sh
-cp .env.example .env        # then set AMI_DB_PASSWORD and AMI_TURN_SECRET (openssl rand -hex 24)
-docker compose up -d --build
-docker compose logs -f server
-```
-
-- The image is built in three stages: the web export with Node, the static
-  binary with Go, and a small Alpine image with just those two, a user of its
-  own and the media directory. Rebuild and restart after a `git pull` with
-  the same `up -d --build`; the server migrates the database on start.
-- Uploads live in the `media` volume, the database in `db`. Back them up with
-  `docker compose exec db mariadb-dump -u ami -p"$AMI_DB_PASSWORD" ami > ami.sql`
-  and `docker run --rm -v ami_media:/m -v "$PWD":/out alpine tar czf /out/media.tgz -C /m .`
-  ([Backups and data](#backups-and-data)).
-- Ports: `8080` for the API and the web app, `3478` TCP and UDP plus
-  `49160`-`49200` UDP for coturn. Open the coturn ones on the firewall.
-  Behind Docker's NAT coturn must advertise the machine's public address: it
-  detects it at start, or takes `AMI_PUBLIC_IP` from `.env`.
-- TLS: put a reverse proxy that terminates HTTPS in front of port 8080 and
-  add `-trust-proxy` to the server's command (`command:` under `server` in a
-  `compose.override.yaml`, repeating the arguments from the Dockerfile's
-  `CMD`). The browser only allows camera and microphone on HTTPS.
-- Who may join: `docker compose exec server ami-server -new-invite` prints a
-  one-time code to hand to someone, and the first one closes open
-  registration ([server.md](server.md#invite-codes)); `AMI_INVITE` in `.env`
-  is a standing code instead or as well. `AMI_USER_STORAGE_GB` caps what one
-  account may upload in total. Both are off by default, which is right for a
-  first look and wrong for a public address.
-- Demo data for a look around: the same override with `-dev` added, on an
-  empty database only; never on a real one.
-- `docker compose down` keeps the volumes; `down -v` deletes everything.
+[docker.md](docker.md) is the guide: `cp .env.example .env`, fill in the two
+secrets, `docker compose up -d --build`, and the server, MariaDB and coturn
+are running with the browser app on the same origin. The same Dockerfile
+also builds just `dist/ami-server` and `dist/web` for a server run without
+Docker (`docker build --target artifacts -o dist .`). The TURN, TLS, backup
+and upgrade notes below apply either way.
 
 ## Running the server
 
