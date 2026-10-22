@@ -12,6 +12,46 @@ groups, direct messages, and peer-to-peer voice/video calls with screen sharing.
   `mobile/node_modules/`, `.gradle/`, `.android/`, `.cocoapods/`).
 - `docs/` — how everything works, top to bottom: start at [docs/README.md](docs/README.md).
 
+## Screenshots
+
+The demo data that `server -dev` seeds, in a browser on a wide screen:
+
+<p align="center">
+  <img src="docs/screenshots/web-feed.jpg" alt="The feed in a browser: the composer and the posts on the left, an open post with a link card, a reaction and its comments on the right" width="100%">
+</p>
+<p align="center"><sub>The feed. A post with Markdown, a link card and reactions opens beside the list, with its threaded comments.</sub></p>
+
+<p align="center">
+  <img src="docs/screenshots/web-messages.jpg" alt="A group chat, with the pointer resting on a reaction to show who gave it" width="49%">
+  <img src="docs/screenshots/web-profile.jpg" alt="A friend's profile: cover, picture, pronouns, bio, interests, and the Message, Call and Video buttons" width="49%">
+</p>
+<p align="center"><sub>A group chat, resting the pointer on a reaction to see who gave it · a friend's profile, with Message, Call and Video a click away.</sub></p>
+
+<p align="center">
+  <img src="docs/screenshots/web-server.jpg" alt="The Server tab: storage, processor load and memory of the machine, and your own share of the uploads" width="49%">
+  <img src="docs/screenshots/web-feed-dark.jpg" alt="The feed in dark mode" width="49%">
+</p>
+<p align="center"><sub>The Server tab: the disk, the load, the memory, and your share of the uploads · dark mode, chosen on the Me tab or following the device.</sub></p>
+
+On a phone the tabs sit at the bottom and chats fill the screen (iOS in dark mode, Android in light):
+
+<p align="center">
+  <img src="docs/screenshots/ios-feed.jpg" alt="The feed on an iPhone, dark mode" width="24%">
+  <img src="docs/screenshots/ios-chat.jpg" alt="A group chat on an iPhone, with a call in progress to join and a reaction on a message" width="24%">
+  <img src="docs/screenshots/ios-profile.jpg" alt="A profile on an iPhone, with a Markdown post and its reactions" width="24%">
+  <img src="docs/screenshots/android-feed.jpg" alt="The feed on Android, light mode, with reactions and an unread badge on Messages" width="24%">
+</p>
+<p align="center"><sub>The feed · a group chat with a call in progress · a profile · the feed on Android, with an unread badge.</sub></p>
+
+A group call between two Android emulators and a third participant:
+
+<p align="center">
+  <img src="docs/screenshots/call-B-ringing.jpg" alt="An incoming group call ringing on Android" width="24%">
+  <img src="docs/screenshots/call-A-three.jpg" alt="A group call with three participants" width="24%">
+  <img src="docs/screenshots/call-B-stage.jpg" alt="A shared screen on the stage above the participants" width="24%">
+</p>
+<p align="center"><sub>Ringing · three in the call · a shared screen on the stage above the people (the caller is sharing the call itself).</sub></p>
+
 ## Run
 
 ```sh
