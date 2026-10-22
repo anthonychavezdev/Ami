@@ -22,6 +22,7 @@ the repository root, so `server/hub.go` is `../server/hub.go` from here.
 | Page | What it covers |
 | --- | --- |
 | [server.md](server.md) | How the Go server is put together: flags, startup, middleware, handler conventions, helpers, shutdown. |
+| [docker.md](docker.md) | Running everything with Docker Compose, and building the image or just the artifacts with Docker. |
 | [mobile-app.md](mobile-app.md) | How the app is put together: routing, state, networking, the wide layout, components and platform files. |
 | [login.md](login.md) | Accounts and sessions: register, login, logout, tokens, the forced-password gate. |
 | [passwords.md](passwords.md) | Changing a password, the `-reset-password` recovery flow. |

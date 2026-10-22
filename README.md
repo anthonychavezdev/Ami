@@ -26,6 +26,13 @@ web                   # the same app in a browser tab (http://localhost:8081)
 test                  # gofmt, go vet, go test (starts MariaDB if none is running); tsc, eslint, prettier --check
 ```
 
+Or with Docker and nothing else installed: `cp .env.example .env`, fill in
+the two secrets, `docker compose up -d --build`, and the server, MariaDB and
+coturn are up with the browser app on <http://localhost:8080>. The same
+Dockerfile builds just the server binary and the web export
+(`docker build --target artifacts -o dist .`). [docs/docker.md](docs/docker.md)
+has the whole of it, including what to do before handing out the address.
+
 On Linux the emulator needs `/dev/kvm` access (NixOS: add your user to the
 `kvm` group). If `android` reports that no emulator could be started, run
 `emulator -avd ami` by hand to see the emulator's own error.
@@ -104,7 +111,7 @@ running here, another device just opens `http://<this machine's IP>:8081`.
   For calls between strict NATs run coturn next to it with the same
   `AMI_TURN_SECRET` ([docs/deployment.md](docs/deployment.md#turn)).
   Or run all of it in containers: `cp .env.example .env`, fill in the two
-  secrets, `docker compose up -d --build` ([docs/deployment.md](docs/deployment.md#docker)).
+  secrets, `docker compose up -d --build` ([docs/docker.md](docs/docker.md)).
   Before handing out the address, make invite codes (`ami-server -new-invite`,
   one account each; the first one closes open registration) or set a standing
   `AMI_INVITE`, and `AMI_USER_STORAGE_GB` (what one account may upload in total).
