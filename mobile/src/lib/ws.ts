@@ -1,4 +1,12 @@
+import { LogBox } from 'react-native';
+
 import { WS_URL } from './config';
+
+// React Native warns when its WebSocket module delivers an event for a
+// socket the JS side has already closed, a race inside RN whenever a
+// connection is replaced (a reconnect, a server restart). Nothing is lost:
+// the new socket gets a fresh hello. The dev build need not show it.
+if (__DEV__) LogBox?.ignoreLogs?.(['Sending `websocketMessage` with no listeners registered']);
 import type { ClientMessage, Event, EventOf, EventType } from './events';
 
 type Handler<T extends EventType> = (e: EventOf<T>) => void;
