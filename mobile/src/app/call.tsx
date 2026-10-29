@@ -2,7 +2,7 @@ import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View, findNodeHandle } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Avatar, GroupAvatar } from '@/components/ui';
 import { useAuth } from '@/lib/auth';
@@ -15,6 +15,7 @@ import { radius, spacing, type ThemeColors } from '@/theme';
 
 export default function CallScreen() {
   const styles = useStyles(makeStyles);
+  const insets = useSafeAreaInsets();
   const { state, call } = useCall();
   const { user: me } = useAuth();
   const pickerRef = useRef<any>(null);
@@ -30,7 +31,16 @@ export default function CallScreen() {
     <View style={styles.root}>
       <Backdrop layout={layout} state={state} />
 
-      <SafeAreaView style={styles.overlay} pointerEvents="box-none">
+      {/* Padded with the root provider's insets rather than a SafeAreaView, which measures its own
+          view: the first time this modal is presented on iOS it measures none, and the name and the
+          controls sit under the status bar and the home indicator. */}
+      <View
+        style={[
+          styles.overlay,
+          { paddingTop: insets.top, paddingBottom: insets.bottom, paddingLeft: insets.left, paddingRight: insets.right },
+        ]}
+        pointerEvents="box-none"
+      >
         <View style={styles.top}>
           <Text style={styles.name}>{state.group?.name ?? state.peer?.display_name ?? ''}</Text>
           <Text style={styles.subtitle}>{callSubtitle(state)}</Text>
@@ -58,7 +68,7 @@ export default function CallScreen() {
         ) : (
           <CallControls state={state} />
         )}
-      </SafeAreaView>
+      </View>
 
       {Platform.OS === 'ios' && <ScreenCapturePicker ref={pickerRef} style={{ width: 0, height: 0 }} />}
       <RemoteAudio streams={state.participants.flatMap((p) => p.streams)} />
