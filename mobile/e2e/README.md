@@ -12,7 +12,7 @@ server                          # :8080 with the demo accounts
 android                         # once: builds and installs the app on the `ami` emulator
 emulator -avd ami2 &            # the call scripts need a second emulator (create it with
                                 # `avdmanager create avd -n ami2 -d pixel_7 -k <system image>`)
-python3 mobile/e2e/group_chat.py            # luis chats in Fútbol los domingos
+python3 mobile/e2e/group_chat.py            # luis chats in Sunday football
 python3 mobile/e2e/group_call.py            # luis and ana call, diego joins over the WebSocket, screen share, camera
 python3 mobile/e2e/direct_call.py           # luis calls ana from her profile, screen share, hang up
 ```

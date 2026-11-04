@@ -184,7 +184,7 @@ func (sd *seeder) markRead() error {
 			SELECT gm.user_id, gm.group_id, COALESCE((SELECT MAX(id) FROM messages WHERE group_id = gm.group_id), '') FROM group_members gm`, nil},
 		{`UPDATE group_reads SET last_read_id =
 			(SELECT id FROM messages WHERE group_id = ? ORDER BY id DESC LIMIT 1 OFFSET 1)
-			WHERE user_id = ? AND group_id = ?`, []any{sd.groups["Fútbol los domingos"], sd.users["ana"], sd.groups["Fútbol los domingos"]}},
+			WHERE user_id = ? AND group_id = ?`, []any{sd.groups["Sunday football"], sd.users["ana"], sd.groups["Sunday football"]}},
 	}
 	for _, st := range statements {
 		if _, err := sd.tx.Exec(st.sql, st.args...); err != nil {

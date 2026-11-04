@@ -89,8 +89,8 @@ func TestSeededContent(t *testing.T) {
 	byName := func(name string) J {
 		return find(convos, func(c J) bool { return c.has("group") && c.obj("group").str("name") == name })
 	}
-	football := byName("Fútbol los domingos")
-	ts.check("ana has seeded group chats with a badge on the football one", football != nil && football.num("unread") == 1 && byName("Cumple de Luis 🎂") != nil &&
+	football := byName("Sunday football")
+	ts.check("ana has seeded group chats with a badge on the football one", football != nil && football.num("unread") == 1 && byName("Luis's birthday 🎂") != nil &&
 		all(convos, func(c J) bool { return !c.isNull("last_message") }), convos)
 	img := find(feed, func(p J) bool {
 		return anyOf(p.list("attachments"), func(a J) bool { return a.str("type") == "image" })

@@ -10,7 +10,7 @@ from ami import WS, Dev, check, group_id, login, report, step
 
 A = Dev(sys.argv[1] if len(sys.argv) > 1 else 'emulator-5554', 'A')
 B = Dev(sys.argv[2] if len(sys.argv) > 2 else 'emulator-5556', 'B')
-ROOM = 'g:' + group_id(login('luis'), 'Fútbol los domingos')  # the group's call room (server/demo.go)
+ROOM = 'g:' + group_id(login('luis'), 'Sunday football')  # the group's call room (server/demo.go)
 
 B.restart()
 A.restart()
@@ -20,7 +20,7 @@ step('A is luis (logs in if needed)', lambda: A.login_as('luis') if A.find('User
 
 def a_start():
     A.tap_text('Messages', exact=True)
-    A.tap_text('Fútbol los domingos')
+    A.tap_text('Sunday football')
     A.tap_text('Group voice call', exact=True)
     time.sleep(1)
     A.allow()
@@ -29,7 +29,7 @@ def a_start():
 
 step('A starts a group voice call and waits alone', a_start)
 A.shot('call-A-waiting')
-step('B is rung with the caller and the group', lambda: bool(B.find('Luis Martínez is calling', timeout=20) and B.find('Fútbol los domingos', timeout=5)))
+step('B is rung with the caller and the group', lambda: bool(B.find('Luis Martínez is calling', timeout=20) and B.find('Sunday football', timeout=5)))
 B.shot('call-B-ringing')
 
 
